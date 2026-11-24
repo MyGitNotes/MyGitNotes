@@ -33,10 +33,12 @@ export interface UseNoteEditorSessionParams extends Pick<NoteEditorSharedProps, 
   propIsDirty: boolean;
   onClose?: () => void;
   onSession?: (session: NoteEditorSession | null) => void;
+  /** Live text saves on its own server. Leaving waits only if the editor asks for a decision. */
+  beforeLeave?: () => Promise<boolean> | undefined;
 }
 
 /** A note's editing session: content, frontmatter, drafts, autosave, conflicts, crash recovery and save/restore/close actions. */
-export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession }: UseNoteEditorSessionParams) {
+export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remoteBase, conflictReason, onMarkConflict, onSave, onReadRemote, onMoved, onRestoreFile, onCommitFile, propIsDirty, branch, draftScope, onClose, onSession, beforeLeave }: UseNoteEditorSessionParams) {
   const { t } = useTranslation();
   const [content, setContent] = useState(note.content);
   const sessionKey = JSON.stringify([note.notebookId, note.path, draftScope, branch, readOnly]);
@@ -648,18 +650,18 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     };
     // Navigation waits for a conflict to be resolved; hiding the editor keeps the preserved draft, as closing zoom does.
     const beforeNavigate = async () => {
-      if (readOnly) return true;
+      if (readOnly) return beforeLeave?.() ?? true;
       await waitForOperation();
       return !mounted.current || (!current.current.blocked && await persist());
     };
     const beforeHide = async () => {
-      if (readOnly) return true;
+      if (readOnly) return beforeLeave?.() ?? true;
       await waitForOperation();
       return !mounted.current || current.current.blocked || await persist();
     };
     const unregister = [registerBeforeNavigate(beforeNavigate), registerEditor(noteRefKey(note), beforeHide)];
     return () => unregister.forEach(release => release());
-  }, [registerBeforeNavigate, registerEditor, readOnly, note, onSave, draftScope, branch, draftMode]);
+  }, [registerBeforeNavigate, registerEditor, readOnly, note, onSave, draftScope, branch, draftMode, beforeLeave]);
 
   const close = async () => {
     if (closing.current) return;
@@ -667,6 +669,11 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     // A mount or window focus can start a remote read just before the click. Honor the close after it settles.
     while (operation.current && mounted.current) await new Promise(resolve => setTimeout(resolve, 50));
     if (!mounted.current) return;
+    const allowed = beforeLeave?.();
+    if (allowed && (!await allowed || !mounted.current)) {
+      closing.current = false;
+      return;
+    }
     if (autoSave && !readOnly && !current.current.blocked && hasUnsaved()) {
       setIsSaving(true);
       try {

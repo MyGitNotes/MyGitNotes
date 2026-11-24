@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { tooltipText } from '../tooltip-test-helpers.js';
-import { createElement, forwardRef } from 'react';
+import { createElement, forwardRef, useRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import * as Y from 'yjs';
 import type { LiveCheckoutView } from '../../lib/live-api.js';
+import { useTranslation } from '../../lib/i18n/index.js';
+import { Tooltip } from '../Tooltip.js';
+import type { LiveLeaveGuard } from './LiveLeavePrompt.js';
+import { stubModalDialog } from './live-leave-test-helpers.js';
+import { LiveCheckIn, LiveStatusBadge, type LiveToolbarState } from './LiveToolbarControls.js';
 
 /*
  * The built-in live editor's tab (docs/specs/2026-11-15-builtin-live-editor §8.2, slice N5) over a fake provider: the
@@ -65,6 +70,7 @@ const ticket = (n: number, document = 'live-1.1') => json({ ticket: `t${n}`.padE
 let fetchMock: ReturnType<typeof vi.fn>;
 let tickets: number;
 beforeEach(() => {
+  stubModalDialog();
   fake.providers.length = 0;
   fake.order.length = 0;
   tickets = 0;
@@ -83,12 +89,46 @@ afterEach(async () => {
   for (const entry of await store.list()) await store.delete(entry.key);
 });
 
-const props = (overrides: Partial<Props> = {}): Props => ({ checkout, editor: { kind: 'builtin' }, onRefetch: vi.fn(), onClose: vi.fn(), onCheckedIn: vi.fn(), ...overrides });
+function TestToolbar({ state }: { state: LiveToolbarState; }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <LiveStatusBadge status={state.status} />
+      <LiveCheckIn action={state.checkIn} />
+      {state.discard && (
+        <Tooltip label={t(state.discard.reason ?? 'live.discardHint')}>
+          <button disabled={state.discard.disabled} onClick={state.discard.run}>{t('live.discard')}</button>
+        </Tooltip>
+      )}
+    </>
+  );
+}
+const props = (overrides: Partial<Props> = {}): Props => ({ checkout, editor: { kind: 'builtin' }, onRefetch: vi.fn(), onDismissRecovery: vi.fn(), onCheckedIn: vi.fn(), renderToolbar: state => <TestToolbar state={state} />, ...overrides });
+
+function CloseHost({ editorProps, onLeave }: { editorProps: Props; onLeave: () => void; }) {
+  const guard = useRef<LiveLeaveGuard>(null);
+  const [open, setOpen] = useState(true);
+  return open && (
+    <>
+      <button
+        onClick={async () => {
+          const allowed = guard.current?.();
+          if (allowed && !await allowed) return;
+          setOpen(false);
+          onLeave();
+        }}
+      >
+        Close note
+      </button>
+      <LiveCollabEditor {...editorProps} beforeLeaveRef={guard} />
+    </>
+  );
+}
 const provider = () => fake.providers[fake.providers.length - 1];
 const emit = (fn: (config: FakeConfig) => void) => act(() => fn(provider().configuration));
 /** Mounts the tab and lets its first ticket arrive, which creates the provider. */
-const open = async (overrides: Partial<Props> = {}) => {
-  const view = render(createElement(LiveCollabEditor, props(overrides)));
+const open = async (overrides: Partial<Props> = {}, onLeave?: () => void) => {
+  const view = render(onLeave ? <CloseHost editorProps={props(overrides)} onLeave={onLeave} /> : createElement(LiveCollabEditor, props(overrides)));
   await act(async () => {});
   return view;
 };
@@ -117,7 +157,7 @@ describe('opening', () => {
   });
 });
 
-describe('the bar', () => {
+describe('the toolbar controls', () => {
   it('says saved, unsaved and offline from the provider, and counts the people in awareness by name', async () => {
     await open();
     sync();
@@ -179,12 +219,14 @@ describe('the bar', () => {
     expect(screen.queryByRole('list', { name: 'People editing' })).toBeNull();
     emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'you', name: 'Me', color: '#a1b2c3' }) }));
     emit(config => config.onAwarenessChange?.({ states: [{ clientId: config.document.clientID }, { clientId: 2, user: { name: 'Bo', color: '#112233' } }, { clientId: 3, user: { name: 'Bo', color: '#112233' } }, { clientId: 4, user: { name: 'Me', color: '#a1b2c3' } }, { clientId: 5, user: { name: 'Cy', color: 'red' } }] }));
+    fireEvent.keyDown(document, { key: 'Tab' });
+    fireEvent.focus(screen.getByText('Saved').closest('.live-toolbar-badge')!);
     const list = screen.getByRole('list', { name: 'People editing' });
-    const items = [...list.querySelectorAll('li')];
+    const items = [...list.querySelectorAll('[role="listitem"]')];
     // Another window of the tab's own person is the tab itself; a name is listed once; a colour that is no hex colour shows none.
     expect(items.map(item => item.textContent)).toEqual(['Me (you)', 'Bo', 'Cy']);
     expect(items.map(item => (item.querySelector('.live-editor-swatch') as HTMLElement).style.backgroundColor)).toEqual(['rgb(161, 178, 195)', 'rgb(17, 34, 51)', '']);
-    const frame = list.closest('.live-collab') as HTMLElement;
+    const frame = document.querySelector('.live-collab') as HTMLElement;
     expect(frame).toHaveAttribute('data-own-colour');
     expect(frame.style.getPropertyValue('--live-own-colour')).toBe('#a1b2c3');
     // A `you` message without a usable colour is ignored.
@@ -371,16 +413,16 @@ describe('立即簽回', () => {
   });
 
   it('says an empty draft was discarded', async () => {
-    const onDiscarded = vi.fn();
+    const onRefetch = vi.fn();
     fetchMock.mockImplementation(async (url: string) => url === '/api/live/socket-ticket' ? ticket(++tickets) : json({ id: 'live-1', path: null, committed: false, released: true, discarded: true, reason: 'empty', revision: 'c'.repeat(40) }));
-    await open({ checkout: { ...checkout, path: 'notes/life/.live/live-1.md', pending: true }, onDiscarded });
+    await open({ checkout: { ...checkout, path: 'notes/life/.live/live-1.md', pending: true }, onRefetch });
     sync();
     await act(async () => {
       fireEvent.click(checkInButton());
     });
     expect(screen.getByRole('status')).toHaveTextContent('The draft was empty and was discarded');
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(onDiscarded).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    expect(onRefetch).toHaveBeenCalled();
   });
 });
 
@@ -445,7 +487,7 @@ describe('a released note', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
     expect(click).toHaveBeenCalled();
     expect(createObjectURL).toHaveBeenCalled();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Close' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss recovery' }));
     expect(onCheckedIn).toHaveBeenCalledWith();
   });
 
@@ -512,7 +554,7 @@ describe('a refusal from the server', () => {
   it('with unsaved changes, says why and offers the tab’s text to copy or download, whatever the reason', async () => {
     for (const [reason, text] of [['too-large', 'over the live editor’s size limit'], ['busy', 'The live editor is busy'], ['invalid', 'The live editor refused the connection'], ['something-new', 'The live editor refused the connection']] as const) {
       const onClose = vi.fn(), onCheckedIn = vi.fn();
-      const view = await open({ onClose, onCheckedIn });
+      const view = await open({ onDismissRecovery: onClose, onCheckedIn });
       sync('# A\n');
       typeUnsaved(`typed before ${reason}\n`);
       emit(config => config.onStateless?.({ payload: JSON.stringify({ type: 'refused', reason }) }));
@@ -521,7 +563,7 @@ describe('a refusal from the server', () => {
       expect(screen.getByRole('alert'), reason).toHaveTextContent('were not saved');
       await offersMine(`# A\ntyped before ${reason}\n`);
       // The note was not checked in: closing leaves the editor as 「關閉」 does.
-      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss recovery' }));
       expect([onClose.mock.calls.length, onCheckedIn.mock.calls.length], reason).toEqual([1, 0]);
       view.unmount();
     }
@@ -753,10 +795,10 @@ describe('an ending the person chooses while typing is unsaved', () => {
   it('「關閉」 asks in the editor first, offers the text to copy or download, and going back keeps the session', async () => {
     const writeText = clipboard();
     const onClose = vi.fn();
-    await open({ onClose });
+    await open({}, onClose);
     sync('# A\n');
     typeOffline();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close note' }));
     expect(provider().destroyed).toBe(false);
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Your latest changes are not saved yet; copy or download your version before you close.');
@@ -769,17 +811,19 @@ describe('an ending the person chooses while typing is unsaved', () => {
     expect(fake.providers).toHaveLength(1);
     expect(provider().destroyed).toBe(false);
     expect(screen.getByLabelText('Live note content')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Close anyway' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close note' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Close anyway' }));
+    });
     expect(provider().destroyed).toBe(true);
     expect(onClose).toHaveBeenCalled();
   });
 
   it('「關閉」 with nothing unsaved closes at once', async () => {
     const onClose = vi.fn();
-    await open({ onClose });
+    await open({}, onClose);
     sync('# A\n');
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close note' }));
     expect(provider().destroyed).toBe(true);
     expect(onClose).toHaveBeenCalled();
   });
@@ -890,13 +934,13 @@ describe('a connect with nothing typed', () => {
 
   it('「關閉」 closes at once, and leaving the note keeps nothing to offer', async () => {
     const onClose = vi.fn();
-    const view = await open({ onClose });
+    const view = await open({}, onClose);
     sync('# A\n');
     midConnect();
     // Still truthful: not saved until the step 2 is acknowledged, though nothing typed says 未儲存 only once it lasts.
     expect(screen.queryByText('Saved')).toBeNull();
     expect(screen.queryByText('Not saved')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close note' }));
     expect(onClose).toHaveBeenCalled();
     view.unmount();
     await open();

@@ -94,7 +94,7 @@ const mount = async (props: Partial<NoteEditorProps>, deleteNote?: (note: NoteIt
   await act(async () => {});
   return view;
 };
-const collabShown = () => screen.queryByRole('toolbar', { name: 'Live editor' });
+const collabShown = () => document.querySelector('.live-toolbar-badge');
 
 describe('a writer’s note of a repository with the built-in editor', () => {
   it('opens in zoom straight into the collab editor, with no Edit', async () => {

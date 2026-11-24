@@ -1,22 +1,21 @@
-/* The framed live editor: its bar over the frame, which takes the rest of the note's space. */
+/* Live shares the note toolbar. The editor and its notices take the rest of the note. */
 .live-editor-frame { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
-.live-editor-bar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 16px; border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-sidebar) 60%, transparent); font-size: 12px; }
-.live-editor-state { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); white-space: nowrap; }
-.live-editor-state[data-tone='ok'] { color: var(--color-success); }
-.live-editor-state[data-tone='warn'] { color: var(--color-warning); }
-.live-editor-users { color: var(--color-text); font-weight: 600; }
-/* Who is editing, each beside the colour of their cursor: this tab first. */
-.live-editor-people { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; padding: 0; list-style: none; }
-.live-editor-person { display: inline-flex; align-items: center; gap: 5px; color: var(--color-muted); white-space: nowrap; }
-.live-editor-person[data-own] { color: var(--color-text); }
-.live-editor-swatch { flex: none; width: 10px; height: 10px; border-radius: 999px; background: var(--color-line-strong); }
-.live-editor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.live-editor-actions a { display: inline-flex; align-items: center; gap: 4px; }
+.live-toolbar-badge { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-surface); color: var(--color-muted); font-size: 11px; line-height: 16px; white-space: nowrap; }
+.live-toolbar-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.live-toolbar-badge[data-tone='ok'] .live-toolbar-dot { color: var(--color-success); }
+.live-toolbar-badge[data-tone='warn'] { background: var(--color-warning-soft); color: var(--color-warning); }
+/* Editor names in the badge's tooltip, each with its cursor colour. */
+.live-editor-people { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.live-editor-person { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.live-editor-swatch { flex: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.phone-sheet-danger > .phone-sheet-item { color: var(--color-danger); }
 .live-editor-iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: var(--color-surface); }
 .live-editor-notice { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 24px auto; padding: 16px 20px; max-width: 34rem; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); font-size: 14px; }
-.live-editor-notice-actions { display: flex; gap: 8px; }
-/* On a phone the bar's actions are 44px touch targets. */
-@media (max-width: 767px) { .live-editor-actions .ui-button.ui-button-small { min-height: 44px; padding: 0 12px; font-size: 13px; } }
+.live-editor-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.live-editor-leave { width: calc(100vw - 24px); margin: auto; color: var(--color-text); }
+.live-editor-leave:not([open]) { display: none; }
+.live-editor-leave::backdrop { background: color-mix(in srgb, var(--color-scrim) 60%, transparent); }
+@media (max-width: 767px) { .phone-note-bar .live-toolbar-badge { display: inline-grid; grid-template-columns: auto 1fr; gap: 0 4px; padding-inline: 6px; font-size: 10px; line-height: 12px; } .phone-note-bar .live-toolbar-dot { grid-row: span 2; } .phone-note-bar .live-toolbar-divider { display: none; } .phone-note-bar .live-toolbar-state { grid-column: 2; } .live-editor-notice-actions .ui-button.ui-button-small { min-height: 44px; } }
 
 /* 「編輯中 · N 人」 and 「未歸檔」 on note rows and cards. */
 .live-badge { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; }
