@@ -6,10 +6,10 @@ import { FIELD_SEPARATOR } from './model.js';
 
 // The list structure is CommonMark. Use the note's CJK and math extensions so a
 // separator inside emphasis, a link or KaTeX is not mistaken for a column break.
-const markdown = new Marked(markedCjkFriendly(), markedMath);
+const markdown = new Marked(markedCjkFriendly(), markedMath, { gfm: false });
 
 export function listBlocks(body: string): Token[] {
-  return markdown.lexer(body, { gfm: false }).filter(block => block.type !== 'space');
+  return markdown.lexer(body).filter(block => block.type !== 'space');
 }
 
 export function isList(token: Token | undefined): token is Tokens.List {

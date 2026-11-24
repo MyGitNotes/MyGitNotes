@@ -25,6 +25,7 @@ import '../directives/embedded-cards.css';
 import '../directives/infographics.css';
 import '../directives/infographics/process.css';
 import '../directives/infographics/decision.css';
+import '../directives/infographics/nested.css';
 import '../directives/argument-maps.css';
 import '../directives/annotations.css';
 import { installDomTooltips } from '../components/dom-tooltips.js';

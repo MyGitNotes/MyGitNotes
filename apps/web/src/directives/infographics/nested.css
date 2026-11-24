@@ -1,0 +1,18 @@
+/* Transparent fills accumulate inward so the same tint deepens with each range. */
+.ig-figure .ig-nest { margin: 0; border: 0; padding: 0; }
+.ig-figure .ig-ring { min-width: 0; border: 1px solid var(--ig-faint); border-radius: var(--radius-control, 6px); padding: 0.5rem 0.75rem 0.75rem; background: color-mix(in srgb, var(--ig-hl) 7%, transparent); font-weight: 400; overflow-wrap: anywhere; }
+.ig-figure .ig-ring > .ig-nest { margin-top: 0.5rem; }
+.ig-figure .ig-ring.is-highlight { border: 2px solid var(--ig-hl); background: color-mix(in srgb, var(--ig-hl) 8%, transparent); font-weight: 400; }
+.ig-ring-head { display: flex; flex-wrap: wrap; gap: 0.1rem 0.6rem; align-items: baseline; }
+.ig-ring-name { font-weight: 700; }
+.ig-ring.is-highlight > .ig-ring-head > .ig-ring-name { color: var(--ig-hl); }
+.ig-ring-note { font-size: 0.8rem; color: var(--color-muted); }
+
+@media (max-width: 35rem) { .ig-figure .ig-ring { padding: 0.4rem 0.5rem 0.5rem; } }
+@container (max-width: 35rem) { .ig-figure .ig-ring { padding: 0.4rem 0.5rem 0.5rem; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .ig-ring { animation: ig-fade ease-out both; animation-timeline: view(); animation-range: entry 15% cover 40%; }
+  }
+}

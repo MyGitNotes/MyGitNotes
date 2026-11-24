@@ -1,8 +1,7 @@
 /**
- * Renders the infographic directives (`key-numbers`, `bars`, `parts`, `line`, `timeline`, `status-board`, `map`, `ladder`) to
- * the figure HTML of the blog's `remark-infographics` plugin (wayne930242/knowledge-base, `blog/src/plugins`,
- * commit a17b573e): the same element tree, `ig-*` classes, numbers and zh-TW formatting. The blog's CSS is not
- * used; the app styles the figures from its theme tokens (`directives/infographics.css`).
+ * Renders the blog's infographic directives (wayne930242/knowledge-base, `blog/src/plugins/infographics`),
+ * keeping their element tree, `ig-*` classes and number formatting. The app styles the figures from its theme
+ * tokens in `directives/infographics.css` and `directives/infographics/`.
  */
 
 import { escapeHtml, fill, matchDirectiveClose, type NoteLanguage, parseDirectiveOpen, stringsFor } from '../directives.js';
@@ -12,8 +11,9 @@ import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, typ
 import { attrOf, fail, highlightClass, type InfographicError, type InlineRenderer, tag } from './figure-html.js';
 import { processFlow } from './process.js';
 import { decision } from './decision.js';
+import { nested } from './nested.js';
 
-const MARKDOWN_BODIES = { process: processFlow, decision };
+const MARKDOWN_BODIES = { process: processFlow, decision, nested };
 
 function isMarkdownBodyKind(name: string): name is keyof typeof MARKDOWN_BODIES {
   return Object.hasOwn(MARKDOWN_BODIES, name);
