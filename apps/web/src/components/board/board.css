@@ -1,0 +1,74 @@
+/* The whiteboard arrangement (CompilationBoard): a header, then the board filling what is left of the compilation. */
+.compilation-view[data-arrangement='board'] .compilation-body { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 8px; }
+.board-arrangement { position: relative; display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; margin-bottom: 0; }
+.board-arrangement > .screen-lane-header { flex: none; }
+.board-stage { position: relative; display: flex; flex: 1 1 auto; min-height: 360px; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-bg); }
+/* The camera draws the board; the viewport itself never scrolls. */
+.board-viewport { position: relative; flex: 1 1 auto; min-width: 0; overflow: hidden; touch-action: none; cursor: grab; background-image: radial-gradient(var(--color-line-strong) 1px, transparent 1.2px); outline: none; }
+.board-viewport:active { cursor: grabbing; }
+.board-viewport:not([data-ready]) .board-layer { visibility: hidden; }
+.board-layer { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; }
+@media (prefers-reduced-motion: no-preference) { .board-layer[data-animated] { transition: transform 180ms ease-out; } }
+
+/* Sections: a titled rounded rectangle under its cards. The group that holds its cards is transparent above it. */
+.board-section-frame { position: absolute; border: 1px solid var(--color-line); border-radius: 16px; background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.board-section { position: absolute; }
+.board-section-title { position: absolute; z-index: 2; top: 14px; left: 20px; right: 20px; overflow: hidden; color: var(--color-text); font-size: var(--board-section-title-size, 15px); font-weight: 650; line-height: 1.25; white-space: nowrap; text-overflow: ellipsis; }
+
+/* Cards: one size; title and two lines, or zoomed out the title only, never under 12 px on screen. */
+.board-card { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 8px; width: 240px; height: 128px; padding: 12px; overflow: hidden; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); box-shadow: var(--shadow-sm); color: var(--color-text); text-align: left; cursor: pointer; }
+.board-card:hover { border-color: var(--color-line-strong); }
+.board-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.board-card-head { display: flex; flex: none; align-items: flex-start; gap: 8px; min-width: 0; }
+.board-card-head > svg { flex: none; width: 14px; height: 14px; margin-top: 2px; color: var(--color-muted); }
+.board-card-dot { flex: none; margin-top: 6px; }
+.board-card-title { display: -webkit-box; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 650; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.board-card-excerpt { display: -webkit-box; overflow: hidden; color: var(--color-muted); font-size: 13px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.board-card-missing { color: var(--color-warning); }
+.board-card-thumbnail { flex: 1 1 auto; min-height: 0; width: 100%; object-fit: cover; border-radius: 4px; }
+.board-card[data-kind='asset'] .board-card-excerpt, .board-card[data-kind='youtube'] .board-card-excerpt { display: none; }
+.board-card-notebook { position: absolute; top: 6px; right: 6px; }
+.board-card-initial { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; background: var(--color-primary-soft); color: var(--color-text); font-size: 10px; font-weight: 600; }
+.board-card[data-other-notebook] .board-card-head { padding-right: 18px; }
+.board-layer[data-detail='title'] .board-card { justify-content: center; }
+.board-layer[data-detail='title'] :is(.board-card-excerpt, .board-card-thumbnail, .board-card-head > svg, .board-card-dot) { display: none; }
+.board-layer[data-detail='title'] .board-card-title { font-size: var(--board-card-title-size, 14px); -webkit-line-clamp: var(--board-card-title-lines, 3); }
+
+/* Free text scales with the board. */
+.board-texts { display: contents; }
+.board-text { position: absolute; z-index: 2; margin: 0; padding: 8px; color: var(--color-text); font-size: 16px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The palette a status takes: the first four are the theme's success, info, warning and danger tokens. */
+.board-text-tone-green { color: var(--color-success); }
+.board-text-tone-blue { color: var(--color-info); }
+.board-text-tone-amber { color: var(--color-warning); }
+.board-text-tone-red { color: var(--color-danger); }
+.board-text-tone-purple { color: var(--color-status-purple); }
+.board-text-tone-teal { color: var(--color-status-teal); }
+.board-text-tone-pink { color: var(--color-status-pink); }
+.board-text-tone-gray { color: var(--color-status-gray); }
+
+/* Lines: the dashed links inside notes under the drawn arrows. Strokes keep their width at every zoom. */
+.board-lines { position: absolute; z-index: 1; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.board-note-links line { stroke: var(--color-muted); stroke-width: 1.25; stroke-dasharray: 6 5; vector-effect: non-scaling-stroke; opacity: 0.7; }
+.board-arrows path { fill: none; stroke: var(--color-text); stroke-width: 1.5; vector-effect: non-scaling-stroke; opacity: 0.7; }
+.board-arrowhead { fill: var(--color-text); opacity: 0.7; }
+.board-arrow-label { position: absolute; z-index: 3; display: none; padding: 2px 9px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-text); font-size: 13px; line-height: 1.4; white-space: nowrap; transform: translate(-50%, -50%); pointer-events: none; }
+.board-layer[data-arrow-labels] .board-arrow-label { display: block; }
+
+/* The controls and the minimap float over the board. */
+.board-controls { position: absolute; z-index: 5; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; padding: 4px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--surface-glass); box-shadow: var(--shadow-sm); backdrop-filter: var(--surface-blur); }
+.board-note-links-toggle[aria-pressed='true'] { background: var(--color-primary-soft); color: var(--color-primary); }
+.board-zoom { display: flex; align-items: center; gap: 2px; }
+.board-zoom-value { min-width: 3.25em; color: var(--color-text); font-size: 12px; font-variant-numeric: tabular-nums; text-align: center; }
+/* Touch targets are at least 44 px wherever a finger presses them. */
+.board-stage[data-phone] .board-controls .ui-icon-button { min-width: 44px; min-height: 44px; }
+@media (pointer: coarse) { .board-controls .ui-icon-button { min-width: 44px; min-height: 44px; } }
+.board-minimap { position: absolute; z-index: 5; right: 12px; bottom: 12px; padding: 4px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--surface-glass); box-shadow: var(--shadow-sm); backdrop-filter: var(--surface-blur); }
+.board-minimap svg { display: block; cursor: pointer; touch-action: none; }
+.board-minimap-section { fill: color-mix(in srgb, var(--color-text) 8%, transparent); stroke: none; }
+.board-minimap-card { fill: var(--color-line-strong); stroke: none; }
+.board-minimap-text { fill: color-mix(in srgb, var(--color-primary) 30%, transparent); stroke: none; }
+.board-minimap-frame { fill: none; stroke: var(--color-primary); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+@media (max-width: 767px) { .board-minimap { display: none; } }
+
+.board-empty { position: absolute; top: 55%; left: 50%; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--color-muted); transform: translate(-50%, -50%); }

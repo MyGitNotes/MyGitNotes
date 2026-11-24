@@ -1,5 +1,5 @@
 import { Tooltip } from './Tooltip.js';
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -27,16 +27,16 @@ import { useStudyWorkspace } from '../lib/use-study-workspace.js';
 import { Button } from './Button.js';
 import type { CompilationContentProps } from './CompilationCard.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
-import { CompilationLane } from './CompilationLane.js';
+import { CompilationLane, createLaneNoteContext } from './CompilationLane.js';
 import { shownView } from './CompilationHeader.js';
 import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 import { CompilationBook } from './CompilationBook.js';
+import { CompilationBoard } from './board/CompilationBoard.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { useCompilationAssets, useCompilationItemOpen } from './useCompilationItemOpen.js';
 import { compilationNotebookIds } from '../lib/compilation-rows.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 
-const GraphPage = lazy(() => import('./GraphPage.js').then(module => ({ default: module.GraphPage })));
 const ignoreSaved = () => {};
 
 export interface CompilationViewProps {
@@ -54,7 +54,7 @@ export interface CompilationViewProps {
   onClose?: () => void;
 }
 
-/** One open compilation: its header, then the lane, book or graph arrangement. Edits write the file through the note actions. */
+/** One open compilation: its header, then the lane, book or whiteboard arrangement. Edits write the file through the note actions. */
 export function CompilationView({ notebookId, path, notebooks, folders, frame, onOpenNote, onOpenFolder, onClose }: CompilationViewProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -267,7 +267,16 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onRename: rename(current),
       onCreateNote: actions.createNote,
     };
-    return current.view === 'book' ? <CompilationBook {...common} /> : (
+    if (current.view === 'book') return <CompilationBook {...common} />;
+    if (shownView(current.view) === 'board') {
+      // A board draws its items where the file places them; its status filter does not apply, and on a phone it is for looking.
+      const createInSource = () => {
+        const context = createLaneNoteContext(current, notebooks);
+        if (context) actions.createNote?.(context);
+      };
+      return <CompilationBoard row={current} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={open} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} hideQuery />;
+    }
+    return (
       <CompilationLane
         {...common}
         onRemove={id => {
@@ -276,13 +285,6 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
           if (slots.editing?.slot === id) void slots.finish().then(saved => saved && change(next));
           else change(next);
         }}
-        graph={shownView(current.view) === 'graph'
-          ? (
-            <Suspense fallback={<p role='status'>{t('graph.title')}</p>}>
-              <GraphPage notebooks={notebooks} lane={current} screen={compilation} />
-            </Suspense>
-          )
-          : undefined}
       />
     );
   };

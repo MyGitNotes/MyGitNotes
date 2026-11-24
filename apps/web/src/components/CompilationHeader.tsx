@@ -1,6 +1,6 @@
 import { Tooltip } from './Tooltip.js';
 import { type ButtonHTMLAttributes, type ReactNode, useState } from 'react';
-import { BookOpen, Brain, ChevronLeft, ChevronRight, Columns2, Columns3, LayoutGrid, ListOrdered, Network, Plus, SlidersHorizontal, TableOfContents, Zap } from 'lucide-react';
+import { BookOpen, Brain, ChevronLeft, ChevronRight, Columns2, Columns3, LayoutGrid, ListOrdered, Plus, Presentation, SlidersHorizontal, TableOfContents, Zap } from 'lucide-react';
 import type { CompilationRow, CompilationSort } from '@mygitnotes/core/compilation';
 import { type NotebookFacets, noteQueryStatuses } from '@mygitnotes/core/note-query';
 import type { NotebookConfig } from '../lib/types.js';
@@ -11,11 +11,13 @@ import { Button } from './Button.js';
 import { Select } from './Select.js';
 import './study.css';
 
-/** Until the board is drawn, a board-arranged compilation shows as the graph lane, and the switch marks the graph. */
-export const shownView = (view: CompilationRow['view']) => view === 'board' ? 'graph' : view;
+/** What the arrangement switch marks: the whiteboard for the graph arrangement it replaces, which no file is read as any more. */
+export const shownView = (view: CompilationRow['view']): Exclude<CompilationRow['view'], 'graph'> => view === 'graph' ? 'board' : view;
 
-/** The arrangement switch: the three lane sizes, book and graph. */
-export const compilationViewTabs = [{ value: 'thumbnail', icon: LayoutGrid }, { value: 'small', icon: Columns3 }, { value: 'medium', icon: Columns2 }, { value: 'book', icon: BookOpen }, { value: 'graph', icon: Network }] as const;
+/** The arrangement switch: the three lane sizes, book and whiteboard. */
+export const compilationViewTabs = [{ value: 'thumbnail', icon: LayoutGrid }, { value: 'small', icon: Columns3 }, { value: 'medium', icon: Columns2 }, { value: 'book', icon: BookOpen }, { value: 'board', icon: Presentation }] as const;
+/** The arrangements a compilation can be switched to, in the switch's order. */
+export const COMPILATION_SWITCH_VIEWS = compilationViewTabs.map(tab => tab.value);
 
 export interface CompilationHeaderProps {
   row: CompilationRow;
@@ -41,10 +43,14 @@ export interface CompilationHeaderProps {
   scrollButton?: (direction: ScrollDirection) => ButtonHTMLAttributes<HTMLButtonElement>;
   /** View-level actions that follow the others, such as edit, copy and delete. */
   extra?: ReactNode;
+  /** Hides the status filter, which a whiteboard does not apply: its cards stay where they are placed. */
+  hideQuery?: boolean;
+  /** Hides the arrangement switch, as a phone does on a whiteboard, which it only shows. */
+  hideArrangement?: boolean;
 }
 
 /** The compilation's name, source and the controls shared by its arrangements. */
-export function CompilationHeader({ row, count, disabled, readOnly, notebooks, facets, onStudy, onView, onAdd, onSort, onEditOrder, onArrange, onRename, onStudyChange, onCreateInSource, scrollButton, extra }: CompilationHeaderProps) {
+export function CompilationHeader({ row, count, disabled, readOnly, notebooks, facets, onStudy, onView, onAdd, onSort, onEditOrder, onArrange, onRename, onStudyChange, onCreateInSource, scrollButton, extra, hideQuery = false, hideArrangement = false }: CompilationHeaderProps) {
   const { t } = useTranslation();
   const [queryOpen, setQueryOpen] = useState(false);
   const query = row.study || { filter: 'all' as const, dueFirst: false };
@@ -77,7 +83,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
         )}
       </div>
       <div className='screen-lane-actions'>
-        {!readOnly && (
+        {!readOnly && !hideQuery && (
           <Tooltip label={t('screen.filtersAndSort')}>
             <Button
               type='button'
@@ -92,7 +98,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
             </Button>
           </Tooltip>
         )}
-        {!readOnly && (
+        {!readOnly && !hideQuery && (
           <div id={`screen-query-${row.id}`} className='screen-lane-query' data-open={queryOpen}>
             <label className='screen-lane-filter'>
               {t('study.status')}
@@ -128,8 +134,8 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
             )}
           </div>
         )}
-        {!readOnly && <Select className='screen-view-select' aria-label={`${t('screen.view')}: ${row.name}`} value={shownView(row.view)} disabled={disabled} onValueChange={value => onView?.(value as CompilationRow['view'])} options={(['thumbnail', 'small', 'medium', 'book', 'graph'] as const).map(value => ({ value, label: t(`screen.${value}`) }))} />}
-        {!readOnly && (
+        {!readOnly && !hideArrangement && <Select className='screen-view-select' aria-label={`${t('screen.view')}: ${row.name}`} value={shownView(row.view)} disabled={disabled} onValueChange={value => onView?.(value as CompilationRow['view'])} options={COMPILATION_SWITCH_VIEWS.map(value => ({ value, label: t(`screen.${value}`) }))} />}
+        {!readOnly && !hideArrangement && (
           <div className='screen-view-tabs' role='group' aria-label={`${t('screen.view')}: ${row.name}`}>
             {compilationViewTabs.map(({ value, icon: Icon }) => (
               <Tooltip key={value} label={t(`screen.${value}`)}>
