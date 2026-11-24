@@ -1,27 +1,27 @@
-import { Tooltip } from './Tooltip.js';
-import { NoteMoveButton } from './NoteMoveButton.js';
-import { LiveBadge } from './live/LiveBadge.js';
-import { FrontmatterInvalid } from './NoteStatusSelect.js';
-import { useLiveLock } from './live/live-drafts.js';
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Clock, GripVertical, Kanban as KanbanIcon, Plus, Trash2 } from 'lucide-react';
+import { Kanban as KanbanIcon, Plus } from 'lucide-react';
 import type { NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
-import { noteRefKey, sameNote } from '@mygitnotes/core/note-query';
-import { noteUpdatedTime, SortField, SortOrder } from '../lib/note-sort.js';
+import { noteRefKey } from '@mygitnotes/core/note-query';
+import { SortField, SortOrder } from '../lib/note-sort.js';
 import { metadataSortOptions } from '../lib/note-sort-options.js';
-import { Select } from './Select.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useAltWheelHorizontalScroll } from '../lib/use-alt-wheel-horizontal-scroll.js';
-import { useDeleteConfirm } from '../lib/use-delete-confirm.js';
 import { useNoteList } from '../lib/use-note-queries.js';
-import { NoteListSentinel } from './NoteListSentinel.js';
-import { NOTE_DRAG_TYPE, type NoteBrowseFocusMode } from '../lib/note-drag.js';
-import { LoadingStatus } from './LoadingStatus.js';
+import type { NoteBrowseFocusMode } from '../lib/note-drag.js';
 import { useNoteTouchSelection } from '../lib/use-note-touch-selection.js';
+import { useStatusDotClass, useStatusLabel } from '../lib/status-color.js';
+import { FrontmatterInvalid } from './NoteStatusSelect.js';
+import { LiveBadge } from './live/LiveBadge.js';
+import { useLiveLock } from './live/live-drafts.js';
+import { LoadingStatus } from './LoadingStatus.js';
+import { NoteListSentinel } from './NoteListSentinel.js';
+import { NoteMoveButton } from './NoteMoveButton.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteZoomButton } from './NoteZoomButton.js';
-import { NoteTags } from './NoteTags.js';
-import { useStatusDotClass, useStatusLabel } from '../lib/status-color.js';
+import { Select } from './Select.js';
+import { Tooltip } from './Tooltip.js';
+import { type BoardContext, cardDragProps, type Column, useColumnDrag } from './kanban/board.js';
+import { KanbanCard } from './kanban/KanbanCard.js';
 
 interface KanbanViewProps {
   /** The board's filter; each column adds its own status condition and pages on its own. */
@@ -50,153 +50,6 @@ interface KanbanViewProps {
   selectedKeys?: Set<string>;
   /** Modifier-click (or the checkbox, once shown) toggles a card's membership; a plain click still opens it. */
   onToggleSelect?: (note: NoteListItem) => void;
-}
-
-interface Column {
-  id: string;
-  title: string;
-  color: string;
-}
-
-interface BoardContext {
-  /** Whether a note being edited live (編輯中) keeps its column until it is checked in. */
-  liveLocked: (note: NoteListItem) => boolean;
-  columns: Column[];
-  readOnly: boolean;
-  canDelete: boolean;
-  confirmDelete: boolean;
-  onOpenNote: (note: NoteListItem) => void;
-  onUpdateNoteStatus: (note: NoteListItem, newStatus: string) => void;
-  onDeleteNote: (note: NoteListItem) => void;
-  onMoveNote?: (note: NoteListItem) => void;
-  onNewNoteWithStatus: (status: string) => void;
-  dragged: NoteListItem | null;
-  setDragged: (note: NoteListItem | null) => void;
-  dragOverColumnId: string | null;
-  setDragOverColumnId: (id: string | null) => void;
-  onTotal: (columnId: string, total: number) => void;
-  focusMode?: NoteBrowseFocusMode;
-  selectedKeys?: Set<string>;
-  onToggleSelect?: (note: NoteListItem) => void;
-  metadataSortFields?: readonly string[];
-}
-
-function useColumnDrag(board: BoardContext, columnId: string) {
-  return {
-    onDragOver: (event: React.DragEvent<HTMLDivElement>) => {
-      if (board.readOnly) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'move';
-      if (board.dragOverColumnId !== columnId) board.setDragOverColumnId(columnId);
-    },
-    onDragLeave: (event: React.DragEvent<HTMLDivElement>) => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node)) board.setDragOverColumnId(null);
-    },
-    onDrop: (event: React.DragEvent<HTMLDivElement>) => {
-      if (board.readOnly) return;
-      event.preventDefault();
-      board.setDragOverColumnId(null);
-      const notePath = event.dataTransfer.getData('text/plain');
-      const note = board.dragged;
-      board.setDragged(null);
-      if (!note || (notePath && notePath !== note.path) || board.liveLocked(note) || note.frontmatterInvalid) return;
-      if ((note.status || '') !== columnId) board.onUpdateNoteStatus(note, columnId);
-    },
-  };
-}
-
-/** A card moves between columns when the board is writable and drags into a Focus pane when the Focus accepts it. */
-function cardDragProps(board: BoardContext, note: NoteListItem) {
-  const canDragForFocus = !!board.focusMode?.canDrag(note);
-  // A note being edited live (編輯中) keeps its column until it is checked in, and one whose frontmatter cannot be read
-  // takes no status until it is fixed; either may still go into a Focus pane.
-  const fixed = board.readOnly || board.liveLocked(note) || Boolean(note.frontmatterInvalid);
-  return {
-    draggable: !fixed || canDragForFocus,
-    onDragStart: (event: React.DragEvent<HTMLDivElement>) => {
-      if (fixed && !canDragForFocus) return;
-      event.dataTransfer.setData('text/plain', note.path);
-      if (board.focusMode) event.dataTransfer.setData(NOTE_DRAG_TYPE, note.path);
-      event.dataTransfer.effectAllowed = fixed ? 'copy' : 'move';
-      board.setDragged(note);
-    },
-    onDragEnd: () => {
-      board.setDragged(null);
-      board.setDragOverColumnId(null);
-    },
-  };
-}
-
-function KanbanCard({ note, board, index }: { note: NoteListItem; board: BoardContext; index: number; }) {
-  const { t } = useTranslation();
-  const touchSelection = useNoteTouchSelection(board.onToggleSelect);
-  const { pendingDeletePath, requestDelete } = useDeleteConfirm(board.confirmDelete, () => board.onDeleteNote(note));
-  const isBeingDragged = Boolean(board.dragged && sameNote(board.dragged, note));
-  const updated = noteUpdatedTime(note);
-  const formattedDate = updated ? new Date(updated).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—';
-  const selectionActive = Boolean(board.selectedKeys?.size);
-  const selected = board.selectedKeys?.has(noteRefKey(note)) ?? false;
-  // A pending note may still be discarded (delete) and moved where its live editor can.
-  const liveLock = useLiveLock();
-  const locked = liveLock(note, 'other');
-  const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
-  return (
-    <Tooltip label={selectionActive ? undefined : t('notes.multiSelectHint')}>
-      <div data-notepath={note.path} {...cardDragProps(board, note)} {...touchSelection.itemProps(note, board.onOpenNote)} className={`p-3 rounded-lg border transition-all cursor-grab active:cursor-grabbing group shadow-xs ${isBeingDragged ? 'opacity-40 scale-[0.98] border-primary shadow-inner' : 'hover:shadow-sm hover:border-muted'}`} style={{ backgroundColor: 'var(--color-surface)', borderColor: isBeingDragged ? 'var(--color-primary)' : 'var(--color-line)' }}>
-        <div className='flex items-start justify-between gap-1 mb-1.5'>
-          <div className='flex items-start gap-1.5 min-w-0 flex-1'>
-            {selectionActive && <NoteSelectBox title={note.title} checked={selected} onToggle={() => board.onToggleSelect?.(note)} className='mt-0.5' />}
-            <div className='font-medium text-fg text-sm line-clamp-2 transition min-w-0'>{note.title}</div>
-            {note.frontmatterInvalid && <FrontmatterInvalid iconOnly />}
-            <LiveBadge live={note.live} title={note.title} />
-          </div>
-          {/* A note being edited live keeps its column, so its card offers no handle to drag it to another. */}
-          {!board.liveLocked(note) && <GripVertical className='w-3.5 h-3.5 text-muted shrink-0 opacity-0 group-hover:opacity-100 transition' />}
-        </div>
-        {note.tags.length > 0 && <NoteTags tags={note.tags} oneLine className='mb-2.5' />}
-        {/* Card Actions & Timestamp */}
-        <div className='flex items-center justify-between pt-2 border-t text-muted text-xs' style={{ borderColor: 'var(--color-line)' }} onClick={(e) => e.stopPropagation()}>
-          <div className='flex items-center gap-1.5 text-muted'>
-            <span className='flex items-center gap-1 text-[11px]'>
-              <Clock className='w-3 h-3 text-muted' />
-              {formattedDate}
-            </span>
-          </div>
-          <div className='flex items-center gap-1'>
-            {board.focusMode && <NoteZoomButton onClick={() => board.focusMode?.onZoomNote(note)} />}
-            {!board.readOnly && board.onMoveNote && <NoteMoveButton onClick={() => board.onMoveNote?.(note)} reason={moveLocked} />}
-            {!board.readOnly && index > 0 && (
-              <Tooltip label={locked ?? t('kanban.moveTo', { title: board.columns[index - 1].title })}>
-                <button
-                  type='button'
-                  onClick={() => board.onUpdateNoteStatus(note, board.columns[index - 1].id)}
-                  disabled={Boolean(locked)}
-                  aria-label={t('kanban.moveTo', { title: board.columns[index - 1].title })}
-                  className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'
-                >
-                  <ArrowLeft className='w-3.5 h-3.5' />
-                </button>
-              </Tooltip>
-            )}
-            {!board.readOnly && index >= 0 && index < board.columns.length - 1 && (
-              <Tooltip label={locked ?? t('kanban.moveTo', { title: board.columns[index + 1].title })}>
-                <button type='button' onClick={() => board.onUpdateNoteStatus(note, board.columns[index + 1].id)} disabled={Boolean(locked)} aria-label={t('kanban.moveTo', { title: board.columns[index + 1].title })} className='p-1 hover:text-primary rounded hover:bg-fg/5 transition disabled:opacity-40 disabled:cursor-not-allowed'>
-                  <ArrowRight className='w-3.5 h-3.5' />
-                </button>
-              </Tooltip>
-            )}
-            {!board.readOnly && board.canDelete && (
-              <Tooltip label={deleteLocked ?? (pendingDeletePath === noteRefKey(note) ? t('notes.confirmDelete') : note.live?.pending ? t('live.discard') : t('notes.delete'))}>
-                <button type='button' onClick={() => requestDelete(noteRefKey(note))} disabled={Boolean(deleteLocked)} aria-label={t('notes.delete')} className={pendingDeletePath === noteRefKey(note) ? 'p-1 text-on-danger bg-danger hover:bg-danger/90 rounded transition' : 'kanban-card-delete p-1 rounded transition opacity-40 enabled:hover:opacity-100 enabled:hover:text-danger enabled:hover:bg-danger-soft'}>
-                  <Trash2 className='w-3.5 h-3.5' />
-                </button>
-              </Tooltip>
-            )}
-          </div>
-        </div>
-      </div>
-    </Tooltip>
-  );
 }
 
 const columnSortOptionValues = [{ value: 'updated:desc', label: 'kanban.newest' }, { value: 'updated:asc', label: 'kanban.oldest' }, { value: 'title:asc', label: 'kanban.titleAsc' }, { value: 'title:desc', label: 'kanban.titleDesc' }, { value: 'created:desc', label: 'kanban.createdNewest' }] as const;
