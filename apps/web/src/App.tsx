@@ -1,7 +1,4 @@
 import { useNoteSort } from './app/useNoteSort.js';
-import { LegacyOutlineDialog } from './components/LegacyOutlineDialog.js';
-import { useLegacyBookmarkRecovery } from './lib/use-legacy-bookmark-recovery.js';
-import { Button } from './components/Button.js';
 import { useOutlineActions } from './app/useOutlineActions.js';
 import { OutlineActionsProvider } from './lib/outline-actions.js';
 import { PiAgentProvider } from './lib/pi-agent/session.js';
@@ -48,7 +45,6 @@ import { hasStoredFocusView } from './lib/focus-view.js';
 import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.js';
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
-import { ManageTemplatesDialog } from './components/ManageTemplatesDialog.js';
 import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, parseWorkspaceRoute } from './lib/routes.js';
 import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { DemoBanner } from './components/DemoBanner.js';
@@ -70,6 +66,9 @@ import { useNoteSearchFocus } from './app/useNoteSearchFocus.js';
 import { useCompilations } from './app/useCompilations.js';
 import { useBulkToolbar } from './app/useBulkToolbar.js';
 import { useNotesPage } from './app/useNotesPage.js';
+import { useLiveNoteCreation } from './app/useLiveNoteCreation.js';
+import { useLegacyImport } from './app/useLegacyImport.js';
+import { useTemplateManager } from './app/useTemplateManager.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
@@ -113,8 +112,6 @@ import { AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
 import { liveEditableKind } from './lib/live-api.js';
 import { useLiveHandover } from './app/useLiveHandover.js';
-import type { LivePathPrompt } from './lib/new-note.js';
-import { LiveNewNoteDialog } from './components/live/LiveNewNoteDialog.js';
 import { liveActionLocked, liveDestinationFolder, type LiveDrafts, LiveDraftsProvider } from './components/live/live-drafts.js';
 
 const CompilationStudy = React.lazy(() => import('./components/CompilationStudy.js').then(module => ({ default: module.CompilationStudy })));
@@ -245,11 +242,7 @@ export const AppContent: React.FC = () => {
   // A notebook's 「外觀…」 (icon and colour), from its context menu in the notebooks column.
   const notebookAppearance = useNotebookAppearance({ notebooks: config?.notebooks ?? [], repositoryFor, refreshWorkspace, setManifestRevision });
   const notebookTemplates = useNotebookTemplates(selectedNotebook);
-  const [manageTemplatesOpen, setManageTemplatesOpen] = useState(false);
-  // A new note of a live repository whose template's path needs values asks for them first.
-  const [livePathRequest, setLivePathRequest] = useState<{ template: string; prompts: LivePathPrompt[]; answer: (values: Record<string, string> | null) => void; } | null>(null);
-  const selectedRepository = repositoryFor(selectedNotebookId);
-  const liveCreation = selectedRepository?.live && selectedRepository.write ? { askLivePathValues: (template: string, prompts: LivePathPrompt[]) => new Promise<Record<string, string> | null>(answer => setLivePathRequest({ template, prompts, answer })), open: (note: NoteListItem) => void handleOpenNote(note) } : undefined;
+  const { liveCreation, dialog: liveNewNoteDialog } = useLiveNoteCreation({ repository: repositoryFor(selectedNotebookId), handleOpenNote });
 
   // Create New Note dialog: its form state and the handlers that render or persist a new note draft.
   const { createNote } = useCreateNote({ config, selectedNotebookId, setSelectedNotebookId, folders, browsedFolder: activeTab === 'notes' ? selectedFolder : null, foldersLoading, remote, canWrite, readDraft, templates: notebookTemplates.templates, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, sourceId, newNoteStatuses, t, live: liveCreation, onCreated: note => void openFromBrowse(note), onError: setActionError });
@@ -261,8 +254,7 @@ export const AppContent: React.FC = () => {
   const { confirmGists, gistConfirmDialog } = useGistConfirm();
   const { commitWorkingNotes } = useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote, clearCommittedDrafts, setRepositoryRevision, setActionError, confirmGists });
   const { commitNoteFile } = useQuickNoteCommit({ remote, repositoryFor, refreshWorkspace, commitWorkingNotes, activeWorkingNotes, t, statusLabel: status => statusLabel(status, statusEntries, language) });
-  const legacyRecovery = useLegacyBookmarkRecovery(repositories.map(repository => repository.id));
-  const [legacyImportOpen, setLegacyImportOpen] = useState(false);
+  const legacyImport = useLegacyImport({ repositories, config, refreshWorkspace, refreshNotes, handleOpenNote, t });
 
   // Assets are scoped to whichever notebook the open note (or the selected browse notebook) belongs to.
   const { handleUploadAsset, handleDeleteAsset, handleMoveAsset } = useAssetOperations({ editingNote, selectedNotebookId, remote, setAssets, setGitStatus });
@@ -294,6 +286,7 @@ export const AppContent: React.FC = () => {
     },
   });
   const templateActions = useTemplateActions({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, revisionFor, queryClient, queryScope, invalidateNotes, setGitStatus, openInZoom: handleOpenNote, deleteNote: note => handleDeleteNote(note), relocateFile: noteMove.relocateFile, t });
+  const templateManager = useTemplateManager({ selectedNotebook, notebookTemplates, templateActions, canWrite, canWriteFiles, t });
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
   const { toolbar: bulkToolbar, moveDialog: bulkMoveDialog } = useBulkToolbar({ selection, config, remote, folders, repositories, setRepositoryRevision, setActionError, canWriteFiles, statuses: notebookStatuses, availableTags, liveDrafts, tagOperations, onUpdateNoteStatus: handleUpdateNoteStatus, beforeFileChange, onFilesChanged, invalidateNotes, t });
 
@@ -331,7 +324,7 @@ export const AppContent: React.FC = () => {
   const notesActions = !notebookUnavailable && activeTab === 'notes' && !route.study && !phone;
   const focusControls = notesActions ? <FocusControls splittable={focusCapacity === 'all'} focus={noteFocus} onShow={key => void showFocus(key)} onRequestClear={requestClear} confirmingClear={confirmingClear} onConfirmingClearChange={setConfirmingClear} onReload={() => void focusPage.reload()} browseToggle={focusCapacity === 1 ? { showing: focusNarrowView === 'browse', onToggle: () => setFocusNarrowView(view => view === 'browse' ? 'focus' : 'browse') } : undefined} /> : undefined;
   // A read-only notebook shows neither the New button nor its menu.
-  const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? () => setManageTemplatesOpen(true) : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined } : undefined;
+  const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? templateManager.openTemplateManager : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? legacyImport.openLegacyImport : undefined } : undefined;
   const refreshAfterSync = async () => {
     await refreshWorkspace();
     await refreshDocuments().catch(error => setActionError(error instanceof Error ? error.message : String(error)));
@@ -355,12 +348,7 @@ export const AppContent: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {(legacyRecovery.recoveries.length > 0 || legacyRecovery.error) && (
-                  <div role='alert' className='shrink-0 px-4 py-2 text-sm bg-surface border-b border-line flex flex-wrap items-center gap-2'>
-                    <span>{legacyRecovery.error || t('legacyOutline.notice')}</span>
-                    <Button onClick={() => setLegacyImportOpen(true)}>{t('legacyOutline.recovery')}</Button>
-                  </div>
-                )}
+                {legacyImport.notice}
                 <DemoBanner />
                 {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
                 {/* Top Header */}
@@ -529,21 +517,8 @@ export const AppContent: React.FC = () => {
                 {notebookAppearance.element}
                 {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
                 {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteMove.request.note.live?.pending ? liveDestinationFolder(noteMove.request.note.live) : noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)}>{noteMove.request.note.live?.pending && <p className='text-xs text-muted'>{t('live.collisionNote')}</p>}</FolderPickerDialog>}
-                {livePathRequest && (
-                  <LiveNewNoteDialog
-                    template={livePathRequest.template}
-                    prompts={livePathRequest.prompts}
-                    onConfirm={values => {
-                      livePathRequest.answer(values);
-                      setLivePathRequest(null);
-                    }}
-                    onCancel={() => {
-                      livePathRequest.answer(null);
-                      setLivePathRequest(null);
-                    }}
-                  />
-                )}
-                {manageTemplatesOpen && selectedNotebook && <ManageTemplatesDialog notebookTitle={selectedNotebook.title} templates={notebookTemplates.templates} builtin={builtinNoteTemplates(t)} loading={notebookTemplates.loading} error={notebookTemplates.error} readOnly={!canWrite} fileActions={canWriteFiles} onCreate={name => templateActions.createTemplate(selectedNotebook.id, name)} onEdit={templateActions.editTemplate} onRename={templateActions.renameTemplate} onDelete={templateActions.deleteTemplate} onClose={() => setManageTemplatesOpen(false)} />}
+                {liveNewNoteDialog}
+                {templateManager.dialog}
                 {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} initial={noteMove.request.name} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
                 {bulkMoveDialog}
                 {/* Note Editor Modal */}
@@ -620,23 +595,7 @@ export const AppContent: React.FC = () => {
               {gistConfirmDialog}
               <ImageLightbox />
               {outlineActions.dialog && <AddToOutlineDialog key={outlineActions.dialog.id} source={outlineActions.dialog.source} busy={outlineActions.busy} error={outlineActions.error} onChoose={outlineActions.choose} onClose={outlineActions.cancel} />}
-              {legacyImportOpen && (
-                <LegacyOutlineDialog
-                  repositories={repositories}
-                  notebooks={config?.notebooks ?? []}
-                  recoveries={legacyRecovery.recoveries}
-                  recoveryError={legacyRecovery.error}
-                  onRecoveryChanged={legacyRecovery.refresh}
-                  onClose={() => setLegacyImportOpen(false)}
-                  onCreated={async ref => {
-                    await refreshWorkspace(true);
-                    await refreshNotes();
-                    const note = await readNote(ref.path, ref.notebookId);
-                    if (!await handleOpenNote(note)) throw new Error(t('legacyOutline.openFailed'));
-                    setLegacyImportOpen(false);
-                  }}
-                />
-              )}
+              {legacyImport.dialog}
             </NoteEditingProvider>
           </NoteLocationProvider>
         </WorkspaceLinks>
