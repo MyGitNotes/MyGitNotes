@@ -1,21 +1,27 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { GitSyncError, syncGitWorkspace } from '../lib/api.js';
+import { commitStagedChanges, fetchFileChanges, GitSyncError, syncGitWorkspace } from '../lib/api.js';
+import { KeyboardRoot } from '../lib/keyboard/KeyboardDispatcher.js';
+import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { PanelProvider, usePanelContext } from '../lib/panel-context.js';
 import type { GitStatus } from '../lib/types.js';
 import { type SyncTarget, WorkspaceGitSyncProvider } from '../lib/workspace-git-sync.js';
 import { ChangesTool } from './ChangesTool.js';
+import { CommitModal } from './CommitModal.js';
 import { Header } from './Header.js';
 
-vi.mock('../lib/api.js', async original => ({ ...await original<typeof import('../lib/api.js')>(), fetchFileChanges: vi.fn(async () => []), syncGitWorkspace: vi.fn() }));
+vi.mock('../lib/api.js', async original => ({ ...await original<typeof import('../lib/api.js')>(), fetchFileChanges: vi.fn(), commitStagedChanges: vi.fn(), syncGitWorkspace: vi.fn() }));
 
-const target = (id: string, ahead = 2, behind = 3, upstream: string | null = 'origin/main', modified: string[] = []): SyncTarget => ({ id, label: id, gitStatus: { branch: 'main', upstream, ahead, behind, staged: [], modified, untracked: [], isClean: !modified.length } });
+const target = (id: string, ahead = 2, behind = 3, upstream: string | null = 'origin/main', modified: string[] = []): SyncTarget => ({ id, label: id, writable: true, gitStatus: { branch: 'main', upstream, ahead, behind, staged: [], modified, untracked: [], isClean: !modified.length } });
 const refreshed = vi.fn();
 const sync = vi.mocked(syncGitWorkspace);
+const changes = vi.mocked(fetchFileChanges);
+const commit = vi.mocked(commitStagedChanges);
+const flushEditors = vi.fn<() => Promise<boolean>>();
 const headerButton = () => screen.getByRole('button', { name: /^\d+ to push · \d+ to pull/ });
 const queryHeaderButton = () => screen.queryByRole('button', { name: /^\d+ to push · \d+ to pull/ });
 
@@ -28,9 +34,10 @@ function Workspace({ remote, targets, phone }: { remote: boolean; targets: SyncT
     if (sync.mock.settledResults.at(-1)?.type === 'fulfilled') setStatuses(Object.fromEntries(targets.map(repo => [repo.id, target(repo.id, 0, 0).gitStatus])));
   };
   return (
-    <WorkspaceGitSyncProvider enabled={!remote} targets={current} onSynced={onSynced}>
+    <WorkspaceGitSyncProvider enabled={!remote} targets={current} onSynced={onSynced} flushEditors={flushEditors}>
       <Header workspaceTitle='Notes' activeTab='settings' setActiveTab={() => {}} notebooks={[]} selectedNotebookId='' onSelectNotebook={() => {}} onOpenCommands={() => {}} navOnly={phone} />
-      {panel.isOpen && panel.activeTool === 'changes' && <ChangesTool writable gitStatus={current[0]?.gitStatus ?? null} deletedNotes={[]} onRestoreNote={() => {}} onOpenCommitModal={() => {}} />}
+      <textarea aria-label='Note body' />
+      {!panel.hasOpenNote && panel.isOpen && panel.activeTool === 'changes' && <ChangesTool writable gitStatus={current[0]?.gitStatus ?? null} deletedNotes={[]} onRestoreNote={() => {}} onOpenCommitModal={() => {}} />}
     </WorkspaceGitSyncProvider>
   );
 }
@@ -38,16 +45,22 @@ function Workspace({ remote, targets, phone }: { remote: boolean; targets: SyncT
 function mount(targets: SyncTarget[], remote = false, phone = false) {
   const view = (updated: SyncTarget[]) => (
     <I18nProvider>
-      <PanelProvider>
-        <Workspace targets={updated} remote={remote} phone={phone} />
-      </PanelProvider>
+      <KeyboardRoot>
+        <PanelProvider>
+          <Workspace targets={updated} remote={remote} phone={phone} />
+        </PanelProvider>
+      </KeyboardRoot>
     </I18nProvider>
   );
   const result = render(view(targets));
   return { update: (updated: SyncTarget[]) => result.rerender(view(updated)) };
 }
 
-beforeEach(() => localStorage.setItem('github-notes:language', 'en'));
+beforeEach(() => {
+  localStorage.setItem('github-notes:language', 'en');
+  changes.mockResolvedValue([]);
+  flushEditors.mockResolvedValue(true);
+});
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -82,12 +95,205 @@ it('shows current counts and runs one sync, then refreshes while retaining the r
   expect(queryHeaderButton()).toBeNull();
 });
 
-it.each(['known', 'raced'])('shows the localized dirty message for %s changes', async kind => {
-  if (kind === 'raced') sync.mockRejectedValue(new GitSyncError('server error', 'DIRTY', []));
-  mount([target('notes', 2, 3, undefined, kind === 'known' ? ['notes/a.md'] : [])]);
+it('shows the localized dirty message for a change made after status was read', async () => {
+  sync.mockRejectedValue(new GitSyncError('server error', 'DIRTY', []));
+  mount([target('notes')]);
   fireEvent.click(headerButton());
   expect(await screen.findByText('Commit or restore changes before syncing.')).toBeVisible();
-  expect(sync).toHaveBeenCalledTimes(kind === 'known' ? 0 : 1);
+  expect(sync).toHaveBeenCalledOnce();
+});
+
+const openDirtyMenu = async () => {
+  const button = await screen.findByRole('button', { name: /uncommitted (file|change)/i });
+  await act(async () => {
+    button.focus();
+    fireEvent.keyDown(button, { key: 'Enter' });
+  });
+  return button;
+};
+const file = (repository: string, path = 'notes/a.md') => ({ repository, path, kind: 'modified' as const, revision: 'revision', staged: true, unstaged: true, available: true, tracked: true });
+const chord = (from: HTMLElement = document.body) => fireEvent.keyDown(from, { key: 'S', shiftKey: true, ...(keyEnvironment.platform === 'mac' ? { metaKey: true } : { ctrlKey: true }) });
+
+it('counts each changed path once per repository and opens an accessible menu instead of syncing', async () => {
+  const first = target('one', 2, 0, undefined, ['notes/a.md']);
+  first.gitStatus!.staged = ['notes/a.md'];
+  const second = target('two', 0, 0, null);
+  second.gitStatus!.untracked = ['notes/a.md', 'unmanaged.js'];
+  changes.mockImplementation(async repository => repository === 'two' ? [{ ...file('two'), kind: 'added', staged: false, tracked: false }, { ...file('two', 'unmanaged.js'), kind: 'added', staged: false, tracked: false, available: false }] : repository === 'one' ? [file('one')] : []);
+  mount([first, second]);
+  await waitFor(() => expect(screen.getByRole('button', { name: /2 uncommitted/ })).toHaveTextContent('● 2 ↑ 2'));
+  const button = await openDirtyMenu();
+  expect(button).not.toHaveTextContent('↓');
+  expect(screen.getByRole('menuitem', { name: /Commit all and sync/ })).toBeVisible();
+  expect(sync).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('menuitem', { name: /Open Changes/ }));
+  expect(await screen.findByText('Commit or restore changes before syncing.')).toBeVisible();
+  expect(sync).not.toHaveBeenCalled();
+});
+
+it('flushes editors before reading changes, and only commits eligible workspace files once per repository', async () => {
+  const a = file('notes'), b = file('work'), live = file('notes', 'notes/.live/checked-out.md');
+  changes.mockImplementation(async repository => {
+    if (!repository) return [];
+    if (flushEditors.mock.calls.length) expect(flushEditors.mock.settledResults.at(-1)?.value).toBe(true);
+    return repository === 'notes' ? [a, live] : [b];
+  });
+  mount([target('notes', 0, 0, null, [a.path]), target('work', 0, 0, null)]);
+  await openDirtyMenu();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Commit all only' }));
+  await waitFor(() => expect(refreshed).toHaveBeenCalledOnce());
+  expect(commit.mock.calls).toEqual([[[a], 'minor-mod', true], [[b], 'minor-mod', true]]);
+  const readsAfterFlush = changes.mock.calls.filter((_, index) => changes.mock.invocationCallOrder[index] > flushEditors.mock.invocationCallOrder[0]);
+  expect(readsAfterFlush).toEqual([['notes'], ['work']]);
+  expect(sync).not.toHaveBeenCalled();
+});
+
+it('keeps first-party hidden drafts for manual review and commits new notes, assets, and tracked hidden files', async () => {
+  const note = { ...file('notes', 'notes/new.md'), kind: 'added' as const, staged: false, tracked: false };
+  const asset = { ...note, path: 'notes/assets/photo.png' };
+  const tracked = file('notes', 'notes/.tracked');
+  const template = { ...note, path: 'notes/.templates/draft.md', manualCommitOnly: true };
+  changes.mockResolvedValue([note, asset, tracked, template]);
+  const repo = target('notes', 0, 0, null, [tracked.path]);
+  repo.gitStatus!.untracked = [note.path, asset.path, template.path, 'notes/.DS_Store', 'notes/note.md.swp'];
+  mount([repo]);
+  await screen.findByRole('button', { name: /uncommitted/ });
+  await openDirtyMenu();
+  fireEvent.click(screen.getByRole('menuitem', { name: /Open Changes/ }));
+  expect(await screen.findByRole('checkbox', { name: `Select ${template.path}` })).toBeEnabled();
+  expect(screen.queryByText('notes/.DS_Store')).not.toBeInTheDocument();
+  expect(screen.queryByText('notes/note.md.swp')).not.toBeInTheDocument();
+  chord();
+  await waitFor(() => expect(commit).toHaveBeenCalledExactlyOnceWith([note, asset, tracked], 'minor-mod', true));
+});
+
+it('counts only manageable changes in writable repositories and skips a read-only worktree', async () => {
+  const eligible = file('notes');
+  const blocked = { ...file('notes', 'README.md'), available: false };
+  const live = file('notes', 'notes/.live/checked-out.md');
+  const readOnly = { ...target('feature', 0, 0, null, ['notes/a.md']), writable: false };
+  readOnly.gitStatus!.branch = 'feature';
+  changes.mockImplementation(async repository => repository === 'feature' ? [file('feature')] : [eligible, blocked, live]);
+  mount([target('notes', 0, 0, null, [eligible.path, blocked.path, live.path]), readOnly]);
+  expect(await screen.findByRole('button', { name: /1 uncommitted/ })).toHaveTextContent('● 1');
+  chord();
+  await waitFor(() => expect(refreshed).toHaveBeenCalledOnce());
+  expect(commit).toHaveBeenCalledExactlyOnceWith([eligible], 'minor-mod', true);
+  expect(changes).not.toHaveBeenCalledWith('feature');
+});
+
+it('counts both paths of a staged rename when the commit listing splits it into add and delete', async () => {
+  const added = { ...file('notes', 'notes/new.md'), kind: 'added' as const, tracked: false };
+  const deleted = { ...file('notes', 'notes/old.md'), kind: 'deleted' as const };
+  changes.mockResolvedValue([added, deleted]);
+  const repo = target('notes', 0, 0, null);
+  repo.gitStatus!.staged = [added.path];
+  mount([repo]);
+  expect(await screen.findByRole('button', { name: /2 uncommitted/ })).toHaveTextContent('● 2');
+  chord();
+  await waitFor(() => expect(commit).toHaveBeenCalledExactlyOnceWith([added, deleted], 'minor-mod', true));
+});
+
+it('uses the same default Git subject in the local Changes dialog', async () => {
+  HTMLDialogElement.prototype.showModal = function() {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function() {
+    this.removeAttribute('open');
+  };
+  render(<CommitModal isOpen writable gitStatus={null} onChanged={async () => {}} onCommitted={async () => {}} onClose={() => {}} />);
+  expect(await screen.findByRole('textbox', { name: 'Commit Message' })).toHaveValue('minor-mod');
+});
+
+it('keeps focus in the Changes panel after choosing Open Changes by keyboard', async () => {
+  changes.mockResolvedValue([file('notes')]);
+  mount([target('notes', 0, 0, null, ['notes/a.md'])]);
+  await waitFor(() => expect(screen.getByRole('button', { name: /1 uncommitted/ })).toBeVisible());
+  const trigger = await openDirtyMenu();
+  const item = screen.getByRole('menuitem', { name: /Open Changes/ });
+  item.focus();
+  fireEvent.keyDown(item, { key: 'Enter' });
+  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+  // Radix schedules close autofocus after the menu's focus scope unmounts.
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  expect(trigger).not.toHaveFocus();
+  expect(document.activeElement?.closest('.changes-tool')).not.toBeNull();
+});
+
+it('keeps editor focus through a successful shortcut, and moves to Changes on a conflict', async () => {
+  let finish!: (result: Awaited<ReturnType<typeof syncGitWorkspace>>) => void;
+  sync.mockImplementationOnce(() => new Promise(resolve => finish = resolve));
+  sync.mockRejectedValueOnce(new GitSyncError('conflict', 'CONFLICT', ['notes/a.md']));
+  mount([target('notes', 0, 1)]);
+  const editor = screen.getByRole('textbox', { name: 'Note body' });
+  editor.focus();
+  chord(editor);
+  await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+  expect(editor).toHaveFocus();
+  await act(async () => finish({ upstream: 'origin/main', pushed: 0, pulled: 1 }));
+  expect(refreshed).toHaveBeenCalledOnce();
+  expect(editor).toHaveFocus();
+  // A fresh upstream change permits another sync, this time requiring attention.
+  cleanup();
+  mount([target('notes', 0, 1)]);
+  const reopened = screen.getByRole('textbox', { name: 'Note body' });
+  reopened.focus();
+  chord(reopened);
+  expect(await screen.findByRole('button', { name: 'Use remote' })).toBeVisible();
+  expect(document.activeElement?.closest('.changes-tool')).not.toBeNull();
+});
+
+it('commits before syncing, skips a failed repository, and keeps conflicts in Changes', async () => {
+  changes.mockImplementation(async repository => repository ? [file(repository)] : []);
+  commit.mockRejectedValueOnce(new Error('Commit hook refused notes'));
+  sync.mockRejectedValueOnce(new GitSyncError('conflict', 'CONFLICT', ['notes/a.md']));
+  mount([target('notes', 0, 0, undefined, ['notes/a.md']), target('work', 0, 0, undefined, ['notes/a.md'])]);
+  await openDirtyMenu();
+  fireEvent.click(screen.getByRole('menuitem', { name: /Commit all and sync/ }));
+  expect(await screen.findByText('Commit hook refused notes')).toBeVisible();
+  expect(await screen.findByRole('button', { name: 'Use remote' })).toBeVisible();
+  expect(commit).toHaveBeenCalledTimes(2);
+  expect(commit.mock.invocationCallOrder[1]).toBeLessThan(sync.mock.invocationCallOrder[0]);
+  expect(sync).toHaveBeenCalledExactlyOnceWith(undefined, 'work');
+});
+
+it('reports an unreadable worktree and still commits the others', async () => {
+  const work = file('work');
+  changes.mockImplementation(async repository => {
+    if (repository === 'notes') throw new Error('Cannot read notes worktree');
+    return repository === 'work' ? [work] : [];
+  });
+  mount([target('notes', 0, 0, null, ['notes/a.md']), target('work', 0, 0, null, [work.path])]);
+  await openDirtyMenu();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Commit all only' }));
+  expect(await screen.findByText('Cannot read notes worktree')).toBeVisible();
+  expect(commit).toHaveBeenCalledExactlyOnceWith([work], 'minor-mod', true);
+});
+
+it('does not commit or sync when an open editor cannot flush', async () => {
+  flushEditors.mockResolvedValue(false);
+  mount([target('notes')]);
+  chord();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not save all open editors');
+  expect(changes).not.toHaveBeenCalledWith('notes');
+  expect(commit).not.toHaveBeenCalled();
+  expect(sync).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('handles Mod+Shift+S only when remote=%s is false', async remote => {
+  changes.mockImplementation(async repository => repository ? [file(repository)] : []);
+  sync.mockResolvedValue({ upstream: 'origin/main', pushed: 1, pulled: 0 });
+  mount([target('notes')], remote);
+  expect(chord()).toBe(remote);
+  if (remote) {
+    expect(flushEditors).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    expect(sync).not.toHaveBeenCalled();
+  } else {
+    await waitFor(() => expect(sync).toHaveBeenCalledExactlyOnceWith(undefined, 'notes'));
+    expect(commit).toHaveBeenCalledOnce();
+    expect(flushEditors).toHaveBeenCalledOnce();
+  }
 });
 
 it('sums repositories and opens per-repo sync sections without syncing any blindly', async () => {

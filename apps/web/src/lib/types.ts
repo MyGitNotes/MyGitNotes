@@ -58,6 +58,8 @@ export interface FileChange {
   revision: string;
   available?: boolean;
   unavailableReason?: 'conflict' | 'protected' | 'unsupported';
+  /** An untracked workspace dotfile that can be reviewed but not committed in bulk from the header. */
+  manualCommitOnly?: true;
 }
 
 export interface GitCommit {

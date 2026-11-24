@@ -54,6 +54,7 @@ export const KEYMAP: readonly KeymapEntry[] = [
   // General
   entry('help.open', 'general', ['global'], 'dispatcher', [{ keys: 'Mod+/', when: { exceptScopes: ['code-editor'] } }], { phase: 'capture', description: 'command.help.open.describe' }),
   entry('note.searchList', 'general', ['global'], 'dispatcher', ['Mod+K', 'Mod+Shift+F'], { phase: 'capture', description: 'command.note.searchList.describe' }),
+  entry('workspace.commitAndSync', 'general', ['global'], 'dispatcher', ['Mod+Shift+S'], { phase: 'capture', description: 'command.workspace.commitAndSync.describe' }),
   entry('help.close', 'general', ['help'], 'widget', ['Escape']),
   entry('drawer.close', 'panes', ['drawer'], 'widget', ['Escape']),
   entry('compilation.close', 'general', ['compilation'], 'widget', ['Escape']),

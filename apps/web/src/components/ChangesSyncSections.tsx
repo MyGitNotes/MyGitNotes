@@ -14,5 +14,5 @@ export function ChangesSyncSections() {
     sync.didReveal();
   }, [sync]);
   if (!sync?.targets.length) return null;
-  return <div ref={group} tabIndex={-1} className='changes-sync-sections'>{sync.targets.map(target => <GitSyncSection key={target.id} target={target} />)}</div>;
+  return <div ref={group} tabIndex={-1} className='changes-sync-sections'>{sync.commitError && <p role='alert' className='changes-error'>{sync.commitError}</p>}{sync.targets.map(target => <GitSyncSection key={target.id} target={target} />)}</div>;
 }
