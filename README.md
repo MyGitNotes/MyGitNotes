@@ -104,6 +104,8 @@ Run `pnpm update-core` from a clean `core` checkout; it fast-forwards `core` fro
 ## Compilations
 
 A compilation is a `<name>.compilation.yml` file in a notebook, tracked and synced by Git like a note.
+An optional top-level `description` (up to 500 characters after trimming) appears below the title.
+If another tool adds a top-level field such as `translationKey`, MyGitNotes keeps it when you edit the compilation.
 Its members are picked by hand (notes, folders, attachments or YouTube videos) from any notebook of the same repository, or gathered dynamically by tag or folder; a book can draw its chapters from several notebooks.
 A compilation copied by hand into another notebook must get its own `id`: once both are readable, two files sharing an id are both reported invalid.
 Dynamic compilations sort by updated time, created time, title or status, or by your own order.

@@ -1,6 +1,6 @@
 import { Button } from './Button.js';
 import { useEffect, useState } from 'react';
-import { addToChapter, type CompilationItem, type CompilationRow, isHeadingItem, parseYouTubeUrl } from '@mygitnotes/core/compilation';
+import { addToChapter, compilationExtraFields, type CompilationItem, type CompilationRow, isHeadingItem, parseYouTubeUrl } from '@mygitnotes/core/compilation';
 import { defaultStudyProgression, studyLaneStatuses, type StudyProgression, StudyProgressionSchema } from '@mygitnotes/core/study-stages';
 import { StudyLaneSettings } from './StudyLane.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
@@ -58,7 +58,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
             setAdvancedOpen(true);
             return;
           }
-          const base = { id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
+          const base = { ...compilationExtraFields(row), id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
           const sort = row?.kind === 'dynamic' ? { ...(row.sort ? { sort: row.sort } : {}), ...(row.manualOrder ? { manualOrder: row.manualOrder } : {}) } : {};
           onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, ...(group === 'folder' ? { group: 'folder' as const } : {}), source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb!.root, recursive } });
           onClose();

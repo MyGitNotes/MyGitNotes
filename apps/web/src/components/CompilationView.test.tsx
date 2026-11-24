@@ -33,6 +33,12 @@ const editing = { flushEditors: async () => true, refreshNotes: async () => {}, 
 
 beforeEach(() => {
   save.mockReset().mockResolvedValue();
+  HTMLDialogElement.prototype.showModal ??= function(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close ??= function(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
   setNoteQueryScope({ sourceId: 'test', revisions: {}, repositories: {}, drafts: {} });
   vi.stubGlobal(
     'ResizeObserver',
@@ -56,8 +62,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function open(row: CompilationRow, visible = [noteA, noteB], all = visible, options: { readOnly?: boolean; failPaths?: boolean; missingFromLookup?: string; assets?: { path: string; name: string; }[]; } = {}) {
-  const stored = { id: row.id, path, notebookId, title: row.name, content: compilationText(row), metadata: {}, tags: [] };
+function open(row: CompilationRow, visible = [noteA, noteB], all = visible, options: { readOnly?: boolean; failPaths?: boolean; missingFromLookup?: string; assets?: { path: string; name: string; }[]; raw?: string; } = {}) {
+  const stored = { id: row.id, path, notebookId, title: row.name, content: options.raw ?? compilationText(row), metadata: {}, tags: [] };
   const requests = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input, 'http://localhost');
     if (url.pathname === '/api/notes/lookup') {
@@ -113,6 +119,22 @@ async function drag(label: string, direction: 'ArrowDown' | 'ArrowRight' | 'Arro
 }
 
 const written = () => parseCompilation(save.mock.calls.at(-1)![1], [root]);
+
+it('shows the description and preserves external YAML when applying compilation settings', async () => {
+  const description = 'Notes for the next session';
+  const external = 'translationKey: "reading"\n';
+  const raw = `description: ${description}\n${external}${compilationText(custom)}`;
+  open(custom, undefined, undefined, { raw });
+  expect(await screen.findByText(description)).toBeVisible();
+  fireEvent.keyDown(screen.getByRole('button', { name: 'More compilation actions: Reading' }), { key: 'ArrowDown' });
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit compilation' }));
+  const dialog = screen.getByRole('dialog', { name: 'Edit compilation' });
+  fireEvent.change(within(dialog).getByRole('textbox', { name: 'Compilation name' }), { target: { value: 'Next readings' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(written()).toMatchObject({ title: 'Next readings', description });
+  expect(save.mock.calls[0][1].endsWith(external)).toBe(true);
+});
 
 it.each([{ handle: 'Move item: Note A', expected: ['heading', 'b', 'a'] }, { handle: 'Move chapter heading: Chapter', expected: ['a', 'heading', 'b'] }])('saves a custom book contents drop from $handle', async ({ handle, expected }) => {
   open(custom);

@@ -1,0 +1,47 @@
+version: 1
+id: 1ae2f94e-11c0-4893-b353-863688c722ee
+title: 因果模型講義
+description: 從機率與背景條件講起，一課一個概念，每課附可操作的因果模型。
+arrangement: book
+status: draft
+translationKey: causal-lessons
+items:
+  - id: facb702526ea
+    kind: note
+    path: blog/src/content/posts/causal/lessons/00-導論-如何看因果模型.mdx
+  - id: c3786550881d
+    kind: note
+    path: blog/src/content/posts/causal/lessons/01-probability-background.mdx
+  - id: fd1549da511c
+    kind: note
+    path: blog/src/content/posts/causal/lessons/02-underdetermination.mdx
+  - id: 03726a47746f
+    kind: note
+    path: blog/src/content/posts/causal/lessons/03-intervention.mdx
+  - id: c6bcfe8ba8f4
+    kind: note
+    path: blog/src/content/posts/causal/lessons/04-d-separation.mdx
+  - id: a8ff1eaff3ec
+    kind: note
+    path: blog/src/content/posts/causal/lessons/05-adjustment.mdx
+  - id: fcc9bd265e1e
+    kind: note
+    path: blog/src/content/posts/causal/lessons/06-do-calculus.mdx
+  - id: 46c84d6b7a0a
+    kind: note
+    path: blog/src/content/posts/causal/lessons/07-counterfactuals.mdx
+  - id: 2f3b60eefb9e
+    kind: note
+    path: blog/src/content/posts/causal/lessons/08-mediation.mdx
+  - id: 40681a61787c
+    kind: note
+    path: blog/src/content/posts/causal/lessons/09-actual-causation.mdx
+  - id: 47eaad499dbb
+    kind: note
+    path: blog/src/content/posts/causal/lessons/10-normality.mdx
+  - id: 33082b86507e
+    kind: note
+    path: blog/src/content/posts/causal/lessons/11-decision.mdx
+  - id: 1688ee534fa2
+    kind: note
+    path: blog/src/content/posts/causal/lessons/12-appendix-playground.mdx
