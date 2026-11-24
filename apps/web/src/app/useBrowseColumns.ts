@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type BrowseColumnsChange, type BrowseColumnsLayout, browseColumnsLayout, notebooksCramped, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from '../lib/browse-columns.js';
+import { type BrowseColumnsChange, type BrowseColumnsLayout, type BrowsePresentation, browseColumnsLayout, notebooksCramped, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from '../lib/browse-columns.js';
 import type { CommandSpec } from '../lib/commands/registry.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 
@@ -61,6 +61,8 @@ export function useBrowseColumns({ panes }: { panes: number; }): BrowseColumns {
 }
 
 /** ⌘\ and ⌘⇧\: the palette's and the keyboard's way to fold the notebooks column and the list. */
-export function browseColumnCommands(columns: BrowseColumns, t: I18nContextValue['t']): CommandSpec[] {
-  return [{ id: 'browse.toggleNotebooks', group: 'panes', title: t('command.browse.toggleNotebooks'), description: t('command.browse.toggleNotebooks.describe'), run: columns.toggleNotebooks }, { id: 'browse.toggleList', group: 'panes', title: t('command.browse.toggleList'), description: t('command.browse.toggleList.describe'), run: columns.toggleList }];
+export function browseColumnCommands(columns: BrowseColumns, t: I18nContextValue['t'], presentation: BrowsePresentation = 'list'): CommandSpec[] {
+  const notebooks: CommandSpec = { id: 'browse.toggleNotebooks', group: 'panes', title: t('command.browse.toggleNotebooks'), description: t('command.browse.toggleNotebooks.describe'), run: columns.toggleNotebooks };
+  // Folding the List is not a board action and must not change the stored List preference.
+  return presentation === 'kanban' ? [notebooks] : [notebooks, { id: 'browse.toggleList', group: 'panes', title: t('command.browse.toggleList'), description: t('command.browse.toggleList.describe'), run: columns.toggleList }];
 }

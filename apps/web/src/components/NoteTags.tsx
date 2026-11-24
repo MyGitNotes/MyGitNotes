@@ -1,15 +1,6 @@
 import { Tooltip } from './Tooltip.js';
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { TagActions } from './TagActions.js';
 import { useTranslation } from '../lib/i18n/index.js';
-
-export interface NoteTagActions {
-  allTags: string[];
-  onPreviewUsage: (tag: string) => Promise<number>;
-  onRename: (from: string, to: string) => Promise<void>;
-  onMerge: (from: string, into: string) => Promise<void>;
-  onDelete: (tag: string) => Promise<void>;
-}
 
 /**
  * How many chips, laid out in order, fit in `available` pixels beside a "+N" chip.
@@ -63,7 +54,7 @@ function useFittedTagCount(tags: string[], enabled: boolean) {
  * A note's tags inside a list row or card, as tinted text chips; clicks here stay on the tags instead of opening the note.
  * `oneLine` keeps them on one line: the chips that do not fit collapse into a "+N" chip whose tooltip lists them.
  */
-export const NoteTags: React.FC<{ tags: string[]; chipClassName?: string; tagActions?: NoteTagActions; className?: string; oneLine?: boolean; children?: React.ReactNode; }> = ({ tags, chipClassName = '', tagActions, className = '', oneLine = false, children }) => {
+export const NoteTags: React.FC<{ tags: string[]; chipClassName?: string; className?: string; oneLine?: boolean; children?: React.ReactNode; }> = ({ tags, chipClassName = '', className = '', oneLine = false, children }) => {
   const { t } = useTranslation();
   const { row, count } = useFittedTagCount(tags, oneLine);
   const hidden = tags.length - count;
@@ -74,18 +65,11 @@ export const NoteTags: React.FC<{ tags: string[]; chipClassName?: string; tagAct
         // A chip past the fit stays rendered, only out of sight and out of reach, so its width can be measured again.
         const overflowing = oneLine && index >= count;
         const attributes = { 'data-tag-chip': '', ...(overflowing ? { 'data-overflow': '', 'aria-hidden': true, inert: '' } : {}) };
-        const chip = (extra: object) => (
-          <span className={`note-tag-chip ${chipClassName}`} {...extra}>
+        return (
+          <span key={tag} className={`note-tag-chip ${chipClassName}`} {...attributes}>
             <span className='min-w-0 truncate'>{tag}</span>
           </span>
         );
-        return tagActions
-          ? (
-            <div key={tag} className='sidebar-tag-row inline-flex items-center max-w-full' {...attributes}>
-              <TagActions tag={tag} {...tagActions}>{chip({})}</TagActions>
-            </div>
-          )
-          : <React.Fragment key={tag}>{chip(attributes)}</React.Fragment>;
       })}
       {oneLine && tags.length > 0 && (
         <Tooltip label={hidden ? rest.join(', ') : undefined}>

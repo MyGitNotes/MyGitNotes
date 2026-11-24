@@ -23,21 +23,21 @@ function Note({ mounts, unmounts }: { mounts: () => void; unmounts: () => void; 
   return <div data-testid='note'>note</div>;
 }
 
-const page = (layout: BrowseColumnsLayout, merged: boolean, note: JSX.Element) => (
+const page = (layout: BrowseColumnsLayout, board: boolean, note: JSX.Element) => (
   <I18nProvider>
-    <BrowseColumns layout={layout} merged={merged} notebooks={<p>notebooks</p>} list={<p>list</p>} note={note} restore={<button type='button'>Show note list</button>} />
+    <BrowseColumns layout={layout} presentation={board ? 'kanban' : 'list'} focusOpen notebooks={<p>notebooks</p>} list={<p>list</p>} note={note} restore={<button type='button'>Show note list</button>} />
   </I18nProvider>
 );
 
-it('keeps the note mounted, not remounted, while the columns beside it fold, open, and the table spreads over it', () => {
+it('keeps the note mounted, not remounted, while the columns beside it fold, open, and the board moves above it', () => {
   const mounts = vi.fn();
   const unmounts = vi.fn();
   const note = <Note mounts={mounts} unmounts={unmounts} />;
   const { rerender } = render(page({ notebooks: 'open', list: true }, false, note));
   const shown = screen.getByTestId('note');
   const steps: Array<[BrowseColumnsLayout, boolean]> = [[{ notebooks: 'rail', list: true }, false], [{ notebooks: 'open', list: true }, true], [{ notebooks: 'rail', list: false }, false], [{ notebooks: 'open', list: true }, false]];
-  for (const [layout, merged] of steps) {
-    rerender(page(layout, merged, note));
+  for (const [layout, board] of steps) {
+    rerender(page(layout, board, note));
     expect(screen.getByTestId('note')).toBe(shown);
   }
   expect(mounts).toHaveBeenCalledTimes(1);
@@ -81,9 +81,9 @@ it('names the notebooks and the list columns as landmarks, in English and Tradit
 
 it('hands its element to measure once, not again on every render, so measuring cannot render the page without end', () => {
   const measure = vi.fn();
-  const view = (layout: BrowseColumnsLayout, merged: boolean) => (
+  const view = (layout: BrowseColumnsLayout, board: boolean) => (
     <I18nProvider>
-      <BrowseColumns layout={layout} measure={measure} merged={merged} notebooks={<p>notebooks</p>} list={<p>list</p>} note={<p>note</p>} />
+      <BrowseColumns layout={layout} measure={measure} presentation={board ? 'kanban' : 'list'} focusOpen notebooks={<p>notebooks</p>} list={<p>list</p>} note={<p>note</p>} />
     </I18nProvider>
   );
   const { rerender } = render(view({ notebooks: 'open', list: true }, false));

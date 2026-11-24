@@ -197,9 +197,8 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 .note-frontmatter-invalid > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .note-frontmatter-invalid[data-icon-only] { justify-content: center; width: 24px; min-height: 24px; padding: 0; }
 /* The table's status column has room for a status name, not for this one: the sign stays and its words are kept for assistive technology and the tooltip. */
-@media (min-width: 768px) { .note-list td .note-frontmatter-invalid > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; } }
-:is(tr, .note-card):hover .select-trigger.status-cell:not(:disabled), .select-trigger.status-cell:not(:disabled):is(:focus-visible, [data-state='open']) { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
-:is(tr, .note-card):hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled):is(:focus-visible, [data-state='open']) .select-chevron { opacity: 1; }
+tr:hover .select-trigger.status-cell:not(:disabled), .select-trigger.status-cell:not(:disabled):is(:focus-visible, [data-state='open']) { background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+tr:hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled):is(:focus-visible, [data-state='open']) .select-chevron { opacity: 1; }
 .status-cell:disabled .select-chevron { display: none; }
 @media (hover: none) { .status-cell:not(:disabled) .select-chevron { opacity: 0.7; } }
 .select-value { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
@@ -546,7 +545,6 @@ input, textarea, [contenteditable='true'] { caret-color: var(--color-text); }
 /* A short phone viewport (a landscape phone, or the keyboard open) stacks recovery notice, toolbar and tabs; tighter padding keeps at least 100px for the editor while the 44px targets stay. */
 @media (max-width: 767px) and (max-height: 480px) { .editor-notice { gap: 6px; padding: 6px 12px; } .note-toolbar { gap: 2px; padding: 4px 12px; } .note-save { top: 4px; } }
 
-/* Compact ListView: a docked browse panel; the title takes the full width above its status and actions. */
 
 @media (max-width: 767px) { .note-find-field { height: 44px; } .note-find-field input { font-size: 16px; } .note-find-navigation .ui-icon-button { width: 44px; } .note-metadata { padding: 12px; gap: 12px; } .note-panel-assets { padding: 10px; } }
 

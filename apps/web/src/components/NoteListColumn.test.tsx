@@ -45,7 +45,7 @@ function column(props: Partial<Omit<NoteListColumnProps, 'children'>> = {}) {
 }
 
 describe('the list header', () => {
-  it('names where the list is, how many notes it holds, and switches between the list, the table and the board', () => {
+  it('names where the list is, how many notes it holds, and switches between only the list and the board', () => {
     const onPresentationChange = vi.fn();
     column({ onPresentationChange });
     const header = document.querySelector<HTMLElement>('.browse-list-header')!;
@@ -54,9 +54,8 @@ describe('the list header', () => {
     expect(within(header).getByText('28 notes')).toBeInTheDocument();
     const view = screen.getByRole('group', { name: 'View' });
     expect(within(view).getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(view).getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'false');
-    fireEvent.click(within(view).getByRole('button', { name: 'Table' }));
-    expect(onPresentationChange).toHaveBeenCalledWith('table');
+    expect(within(view).queryByRole('button', { name: 'Table' })).not.toBeInTheDocument();
+    expect(within(view).getAllByRole('button')).toHaveLength(2);
     fireEvent.click(within(view).getByRole('button', { name: 'Board' }));
     expect(onPresentationChange).toHaveBeenCalledWith('kanban');
   });
@@ -66,7 +65,7 @@ describe('the list header', () => {
     const path = document.querySelector<HTMLElement>('.browse-list-path')!;
     expect(path.querySelector('.notebook-mark')).toHaveAttribute('data-color', 'green');
     expect(path).not.toHaveAttribute('title');
-    for (const name of ['List', 'Table', 'Board', 'Hide note list']) expect(screen.getByRole('button', { name })).not.toHaveAttribute('title');
+    for (const name of ['List', 'Board', 'Hide note list']) expect(screen.getByRole('button', { name })).not.toHaveAttribute('title');
     fireEvent.pointerEnter(screen.getByRole('button', { name: 'Hide note list' }), { pointerType: 'mouse' });
     expect((await screen.findByRole('tooltip')).querySelector('.tooltip-detail')).toHaveTextContent(/Shift/);
     fireEvent.pointerLeave(screen.getByRole('button', { name: 'Hide note list' }), { pointerType: 'mouse' });

@@ -1,5 +1,4 @@
 import type { DisplayNode } from '@mygitnotes/core/focus-page';
-import type { ViewMode } from './types.js';
 
 /** The notebooks column's width, open and as its rail, and the note list's width, in px; browse-columns.css uses the same. */
 export const NOTEBOOK_COLUMN_WIDTH = 232;
@@ -103,14 +102,5 @@ export function toggleList(layout: BrowseColumnsLayout, stored: StoredBrowseColu
   return { stored: { ...stored, listCollapsed: layout.list }, heldOpen };
 }
 
-/** What the list column shows: the list beside the note, or the table or the board across the list and note columns. */
-export type BrowsePresentation = 'list' | 'table' | 'kanban';
-
-/**
- * The table while it is chosen (it is page state, put away when a note opens from it); the board on a notebook's address with `view=kanban`,
- * never beside a note the address names, so closing that note does not bring the board back; the list otherwise.
- */
-export function browsePresentation({ viewMode, table, noteAddress }: { viewMode: ViewMode; table: boolean; noteAddress: boolean; }): BrowsePresentation {
-  if (table) return 'table';
-  return viewMode === 'kanban' && !noteAddress ? 'kanban' : 'list';
-}
+/** The list beside the Focus, or the board above the Focus. */
+export type BrowsePresentation = 'list' | 'kanban';

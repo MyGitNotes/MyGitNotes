@@ -146,7 +146,7 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
   const target = !managed ? undefined : activeNotePath && !isCompilationPath(activeNotePath) && !(phone && focusNarrowView !== 'focus') ? activeNotePath : null;
   /** The note the address names now. */
   const named = editorRoute.note && inFocus ? routedPath : null;
-  /** The board spans the note column: its address stays the notebook's until the person opens a note from it. */
+  /** Just visiting the board keeps its notebook address until the person picks a note. */
   const onBoard = !editorRoute.note && new URLSearchParams(location.search).get('view') === 'kanban';
   const urlFor = (path: string | null) => {
     const browse = editorRoute.note ? returnTo : location.pathname + location.search;
@@ -157,8 +157,8 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     if (folder) url.searchParams.set('folder', decodeURIComponent(folder));
     // The note route names its notebook in the path, as zoom's does; a `?notebook=` the notebook route carries (the way back from Settings sets one) is not kept.
     url.searchParams.delete('notebook');
-    // The board spans the note's column, so a note opened from it shows beside the list, and closing the note leaves the list there.
-    if (url.searchParams.get('view') === 'kanban') url.searchParams.delete('view');
+    // Desktop keeps the board alongside the note; the phone keeps its separate note screen.
+    if (phone && url.searchParams.get('view') === 'kanban') url.searchParams.delete('view');
     return noteRoute(selectedNotebookId, path.slice(notebookRoot.length + 1)) + url.search + location.hash;
   };
   /** Set while the person opens a note, so the address it gets is a new history entry. */

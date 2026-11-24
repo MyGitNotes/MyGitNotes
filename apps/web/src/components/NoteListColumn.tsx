@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Kanban, List, PanelLeft, Table2 } from 'lucide-react';
+import { Kanban, List, PanelLeft } from 'lucide-react';
 import type { BrowsePresentation } from '../lib/browse-columns.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { bindingsFor, keymapEntry } from '../lib/keyboard/keymap.js';
@@ -28,21 +28,21 @@ export interface NoteListColumnProps {
   count: number | null;
   presentation: BrowsePresentation;
   onPresentationChange: (presentation: BrowsePresentation) => void;
-  /** Folds the list away; absent while the list spans the note column (the table, the board). */
+  /** Folds the list away; absent while the list spans the note column (the board). */
   onCollapse?: () => void;
   /** While the notebooks column is a rail, the folder is picked from the path instead. */
   folderMenu?: { folders: FolderChoice[]; value: string; onChange: (folder: string) => void; };
   /** The Status, Tags and Sort buttons under the header. */
   chips: ReactNode;
-  /** The list, the table or the board. */
+  /** The list or the board. */
   children: ReactNode;
 }
 
-const PRESENTATIONS = [{ value: 'list', label: 'browse.viewList', Icon: List }, { value: 'table', label: 'browse.viewTable', Icon: Table2 }, { value: 'kanban', label: 'browse.viewKanban', Icon: Kanban }] as const;
+const PRESENTATIONS = [{ value: 'list', label: 'browse.viewList', Icon: List }, { value: 'kanban', label: 'browse.viewKanban', Icon: Kanban }] as const;
 
 /**
  * Column 2 of the Notes page: a header naming where the list is (notebook › folder) and how many notes it holds, the switch between the
- * list, the table and the board, and the toggle that folds the list away; then the Status, Tags and Sort buttons; then the list.
+ * list and the board, and the toggle that folds the list away; then the Status, Tags and Sort buttons; then the list.
  */
 export function NoteListColumn({ columnId, notebookTitle, notebook, path, count, presentation, onPresentationChange, onCollapse, folderMenu, chips, children }: NoteListColumnProps): JSX.Element {
   const { t } = useTranslation();

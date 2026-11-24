@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { setNoteQueryScope, useNoteList } from '../lib/use-note-queries.js';
-import { ListView } from './ListView.js';
+import { FocusNoteList } from './FocusNoteList.js';
 import { NoteListSentinel } from './NoteListSentinel.js';
 
 const REVISION = 'c'.repeat(40);
@@ -49,7 +49,7 @@ const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryC
 /** The notes page: a list of server-answered rows with the sentinel that loads the next page. */
 function NotesList() {
   const result = useNoteList({ notebookId: 'life' }, { limit: 1 });
-  return createElement('div', {}, createElement(ListView, { notes: result.notes, uncommitted: result.uncommitted, statuses: ['inbox'], onOpenNote: () => {}, onDeleteNote: () => {}, onUpdateNoteStatus: () => {}, onNewNote: () => {} }), createElement(NoteListSentinel, { hasMore: result.hasMore, loading: result.loadingMore, error: result.error, onLoadMore: result.loadMore }));
+  return createElement('div', {}, createElement(FocusNoteList, { notes: result.notes, uncommitted: result.uncommitted, statuses: ['inbox'], onOpenNote: () => {}, onDeleteNote: () => {}, onUpdateNoteStatus: () => {}, onNewNote: () => {} }), createElement(NoteListSentinel, { hasMore: result.hasMore, loading: result.loadingMore, error: result.error, onLoadMore: result.loadMore }));
 }
 
 it('loads the next page when the end of the list scrolls into view', async () => {
