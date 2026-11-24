@@ -107,6 +107,7 @@ import { EditorModal } from './components/EditorModal.js';
 import type { NoteEditorSharedProps } from './components/note-editor/types.js';
 import { NoteEditingProvider, useNoteEditorRegistry } from './lib/note-editing.js';
 import { FocusArea } from './components/FocusArea.js';
+import { FoldedNoteDots } from './components/FoldedNoteDots.js';
 import { FocusControls } from './components/FocusControls.js';
 import { AddToFocusDialog } from './components/AddToFocusDialog.js';
 import { CompilationView } from './components/CompilationView.js';
@@ -744,11 +745,14 @@ export const AppContent: React.FC = () => {
   // At the note's top left while the list is folded away: the list back. The notebooks column has its own toggle, left of the logo.
   const restoreLabel = t('browse.expandList');
   const restoreColumns = (
-    <Tooltip label={restoreLabel}>
-      <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} aria-expanded='false' aria-controls={LIST_COLUMN_ID} onClick={columns.toggleList}>
-        <PanelLeft size={16} aria-hidden='true' />
-      </button>
-    </Tooltip>
+    <>
+      <Tooltip label={restoreLabel}>
+        <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} aria-expanded='false' aria-controls={LIST_COLUMN_ID} onClick={columns.toggleList}>
+          <PanelLeft size={16} aria-hidden='true' />
+        </button>
+      </Tooltip>
+      <FoldedNoteDots notes={[...listResult.uncommitted, ...displayedNotes]} openPath={activeNotePath} onOpenNote={note => void openFromList(note)} />
+    </>
   );
 
   const content = (

@@ -2599,6 +2599,7 @@ export const en = {
   'browse.expandNotebooks': 'Expand notebooks',
   'browse.collapseList': 'Hide note list',
   'browse.expandList': 'Show note list',
+  'browse.foldedNotes': 'Notes in the list',
   'browse.view': 'View',
   'browse.viewList': 'List',
   'browse.viewTable': 'Table',

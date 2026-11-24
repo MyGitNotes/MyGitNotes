@@ -2600,6 +2600,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'browse.expandNotebooks': '展開筆記本欄',
   'browse.collapseList': '收起筆記清單',
   'browse.expandList': '展開筆記清單',
+  'browse.foldedNotes': '清單中的筆記',
   'browse.view': '檢視',
   'browse.viewList': '清單',
   'browse.viewTable': '表格',

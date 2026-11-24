@@ -10,7 +10,13 @@
 .browse-columns[data-list='closed'] .browse-column-list { flex-basis: 0; width: 0; overflow: hidden; border-right-width: 0; }
 .browse-columns[data-list='closed'] .browse-column-list > * { min-width: var(--browse-list-width); }
 .browse-column-note { flex: 1 1 0%; flex-direction: row; background: var(--color-surface); }
-.browse-column-restore { flex: none; display: flex; align-items: flex-start; padding: 6px 4px 0 8px; }
+.browse-column-restore { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; min-height: 0; padding: 6px 4px 8px 8px; }
+/* The folded list as its status dots, one per note, scrolling on their own under the toggle. */
+.browse-folded-notes { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 2px; min-height: 0; margin: 0; padding: 0; overflow-x: hidden; overflow-y: auto; list-style: none; scrollbar-width: none; }
+.browse-folded-notes::-webkit-scrollbar { display: none; }
+.browse-folded-note { display: grid; place-items: center; width: 24px; height: 20px; border-radius: 5px; }
+.browse-folded-note:hover { background: var(--workspace-selection); }
+.browse-folded-note[aria-current='true'] { background: var(--workspace-selection); box-shadow: inset 0 0 0 1px var(--color-primary); }
 .browse-column-note-body { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .browse-column-note-body > .browse-note-empty { display: grid; flex: 1; place-items: center; padding: 24px; color: var(--color-muted); font-size: 13px; }
 
