@@ -218,3 +218,25 @@ it("names the current order on the Sort button, the notebook's metadata sort fie
   rerender(sortButtons({ sortField: 'title', sortOrder: 'asc' }));
   expect(screen.getByRole('button', { name: /^排序：標題 \(A 到 Z\)/ })).toBeInTheDocument();
 });
+
+it('keeps the Tags filter open while its tag sort is chosen, the sort list lying outside the panel, and applies the sort', async () => {
+  window.HTMLElement.prototype.hasPointerCapture = () => false;
+  window.HTMLElement.prototype.releasePointerCapture = () => {};
+  const counts = { total: 3, statuses: {}, tags: { alpha: 1, beta: 5, gamma: 2 } } as never;
+  render(sortButtons({ counts }));
+  fireEvent.click(screen.getByRole('button', { name: '標籤' }));
+  const panel = screen.getByRole('dialog', { name: '標籤' });
+  const sort = within(panel).getByRole('combobox', { name: '標籤排序' });
+  await act(async () => {
+    fireEvent.keyDown(sort, { key: 'Enter' });
+  });
+  const option = screen.getByRole('option', { name: '使用次數：多到少' });
+  // The sort's list lies in a portal outside the panel: pressing an option there is not a press outside the panel.
+  await act(async () => {
+    fireEvent.pointerDown(option, { button: 0, pointerType: 'mouse' });
+    fireEvent.pointerUp(option, { button: 0, pointerType: 'mouse' });
+    fireEvent.click(option);
+  });
+  expect(screen.getByRole('dialog', { name: '標籤' })).toBeInTheDocument();
+  expect(within(screen.getByRole('dialog', { name: '標籤' })).getByRole('combobox', { name: '標籤排序' })).toHaveTextContent('使用次數：多到少');
+});
