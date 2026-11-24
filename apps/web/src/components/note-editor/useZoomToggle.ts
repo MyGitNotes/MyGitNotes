@@ -21,18 +21,18 @@ export function useZoomToggle({ navigation, note, frame, active, mode, editor, c
   const transfer = navigation?.selection;
   const editorInUse = collabShown ? collabEditor : editor;
   useEffect(() => {
-    const saved = transfer?.current;
+    const saved = transfer?.get();
     if (!active || !transfer || saved?.key !== key || saved.frame !== frame) return;
     // Live Preview can be lazy when the destination mounts; wait for its editor, not just its outer frame.
     const deadline = performance.now() + 2000;
     let request = requestAnimationFrame(function restore() {
-      if (transfer.current !== saved) return;
+      if (transfer.get() !== saved) return;
       const target = editorInUse.current;
       if (target?.ready()) {
-        transfer.current = null;
+        transfer.set(null);
         target.revealRange(saved.from, saved.to, true);
       } else if (performance.now() < deadline) request = requestAnimationFrame(restore);
-      else transfer.current = null;
+      else transfer.set(null);
     });
     return () => cancelAnimationFrame(request);
   }, [active, editorInUse, frame, key, transfer]);
@@ -42,12 +42,12 @@ export function useZoomToggle({ navigation, note, frame, active, mode, editor, c
   return async () => {
     const range = editorInUse.current?.getSelection();
     const saved = range ? { ...range, key, frame: frame === 'pane' ? 'zoom' as const : 'pane' as const } : null;
-    if (transfer) transfer.current = saved;
+    transfer?.set(saved);
     let moved = false;
     try {
       moved = await move(mode);
     } finally {
-      if (!moved && transfer?.current === saved) transfer.current = null;
+      if (!moved && transfer?.get() === saved) transfer?.set(null);
     }
   };
 }

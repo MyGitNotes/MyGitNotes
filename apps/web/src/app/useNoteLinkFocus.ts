@@ -4,7 +4,7 @@ import { useCurrentEntry } from './current-entry.js';
 import type { useLocation, useNavigate } from 'react-router-dom';
 import { findFocusTabInPane, focusPanes, focusTabKey } from '@mygitnotes/core/focus-page';
 import { noteRefKey } from '@mygitnotes/core/note-query';
-import type { FrameSelection } from '../components/note-editor/types.js';
+import type { FrameSelection, FrameSelectionStore } from '../components/note-editor/types.js';
 import { type EditorMode, searchWithEditorMode } from '../lib/editor-mode-url.js';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { FOCUS_NOTE_STATE, isFocusNoteState, noteRoute, type parseWorkspaceRoute } from '../lib/routes.js';
@@ -226,6 +226,7 @@ export function useOpenNoteLinkInFocus({ link, location, navigate, editorRoute, 
     void navigate(url.pathname + searchWithEditorMode(url.search, mode) + url.hash, { replace: true, state: FOCUS_NOTE_STATE });
     return true;
   } : undefined;
-  const frameSelection = useRef<FrameSelection | null>(null);
+  const frameSelectionRef = useRef<FrameSelection | null>(null);
+  const [frameSelection] = useState<FrameSelectionStore>(() => ({ get: () => frameSelectionRef.current, set: selection => void (frameSelectionRef.current = selection) }));
   return { trackOpen, returnToFocus, frameSelection };
 }

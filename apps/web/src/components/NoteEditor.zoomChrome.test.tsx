@@ -15,7 +15,7 @@ const editor = (props: Partial<NoteEditorProps>) => createElement(PanelProvider,
 
 it('separates the pressed zoom toggle from the close icon at the right end', async () => {
   const onClose = vi.fn(), toggleFrame = vi.fn(async () => true);
-  const { container } = render(editor({ onClose, zoomNavigation: { open: vi.fn(), returnToFocus: toggleFrame, selection: { current: null } } }));
+  const { container } = render(editor({ onClose, zoomNavigation: { open: vi.fn(), returnToFocus: toggleFrame, selection: { get: () => null, set: vi.fn() } } }));
   const toggle = screen.getByRole('button', { name: 'Return to Focus' });
   const close = screen.getByRole('button', { name: 'Close note' });
   expect(toggle.getAttribute('aria-pressed')).toBe('true');

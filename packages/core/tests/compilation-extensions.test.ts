@@ -70,7 +70,6 @@ it('round-trips YAML directives and typed external values such as timestamps and
 
 it('preserves external values that share anchors with fields MGN changes', () => {
   const anchored = raw.replace('title: 因果模型講義', 'title: &title 因果模型講義').replace('status: draft', 'archiveStatus: &archive draft\nstatus: *archive').replace(translation, 'originalTitle: *title\n');
-  const file = parseCompilation(anchored);
   const saved = serializeNoteFile(owner.path, { status: 'review' }, anchored, false, new Date(), anchored);
   const entries = [...YAML.parse(saved, { mapAsMap: true }).entries()];
   expect(entries.slice(-2)).toEqual([['archiveStatus', 'draft'], ['originalTitle', '因果模型講義']]);

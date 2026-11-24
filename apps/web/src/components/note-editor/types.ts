@@ -1,4 +1,3 @@
-import type { MutableRefObject } from 'react';
 import type { EditorMode } from '../../lib/editor-mode-url.js';
 import type { FileResult } from '../../lib/files-api.js';
 import type { FileChangeScope } from '../../lib/file-change-scope.js';
@@ -19,7 +18,13 @@ export interface FrameSelection {
 export interface ZoomNavigation {
   open: (mode: EditorMode) => Promise<boolean>;
   returnToFocus?: (mode: EditorMode) => Promise<boolean>;
-  selection: MutableRefObject<FrameSelection | null>;
+  /** The selection handed from the frame being left to the frame being opened, kept by the app across the move. */
+  selection: FrameSelectionStore;
+}
+
+export interface FrameSelectionStore {
+  get: () => FrameSelection | null;
+  set: (selection: FrameSelection | null) => void;
 }
 
 /** Props every editor of one note shares, whether zoom or a Focus pane frames it. */

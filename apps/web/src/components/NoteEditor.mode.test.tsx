@@ -112,7 +112,7 @@ describe('the editor mode of a Focus pane', () => {
 
   it('changes mode in place; only the frame toggle requests zoom', () => {
     const toggleFrame = vi.fn(async () => true);
-    const address = open(NOTE, { frame: 'pane', zoomNavigation: { open: toggleFrame, selection: { current: null } } });
+    const address = open(NOTE, { frame: 'pane', zoomNavigation: { open: toggleFrame, selection: { get: () => null, set: vi.fn() } } });
     const zoom = screen.getByRole('button', { name: 'Zoom note' });
     expect(zoom).toHaveAttribute('aria-pressed', 'false');
     act(() => fireEvent.click(within(modes()).getByRole('button', { name: 'Split view' })));
