@@ -27,6 +27,14 @@ it('moves an opaque companion with its directory without making it independently
   expect(f.files()).not.toContain(image);
 });
 
+it('preserves an unparsable _dir.yml when renaming a skill', async () => {
+  const file = skill.replace('SKILL.md', '_dir.yml');
+  const { reader, rename, f } = setup({ [file]: 'title: [unclosed' });
+  await rename();
+  expect(f.files()).not.toContain(file);
+  expect((await reader.readFile(file.replace('/demo/', '/renamed/'))).toString()).toBe('title: [unclosed');
+});
+
 it('refuses to rename a skill checked out to Live', async () => {
   const { reader, f, rename } = setup();
   reader.useLive({ links: async () => [{ path: skill, checkout: { path: skill } }] } as Parameters<typeof reader.useLive>[0]);
