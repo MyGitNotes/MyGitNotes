@@ -1,4 +1,3 @@
-import { Tooltip } from './components/Tooltip.js';
 import { useNoteSort } from './app/useNoteSort.js';
 import { LegacyOutlineDialog } from './components/LegacyOutlineDialog.js';
 import { useLegacyBookmarkRecovery } from './lib/use-legacy-bookmark-recovery.js';
@@ -45,7 +44,7 @@ import { WorkspaceLinks } from './components/WorkspaceLinks.js';
 import { NoteLocationProvider } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
-import { hasStoredFocusView, isEmptyFocus } from './lib/focus-view.js';
+import { hasStoredFocusView } from './lib/focus-view.js';
 import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.js';
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
@@ -59,7 +58,6 @@ import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { fetchGitStatus, readNote } from './lib/api.js';
 import { builtinNoteTemplates } from './lib/builtin-templates.js';
-import { NoteListSentinel } from './components/NoteListSentinel.js';
 import type { NotebookConfig, NoteItem } from './lib/types.js';
 import { useTagWorkspaceOperations } from './app/useTagWorkspaceOperations.js';
 import { useNoteSelection } from './app/useNoteSelection.js';
@@ -71,50 +69,33 @@ import { noteEditorProps } from './app/note-editor-props.js';
 import { useNoteSearchFocus } from './app/useNoteSearchFocus.js';
 import { useCompilations } from './app/useCompilations.js';
 import { useBulkToolbar } from './app/useBulkToolbar.js';
+import { useNotesPage } from './app/useNotesPage.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
-import { folderCommandScope } from './lib/file-change-scope.js';
-import type { FolderCommand } from '@mygitnotes/core';
-import type { DraggedNote } from './lib/note-drag.js';
 import { noteFolder } from './lib/note-move.js';
 import { RenameNoteDialog } from './components/RenameNoteDialog.js';
 import { AccountControls, AgentAccessSettings, ConnectionState } from './components/AuthControls.js';
-import { Header, HeaderUtilities } from './components/Header.js';
+import { Header } from './components/Header.js';
 import { WorkspaceGitSyncProvider } from './lib/workspace-git-sync.js';
-import { PhoneFilterSheet, PhoneListBar } from './components/PhoneListBar.js';
 import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
-import { SidebarProvider, WorkspaceSidebarPortal, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
+import { SidebarProvider, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
 import type { NewNoteActions } from './components/NewNoteMenu.js';
 import { useVisualViewport } from './lib/use-visual-viewport.js';
-import { Sidebar } from './components/Sidebar.js';
-import { FilterChips } from './components/FilterChips.js';
-import { BrowseSplit } from './components/BrowseSplit.js';
-import { browsePath, phoneBrowseLayout } from './lib/browse-layout.js';
 import { paneColumns } from './lib/browse-columns.js';
 import { browseColumnCommands, useBrowseColumns } from './app/useBrowseColumns.js';
-import { BrowseColumns, LIST_COLUMN_ID, NOTEBOOK_COLUMN_ID } from './components/BrowseColumns.js';
+import { NOTEBOOK_COLUMN_ID } from './components/BrowseColumns.js';
 import { useNotebookAppearance } from './components/NotebookAppearance.js';
-import { NotebookColumn } from './components/NotebookColumn.js';
-import { NotebookTree } from './components/NotebookTree.js';
-import { type FolderChoice, NoteListColumn } from './components/NoteListColumn.js';
-import { ListFilterButtons } from './components/ListFilterButtons.js';
-import { listFacets } from './lib/list-facets.js';
-import { FocusNoteList } from './components/FocusNoteList.js';
-import { noteFolderGrouping } from './lib/note-groups.js';
-import { KanbanView } from './components/KanbanView.js';
 import { EditorModal } from './components/EditorModal.js';
 import { NoteEditingProvider, useNoteEditorRegistry } from './lib/note-editing.js';
 import { FocusArea } from './components/FocusArea.js';
-import { FoldedNoteDots } from './components/FoldedNoteDots.js';
 import { FocusControls } from './components/FocusControls.js';
 import { AddToFocusDialog } from './components/AddToFocusDialog.js';
 import { usePhone } from './lib/use-phone.js';
 import { useFocusSearch } from './lib/focus-search.js';
 import { LegacyScreenRedirect } from './components/LegacyScreenRedirect.js';
-import { LegacySchemaNotice } from './components/LegacySchemaNotice.js';
 import { CompilationActionsProvider } from './lib/compilation-actions.js';
 import { StatusColorProvider } from './lib/status-color.js';
 import { statusLabel } from '@mygitnotes/core/note-status';
@@ -127,11 +108,8 @@ import { DerivedManifestNotice, RepositorySwitch, WorkspaceGate } from './compon
 import { useLeaveWarning } from './lib/use-leave-warning.js';
 import { CommitModal } from './components/CommitModal.js';
 import { useGistConfirm } from './components/GistConfirmDialog.js';
-import { Breadcrumbs } from './components/Breadcrumbs.js';
-import { FolderIndex } from './components/FolderIndex.js';
-import { FolderLinks } from './components/FolderLinks.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
-import { AlertCircle, AlertTriangle, PanelLeft, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, X } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
 import { liveEditableKind } from './lib/live-api.js';
 import { useLiveHandover } from './app/useLiveHandover.js';
@@ -170,7 +148,7 @@ export const AppContent: React.FC = () => {
   const noteLink = useNoteLinkLoad(location, editorRoute);
   /** The state an address keeps when it follows a moved note: a note the Focus shows (or is about to) stays in the Focus. */
   const followedState = () => noteLink.inFocus ? FOCUS_NOTE_STATE : location.state;
-  const { sortField, sortOrder, handleSortChange, metadataSortFields } = useNoteSort(selectedNotebookId, config?.notebooks.find(notebook => notebook.id === selectedNotebookId), noteLink.inFocus);
+  const sort = useNoteSort(selectedNotebookId, config?.notebooks.find(notebook => notebook.id === selectedNotebookId), noteLink.inFocus);
   const agentEnabled = useAgentEnabled(remote);
   const refreshDocuments = async () => {
     await Promise.all(documents.map(document => document.refresh()));
@@ -189,18 +167,21 @@ export const AppContent: React.FC = () => {
 
   // Tag management: rename/merge/delete across the whole workspace, one commit per repository,
   // with a session-lifetime undo (kept in `tagOperations.history` until page reload).
-  const { tagOperations, previewTagUsage, handleRenameTag, handleMergeTag, handleDeleteTag, handleUndoTagOperation } = useTagWorkspaceOperations({ queryClient, queryScope, repositories, remote, canWrite: canManageTags, t, invalidateNotes, setRepositoryRevision, setActionError });
+  const tagWorkspace = useTagWorkspaceOperations({ queryClient, queryScope, repositories, remote, canWrite: canManageTags, t, invalidateNotes, setRepositoryRevision, setActionError });
+  const { tagOperations, handleUndoTagOperation } = tagWorkspace;
 
   const { editorNotebookId, returnTo, route, activeTab, sidebarGestureRef, selectedFolders, folderRoot, selectedFolder, scopeNotebookId, selectedStatus, showHidden } = useBrowseRoute({ editorRoute, config, location, queryState, setFileMetadataOpen, loading, loadError, filtersOpen, setFiltersOpen, selectedNotebookId, focusNoteRoute: noteLink.inFocus, repositoryId: notebookUnavailable ? undefined : repositoryFor(selectedNotebookId)?.id, folders, foldersLoading, phone });
 
   /** The repository the header names: the shown notebook's, else the default repository's. */
   const currentRepository = pageRepository(repositories, sourceId, { tab: activeTab, allNotebooks: route.allNotebooks, notebookId: selectedNotebookId });
 
-  const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, searchQuery, viewMode, folderless } = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route });
+  const browseFacets = useBrowseFacets({ showHidden, config, scopeNotebookId, selectedFolders, selectedNotebookId, route });
+  const { facetsQuery, notebookFacets, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, searchQuery, viewMode, folderless } = browseFacets;
 
   const { hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook, focusNoteRoute: noteLink.inFocus, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root });
 
-  const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder } = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
+  const navigation = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
+  const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder } = navigation;
 
   const { commitRequest, isCommitOpen, setIsCommitOpen, openCommitModal, panelRemoteChanges, panelGetPreview, panelDescribeChanges } = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });
   // With every repository hidden or unavailable there is no notebook to show, and Settings is where the person
@@ -244,10 +225,9 @@ export const AppContent: React.FC = () => {
   // A note's link opens it in the Focus, not zoom, and the address bar names the note the Focus shows.
   const { trackOpen, returnToFocus, frameSelection } = useOpenNoteLinkInFocus({ link: noteLink, location, navigate, editorRoute, routedNote, routedPath, routeError, noteFocus, activeNotePath, focusNarrowView, selectedNotebookId, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root, returnTo, browsing: activeTab === 'notes' && !route.study, flushZoom: editorRegistry.flushEditors, setFocusNarrowView, isTemplate });
 
-  /** The notebook whose folders the person folded under its row in the notebooks column; another notebook opens unfolded. */
-  const [foldedTree, setFoldedTree] = useState<string | null>(null);
   const presentation = !phone && viewMode === 'kanban' ? 'kanban' : 'list';
-  const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, highlightQuery, groupable, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
+  const browseNotes = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField: sort.sortField, sortOrder: sort.sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
+  const { notebookRoot, displayedNotes, filterProps, debouncedSearch } = browseNotes;
 
   const { handleOpenNote, closeZoom, closeCompilationZoom } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
@@ -259,7 +239,6 @@ export const AppContent: React.FC = () => {
 
   // Multi-select and bulk actions (set status, add/remove tag, move to folder) for the browse views.
   const selection = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
-  const { selectedKeys, toggleSelect } = selection;
 
   // The selected notebook's templates: its manifest's, then the files of its `.templates/` folder, with this page's working changes.
   const selectedNotebook = config?.notebooks.find(nb => nb.id === selectedNotebookId);
@@ -328,12 +307,9 @@ export const AppContent: React.FC = () => {
 
   const phoneNotes = phone && activeTab === 'notes' && !route.study;
   const phoneNoteScreen = phoneNotes && phoneNotesScreen({ hasFocus: Boolean(noteFocus.layout), hasActiveTab, view: focusNarrowView }) === 'note';
-  const [phoneFilterOpen, setPhoneFilterOpen] = useState(false);
   // What the Changes tool counts: pending changes, and for a local workspace the deletions awaiting commit.
   const phoneChangesCount = remote ? changeCount : changeCount + deletedNotes.length;
   const phoneNotesValue = useMemo(() => ({ back: () => setFocusNarrowView('browse'), changesCount: phoneChangesCount, deleteNote: canWrite ? (note: NoteItem) => void handleDeleteNote(note as NoteListItem) : undefined }), [setFocusNarrowView, phoneChangesCount, canWrite, handleDeleteNote]);
-  // A shown Focus (Default or named) with no open note: a phone's list screen then shows the list alone, without the folders under it.
-  const focusEmpty = Boolean(noteFocus.layout && isEmptyFocus(noteFocus.layout));
   // Wider than a phone, the Notes page keeps three columns (notebooks, list, note) whatever opens or closes; the person folds the first two
   // away, and a cramped page, or a Focus whose panes need the room, folds the notebooks column to its rail.
   const notesColumns = !phone && activeTab === 'notes' && !route.study && !notebookUnavailable;
@@ -342,122 +318,10 @@ export const AppContent: React.FC = () => {
   const { noteSearch, focusNoteSearch } = useNoteSearchFocus({ notesColumns, columns, activeTab, phoneNoteScreen, setActiveTab, setFocusNarrowView });
   useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: notesColumns ? [...focusCommands, ...browseColumnCommands(columns, t, presentation)] : focusCommands });
 
-  const browseFocusMode = noteFocus.layout || phone || presentation === 'list' ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, rowMeta: !phone && presentation === 'list', openPath: activeNotePath, readNote: readNoteForChange } : undefined;
-  // A phone's list screen beside a Focus shows the folders under the list, and the chips of the filters in force where the filters are out of sight.
-  const layout = phoneBrowseLayout({ phone, focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, viewMode });
-  /** Whether the folders show beside the list (the notebooks column, or a phone's folders under its list), so the list keeps only the folder's index. */
-  const folderTree = !phone || Boolean(layout.split);
-  const openFilters = () => setPhoneFilterOpen(true);
-  // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
-  const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
-  const createNewKind = () => {
-    if (newKind === 'outline') void createNote({ kind: 'outline' });
-    else if (newKind === 'compilation') void createUntitledCompilation();
-    else void createNote();
-  };
-  // The index names its folder, or the notebook at its root, so it reads as that folder's page rather than a note called "Index".
-  const indexFolderName = selectedFolder ? breadcrumbs[breadcrumbs.length - 1].name : config?.notebooks.find(nb => nb.id === selectedNotebookId)?.title ?? '';
-  // Held here, not in the list, so a folder stays collapsed when switching views.
-  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() => new Set());
-  const toggleGroup = (key: string) =>
-    setCollapsedGroups(previous => {
-      const next = new Set(previous);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
-  const noteGroupOf = useMemo(() => groupedByFolder ? noteFolderGrouping({ notebookRoot: folderRoot ?? '', selectedFolder, folders, notebookId: selectedNotebookId, selectedLabel: indexFolderName }) : undefined, [groupedByFolder, folderRoot, selectedFolder, folders, selectedNotebookId, indexFolderName]);
-  const browseRegion = () => (
-    <>
-      {layout.chips === 'list' && <FilterChips filters={filterProps} onAdd={openFilters} />}
-      <LegacySchemaNotice schemaVersion={config?.schema_version} />
-      {actionError && <p role='alert' className='mb-3 text-sm text-danger'>{actionError}</p>}
-      {bulkToolbar}
-      {staleNotice && <p role='alert' className='mb-3 text-sm text-warning'>{staleNotice}</p>}
-      {listResult.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: listResult.error })}</p>}
-      {facetsQuery.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.countsFailed', { message: facetsQuery.error })}</p>}
-      {indexLookup.error && <p role='alert' className='mb-3 text-sm text-danger'>{t('notes.loadFailed', { message: indexLookup.error })}</p>}
-      {listResult.loading && <LoadingStatus className='mb-3 text-sm text-muted'>{t('notes.loading')}</LoadingStatus>}
-      {/* Beside the folder tree the path line names the folder and its subfolders are in the tree; only the folder's index stays. */}
-      {!folderless && folderTree && viewMode === 'list' && folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}
-      {!folderless && !folderTree && (
-        <>
-          <Breadcrumbs segments={breadcrumbs} currentFolder={selectedFolder} onSelectFolder={setSelectedFolder} subfolderCount={immediateSubfolders.length} noteCount={listResult.total} />
-          <FolderLinks folders={immediateSubfolders} onSelect={setSelectedFolder}>{folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}</FolderLinks>
-        </>
-      )}
-      {(viewMode === 'list' || viewMode === 'flat') && (
-        <>
-          <FocusNoteList focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={canWriteFiles ? note => noteMove.moveNote(note)?.() : undefined} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={highlightQuery} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} groupOf={noteGroupOf} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
-          <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
-        </>
-      )}
-      {viewMode === 'kanban' && (
-        <KanbanView
-          focusMode={browseFocusMode}
-          statuses={notebookStatuses}
-          readOnly={!canWrite}
-          canDelete={canWrite}
-          confirmDelete={remote}
-          query={baseQuery}
-          hiddenNote={folderIndex}
-          leading={folderIndex
-            ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />
-            : undefined}
-          onOpenNote={note => void openFromBrowse(note)}
-          onUpdateNoteStatus={handleUpdateNoteStatus}
-          onDeleteNote={handleDeleteNote}
-          onMoveNote={canWriteFiles
-            ? note => noteMove.moveNote(note)?.()
-            : undefined}
-          onNewNoteWithStatus={(status) => {
-            void createNote(status);
-          }}
-          sortField={sortField}
-          sortOrder={sortOrder}
-          onSortChange={handleSortChange}
-          metadataSortFields={metadataSortFields}
-          selectedKeys={selectedKeys}
-          onToggleSelect={toggleSelect}
-        />
-      )}
-    </>
-  );
   // The toolbar search dims what the Focus shows that it does not match; on a phone it only filters the list.
   const focusMatches = useFocusSearch({ q: debouncedSearch, notebookId: selectedNotebookId, enabled: Boolean(noteFocus.layout) && !phone });
   const { compilationActions, createUntitledCompilation, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse });
-  /** A phone's list screen beside a Focus: the path line and the list, and below the divider the notebook's folders. */
-  const browseSplit = () => {
-    const path = browsePath({ kind: route.kind, notebookTitle: selectedNotebook?.title ?? '', breadcrumbs, labels: { outline: t('outline.list'), compilations: t('sidebar.compilations') } });
-    const count = filterProps.count;
-    return (
-      <BrowseSplit
-        label={t('browseSplit.folders')}
-        filters={renderSidebar(false, 'folders')}
-        path={
-          <>
-            <Tooltip label={path}>
-              <span className='browse-split-path-text'>{path}</span>
-            </Tooltip>
-            {count === null ? <LoadingStatus as='span' className='browse-split-count'>{t('notes.countsLoading')}</LoadingStatus> : <span className='browse-split-count'>{t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>}
-          </>
-        }
-        size={noteFocus.view.dock.filtersShare}
-        onSizeChange={filtersShare => noteFocus.setDock({ filtersShare })}
-        collapsed={noteFocus.view.dock.splitCollapsed}
-        onCollapsedChange={splitCollapsed => noteFocus.setDock({ splitCollapsed })}
-      >
-        {browseRegion()}
-      </BrowseSplit>
-    );
-  };
-  const beforeFolderChange = (command: FolderCommand) => beforeFileChange(folderCommandScope(command, config?.notebooks.find(nb => nb.id === command.notebookId)?.root ?? ''));
-  const onFoldersChanged = async () => {
-    await refreshWorkspace(remote);
-    await refreshDocuments();
-  };
-  const dropNoteOnFolder = (note: DraggedNote, folder: string | null) => void noteMove.moveTo({ ...note, title: '' }, folder);
-  /** A phone's drawer of notebooks and filters; its filter sheet shows only the status and tags, and its list screen beside a Focus the folders. */
-  const renderSidebar = (filtersOnly = false, dock?: 'folders') => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} dock={dock} />;
+  const { renderNotesPage, phoneFilterSheet } = useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets: browseFacets, browse: browseNotes, sort, selection, tags: tagWorkspace, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled: noteEditorOpen || isCommitOpen, setShortcutMode });
 
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;
   if (route.legacyScreen) return <LegacyScreenRedirect laneId={route.legacyLane} notebooks={config?.notebooks || []} onMissing={setActionError} />;
@@ -473,62 +337,6 @@ export const AppContent: React.FC = () => {
     await refreshDocuments().catch(error => setActionError(error instanceof Error ? error.message : String(error)));
   };
   const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} notebook={selectedNotebook} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
-  // Column 1: every notebook, the open one unfolded into its folders, outlines and compilations, or the rail of their initials.
-  const notebookColumn = <NotebookColumn mode={columns.layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={config?.notebooks || []} groups={notebookGroups} unavailableNotebooks={unavailableNotebooks} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} switchDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} counts={facetsQuery.facets ? Object.fromEntries(Object.entries(facetsQuery.facets).map(([id, facet]) => [id, facet.total])) : undefined} current={selectedNotebook && <NotebookTree notebook={selectedNotebook} filters={filterProps} facets={facetsQuery.facets} folders={folders} foldersLoading={foldersLoading} foldersWritable={canWriteFiles} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onManageFiles={openFileManager} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} onDropNote={dropNoteOnFolder} expanded={foldedTree !== selectedNotebookId} onToggleExpanded={() => setFoldedTree(folded => folded === selectedNotebookId ? null : selectedNotebookId)} onContextMenu={event => notebookAppearance.onContextMenu(event, selectedNotebookId)} />} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} searchRef={notesColumns ? noteSearch : undefined} onOpenSearch={focusNoteSearch} kind={route.kind} onSelectKind={kind => changeFilters({ kind, folders: [] })} onNotebookContextMenu={notebookAppearance.onContextMenu} />;
-  // Column 2: where the list is, its view switch and fold toggle, the Status, Tags and Sort buttons, and the list or board.
-  const listPath = route.kind === 'outline' ? [t('outline.list')] : route.kind === 'compilation' ? [t('sidebar.compilations')] : breadcrumbs.filter(segment => segment.path !== null).map(segment => segment.name);
-  // The root choice is named after the notebook: beside the rail the picker stands for the whole path.
-  const folderChoices: FolderChoice[] = [{ value: '', label: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.title ?? t('browse.allFolders') }, ...folders.filter(folder => folder.notebookId === selectedNotebookId).map(folder => ({ value: folder.path, label: folder.path })).sort((a, b) => a.value.localeCompare(b.value))];
-  const listColumn = (
-    <NoteListColumn
-      columnId={LIST_COLUMN_ID}
-      notebookTitle={selectedNotebook?.title ?? ''}
-      notebook={selectedNotebook}
-      path={listPath}
-      count={filterProps.count}
-      presentation={presentation}
-      onPresentationChange={next => { if (next !== presentation) setViewMode(next === 'kanban' ? 'kanban' : 'flat'); }}
-      onCollapse={presentation === 'list' ? columns.toggleList : undefined}
-      // Folded to its rail, the notebooks column leaves the folder to the path's menu.
-      folderMenu={columns.layout.notebooks !== 'open' && route.kind === 'note'
-        ? { folders: folderChoices, value: selectedFolder ?? '', onChange: folder => setSelectedFolder(folder || null) }
-        : undefined}
-      chips={
-        <ListFilterButtons
-          filters={filterProps}
-          counts={listFacets(filterProps, facetsQuery.facets)}
-          notebookId={selectedNotebookId}
-          tagManagement={canWriteFiles ? { workspaceTagNames, onPreviewUsage: previewTagUsage, onRename: handleRenameTag, onMerge: handleMergeTag, onDelete: handleDeleteTag } : undefined}
-          sortField={sortField}
-          sortOrder={sortOrder}
-          onSortChange={handleSortChange}
-          metadataSortFields={metadataSortFields}
-          sortable={presentation !== 'kanban'}
-          showHidden={showHidden}
-          hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
-          onShowHiddenChange={value => changeFilters({ showHidden: value })}
-          groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}
-          subfolders={presentation !== 'kanban' && route.kind === 'note'
-            ? { value: viewMode !== 'list', onChange: value => setViewMode(value ? 'flat' : 'list') }
-            : undefined}
-        />
-      }
-    >
-      {browseRegion()}
-    </NoteListColumn>
-  );
-  // At the note's top left while the list is folded away: the list back. The notebooks column has its own toggle, left of the logo.
-  const restoreLabel = t('browse.expandList');
-  const restoreColumns = (
-    <>
-      <Tooltip label={restoreLabel}>
-        <button type='button' className='ui-icon-button browse-column-toggle' data-column-toggle='' aria-label={restoreLabel} aria-expanded='false' aria-controls={LIST_COLUMN_ID} onClick={columns.toggleList}>
-          <PanelLeft size={16} aria-hidden='true' />
-        </button>
-      </Tooltip>
-      <FoldedNoteDots notes={[...listResult.uncommitted, ...displayedNotes]} openPath={activeNotePath} onOpenNote={note => void openFromBrowse(note)} />
-    </>
-  );
 
   const content = (
     <CompilationActionsProvider value={compilationActions}>
@@ -630,41 +438,7 @@ export const AppContent: React.FC = () => {
                           </section>
                         </main>
                       )}
-                      {!notebookUnavailable && activeTab === 'notes' && !route.study && (phone
-                        ? (
-                          <>
-                            <WorkspaceSidebarPortal>
-                              <HeaderUtilities className='phone-drawer-utilities' activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={noteEditorOpen || isCommitOpen} onOpenCommands={() => setShortcutMode('palette')} accountControls={<AccountControls local={!remote} />} /> {renderSidebar()}
-                            </WorkspaceSidebarPortal>
-                            {/* A phone's list and note take turns filling the screen, each with its own bars. */}
-                            <main className='workspace-main notes-main'>
-                              {!phoneNoteScreen && (
-                                <>
-                                  <PhoneListBar
-                                    searchRef={noteSearch}
-                                    notebooks={config?.notebooks || []}
-                                    selectedNotebookId={selectedNotebookId}
-                                    onSelectNotebook={id => void setSelectedNotebookId(id)}
-                                    notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy}
-                                    unavailableNotebooks={unavailableNotebooks}
-                                    notebookGroups={notebookGroups}
-                                    query={searchQuery}
-                                    onQueryChange={value => changeFilters({ q: value })}
-                                    filtersOpen={filtersOpen}
-                                    onToggleFilters={() => setFiltersOpen(open => !open)}
-                                  />
-                                  {layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
-                                </>
-                              )}
-                              {noteFocus.layout && !focusEmpty ? <div className='phone-notes-screen'>{phoneNoteScreen ? <div className='phone-notes-focus'>{focusArea}</div> : <div className='workspace-scroll phone-notes-scroll'>{layout.split ? browseSplit() : browseRegion()}</div>}</div> : <div className='workspace-scroll'>{browseRegion()}</div>}
-                            </main>
-                          </>
-                        )
-                        : (
-                          <main className='workspace-main notes-main'>
-                            <BrowseColumns layout={columns.layout} measure={columns.measure} presentation={presentation} focusOpen={Boolean(noteFocus.layout) && !focusEmpty} notebooks={notebookColumn} list={listColumn} note={noteFocus.layout ? focusArea : <p className='browse-note-empty'>{t('browse.noFocus')}</p>} restore={restoreColumns} />
-                          </main>
-                        ))}
+                      {!notebookUnavailable && activeTab === 'notes' && !route.study && renderNotesPage(focusArea)}
                       {activeTab === 'agent' && (
                         <main className='workspace-route agent-main'>
                           <AgentSystemView ref={agentSystemRef} notebooks={config?.notebooks || []} folders={folders} repositories={repositories} defaultRepository={sourceId} onBusyChange={setResourceNavigationBusy} remote={remote} onGitStatus={setGitStatus} />
@@ -774,7 +548,7 @@ export const AppContent: React.FC = () => {
                 {bulkMoveDialog}
                 {/* Note Editor Modal */}
                 <EditorModal key={fileEditorRevision} note={routedNote} committed={routedCommitted && typeof routedCommitted.content === 'string' ? routedCommitted as NoteItem : undefined} loading={routedLoading} isOpen={noteEditorOpen} renderCompilation={renderCompilation} behind={compilationBehind} error={actionError} />
-                {phoneNotes && phoneFilterOpen && <PhoneFilterSheet onClose={() => setPhoneFilterOpen(false)} sortField={sortField} sortOrder={sortOrder} onSortChange={handleSortChange} metadataSortFields={metadataSortFields} viewMode={viewMode} setViewMode={setViewMode} showHidden={showHidden} hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null} onShowHiddenChange={value => changeFilters({ showHidden: value })} groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}>{renderSidebar(true)}</PhoneFilterSheet>}
+                {phoneFilterSheet}
                 {addingToFocus && (
                   <AddToFocusDialog
                     focus={noteFocus}
