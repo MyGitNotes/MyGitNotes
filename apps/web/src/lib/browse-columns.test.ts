@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BROWSE_COLUMNS_STORAGE_KEY, browseColumnsLayout, browsePresentation, notebooksCramped, paneColumns, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from './browse-columns.js';
+import { BROWSE_COLUMNS_STORAGE_KEY, browseColumnsLayout, notebooksCramped, paneColumns, readBrowseColumns, saveBrowseColumns, toggleList, toggleNotebooks } from './browse-columns.js';
 
 const memory = () => {
   const items = new Map<string, string>();
@@ -77,12 +77,4 @@ describe('toggles', () => {
     expect(browseColumnsLayout({ stored: { notebooksCollapsed: true, listCollapsed: true }, cramped: false, heldOpen: false })).toEqual({ notebooks: 'rail', list: false });
     expect(browseColumnsLayout({ stored: { notebooksCollapsed: false, listCollapsed: true }, cramped: true, heldOpen: false })).toEqual({ notebooks: 'rail', list: false });
   });
-});
-
-describe('presentation', () => {
-  it('shows the board on a notebook address with view=kanban, and the list beside a note the address names', () => {
-    expect(browsePresentation({ viewMode: 'kanban', noteAddress: false })).toBe('kanban');
-    expect(browsePresentation({ viewMode: 'kanban', noteAddress: true })).toBe('list');
-  });
-
 });

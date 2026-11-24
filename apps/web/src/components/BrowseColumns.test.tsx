@@ -60,7 +60,8 @@ function Page({ layout = { notebooks: 'open', list: true }, presentation = 'list
       <BrowseColumns
         layout={layout}
         measure={measure}
-        merged={presentation !== 'list'}
+        presentation={presentation}
+        focusOpen={Boolean(note)}
         notebooks={<NotebookColumn mode={layout.notebooks} columnId={NOTEBOOK_COLUMN_ID} notebooks={notebooks} selectedNotebookId={notebookId} onSelectNotebook={() => {}} counts={{ life: 7, work: 1 }} current={<NotebookTree notebook={notebook} filters={filters} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={folder} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />} query='' onQueryChange={() => {}} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />}
         list={
           <NoteListColumn columnId={LIST_COLUMN_ID} notebookTitle={notebook.title} path={folder ? [folder] : []} count={folder ? 2 : 7} presentation={presentation} onPresentationChange={() => {}} onCollapse={presentation === 'list' ? onToggleList : undefined} chips={<ListFilterButtons filters={filters} counts={listFacets(filters, facets)} notebookId={notebookId} sortField='updated' sortOrder='desc' onSortChange={() => {}} sortable showHidden={false} hiddenNoteCount={1} onShowHiddenChange={() => {}} />}>
@@ -142,21 +143,45 @@ describe('the three columns', () => {
     expect(screen.getByRole('button', { name: 'Show note list' }).closest('.browse-column-note')).not.toBeNull();
   });
 
-  it('spreads the board across the note column, keeping the notebooks column', () => {
-    const { rerender } = render(<Page note='a' presentation='kanban' />);
-    const root = document.querySelector('.browse-columns')!;
-    expect(root).toHaveAttribute('data-merged', 'true');
+  it('gives the board all remaining space when no note is open, even if the List was folded', () => {
+    render(<Page presentation='kanban' layout={{ notebooks: 'rail', list: false }} />);
     expect(notebooksColumn()).toBeVisible();
     expect(listColumn()).toBeVisible();
-    // The note column stays mounted, out of sight, so its editors keep their state.
-    expect(screen.getByText('Note a')).not.toBeVisible();
-    expect(screen.queryByRole('button', { name: 'Hide note list' })).not.toBeInTheDocument();
+    expect(listColumn().parentElement).toHaveAttribute('data-board', 'true');
+    expect(listColumn().parentElement).not.toHaveAttribute('data-split');
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+    expect(screen.queryByText('No note open')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show note list' })).not.toBeInTheDocument();
+  });
+
+  it('puts the Focus below the board and remembers the keyboard resize across mounts', () => {
+    const { rerender, unmount } = render(<Page presentation='kanban' />);
+    const board = listColumn();
     rerender(<Page note='a' presentation='kanban' layout={{ notebooks: 'open', list: false }} />);
-    expect(listColumn()).toBeVisible();
-    expect(screen.getByText('Note a')).not.toBeVisible();
-    rerender(<Page note='a' presentation='list' />);
-    expect(root).not.toHaveAttribute('data-merged');
-    expect(screen.getByText('Note a')).toBeVisible();
+    expect(listColumn()).toBe(board);
+    const divider = screen.getByRole('separator');
+    const focus = screen.getByRole('article');
+    expect(board.parentElement).toHaveAttribute('data-split', 'true');
+    expect(board.nextElementSibling).toBe(divider);
+    expect(divider.nextElementSibling).toContainElement(focus);
+    expect(focus).toBeVisible();
+    expect(divider).toHaveAttribute('aria-orientation', 'horizontal');
+    const initial = Number(divider.getAttribute('aria-valuenow'));
+    fireEvent.keyDown(divider, { key: 'Home' });
+    expect(divider.getAttribute('aria-valuenow')).toBe(divider.getAttribute('aria-valuemin'));
+    fireEvent.keyDown(divider, { key: 'ArrowUp' });
+    expect(divider.getAttribute('aria-valuenow')).toBe(divider.getAttribute('aria-valuemin'));
+    fireEvent.keyDown(divider, { key: 'End' });
+    const max = Number(divider.getAttribute('aria-valuemax'));
+    expect(divider).toHaveAttribute('aria-valuenow', String(max));
+    fireEvent.keyDown(divider, { key: 'ArrowUp' });
+    expect(divider).toHaveAttribute('aria-valuenow', String(max - 5));
+    expect(max - 5).not.toBe(initial);
+    expect(screen.queryByRole('button', { name: 'Hide note list' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show note list' })).not.toBeInTheDocument();
+    unmount();
+    render(<Page note='a' presentation='kanban' />);
+    expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', String(max - 5));
   });
 });
 

@@ -43,7 +43,9 @@ describe('Folding the columns from the palette and the keyboard', () => {
 
   it('folds the notebooks column with Mod+\\ and the list with Mod+Shift+\\', () => {
     const columns = { layout: { notebooks: 'open' as const, list: true }, measure: () => {}, toggleNotebooks: vi.fn(), toggleList: vi.fn() };
-    const commands = browseColumnCommands(columns, ((key: string) => key) as never);
+    const t = ((key: string) => key) as never;
+    const commands = browseColumnCommands(columns, t);
+    expect(browseColumnCommands(columns, t, 'kanban').map(command => command.id)).toEqual(['browse.toggleNotebooks']);
     expect(commands.map(command => [command.id, command.title])).toEqual([['browse.toggleNotebooks', 'command.browse.toggleNotebooks'], ['browse.toggleList', 'command.browse.toggleList']]);
     void commands[0].run({} as never);
     expect(columns.toggleNotebooks).toHaveBeenCalledOnce();

@@ -2601,6 +2601,7 @@ export const en = {
   'browse.view': 'View',
   'browse.viewList': 'List',
   'browse.viewKanban': 'Board',
+  'browse.resizeBoard': 'Resize board and note',
   'browse.statusButton': 'Status: {value}',
   'browse.statusAll': 'All',
   'browse.tagsButton': 'Tags · {count}',

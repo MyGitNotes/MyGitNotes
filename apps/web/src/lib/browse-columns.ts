@@ -1,5 +1,4 @@
 import type { DisplayNode } from '@mygitnotes/core/focus-page';
-import type { ViewMode } from './types.js';
 
 /** The notebooks column's width, open and as its rail, and the note list's width, in px; browse-columns.css uses the same. */
 export const NOTEBOOK_COLUMN_WIDTH = 232;
@@ -103,9 +102,5 @@ export function toggleList(layout: BrowseColumnsLayout, stored: StoredBrowseColu
   return { stored: { ...stored, listCollapsed: layout.list }, heldOpen };
 }
 
-/** The list beside the Focus, or the board on a notebook address. */
+/** The list beside the Focus, or the board above the Focus. */
 export type BrowsePresentation = 'list' | 'kanban';
-
-export function browsePresentation({ viewMode, noteAddress }: { viewMode: ViewMode; noteAddress: boolean; }): BrowsePresentation {
-  return viewMode === 'kanban' && !noteAddress ? 'kanban' : 'list';
-}

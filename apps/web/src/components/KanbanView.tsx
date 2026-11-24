@@ -245,7 +245,7 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
         </div>
       </div>
       {/* Note Cards List (Drag Target Area) */}
-      <div className='overflow-y-auto space-y-2.5 flex-1 pr-0.5 min-h-[80px]'>
+      <div className='kanban-cards overflow-y-auto space-y-2.5 flex-1 pr-0.5 min-h-[80px]'>
         {/* Drop Target Guide Indicator */}
         {isColumnDragOver && board.dragged && <div className='border-2 border-dashed rounded-lg p-3 text-center text-xs font-semibold animate-pulse transition my-1' style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)', backgroundColor: 'var(--color-primary-light)' }}>{t('kanban.dropNoteInto', { title: col.title })}</div>}
         {result.error && <p role='alert' className='text-xs text-danger'>{result.error}</p>}
@@ -280,7 +280,7 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
           <span className='text-xs px-2 py-0.5 rounded-full bg-fg/5 text-muted font-medium'>{result.total}</span>
         </div>
       </div>
-      <div className='overflow-y-auto space-y-2.5 flex-1 pr-0.5'>
+      <div className='kanban-cards overflow-y-auto space-y-2.5 flex-1 pr-0.5'>
         {result.loading && <LoadingStatus className='text-xs text-muted'>{t('notes.loading')}</LoadingStatus>}
         {notes.map((note) => {
           const selectionActive = Boolean(board.selectedKeys?.size);
@@ -332,7 +332,7 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leadi
   const boardTotal = [...columns.map(col => col.id), ''].reduce((sum, id) => sum + (totals[id] || 0), 0);
 
   return (
-    <div className='flex flex-col h-full select-none'>
+    <div className='kanban-view flex flex-col h-full select-none'>
       {/* Kanban Top Toolbar */}
       <div className='flex items-center justify-between px-2 mb-3 flex-wrap gap-2 text-xs shrink-0'>
         <div className='kanban-leading flex items-center gap-3 min-w-0'>

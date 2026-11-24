@@ -91,7 +91,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { FilterChips } from './components/FilterChips.js';
 import { BrowseSplit } from './components/BrowseSplit.js';
 import { browsePath, phoneBrowseLayout } from './lib/browse-layout.js';
-import { browsePresentation, paneColumns } from './lib/browse-columns.js';
+import { paneColumns } from './lib/browse-columns.js';
 import { browseColumnCommands, useBrowseColumns } from './app/useBrowseColumns.js';
 import { BrowseColumns, LIST_COLUMN_ID, NOTEBOOK_COLUMN_ID } from './components/BrowseColumns.js';
 import { useNotebookAppearance } from './components/NotebookAppearance.js';
@@ -279,10 +279,8 @@ export const AppContent: React.FC = () => {
 
   /** The notebook whose folders the person folded under its row in the notebooks column; another notebook opens unfolded. */
   const [foldedTree, setFoldedTree] = useState<string | null>(null);
-  const presentation = phone ? 'list' : browsePresentation({ viewMode, noteAddress: Boolean(editorRoute.note) && noteLink.inFocus });
-  // Beside a note the address names, an old link's `view=kanban` lists the notes the board would have shown.
-  const listViewMode = !phone && viewMode === 'kanban' && presentation !== 'kanban' ? 'flat' : viewMode;
-  const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, highlightQuery, groupable, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode: listViewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
+  const presentation = !phone && viewMode === 'kanban' ? 'kanban' : 'list';
+  const { notebookRoot, folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, debouncedSearch, highlightQuery, groupable, groupedByFolder } = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
 
   const { handleOpenNote } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
@@ -293,7 +291,7 @@ export const AppContent: React.FC = () => {
   const { handleRestoreNoteFile, handleUpdateNoteStatus, handleOpenFolderIndex } = useNoteRestoration({ remote, readDraft, updateDraft, setEditingNote, navigate, returnTo, invalidateNotes, setGitStatus, setActionError, handleSaveNote, readNoteForChange, selectedNotebookId, canWriteNotebook, t, config, queryClient, queryScope, stageWorkingNote, revisionFor, location, liveLocked: note => liveActionLocked(note, 'other', liveDrafts) });
 
   // Multi-select and bulk actions (set status, add/remove tag, move to folder) for the browse views.
-  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode: listViewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
+  const { selectedNotes, selectedKeys, toggleSelect, clearSelection } = useNoteSelection({ displayedNotes, viewMode, selectedNotebookId, scopeKey: noteLink.inFocus ? returnTo : location.pathname + location.search });
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
   const bulkMoveNotebookId = selectedNotes.length > 0 && selectedNotes.every(note => note.notebookId === selectedNotes[0].notebookId) ? selectedNotes[0].notebookId : undefined;
   const bulkMoveNotebook = config?.notebooks.find(nb => nb.id === bulkMoveNotebookId);
@@ -496,7 +494,7 @@ export const AppContent: React.FC = () => {
     noteSearchPending.current = false;
     noteSearch.current.focus();
   }, [activeTab, phoneNoteScreen, columns.layout.notebooks, setFocusNarrowView]);
-  useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: notesColumns ? [...focusCommands, ...browseColumnCommands(columns, t)] : focusCommands });
+  useAppCommands({ t, setActiveTab: tab => void setActiveTab(tab), canCreateNote: canWrite, createNote: () => void createNote(), focusNoteSearch, noteEditorOpen, pageCommands: notesColumns ? [...focusCommands, ...browseColumnCommands(columns, t, presentation)] : focusCommands });
 
   const browseFocusMode = noteFocus.layout || phone || presentation === 'list' ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, rowMeta: !phone && presentation === 'list', openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // A phone's list screen beside a Focus shows the folders under the list, and the chips of the filters in force where the filters are out of sight.
@@ -504,17 +502,6 @@ export const AppContent: React.FC = () => {
   /** Whether the folders show beside the list (the notebooks column, or a phone's folders under its list), so the list keeps only the folder's index. */
   const folderTree = !phone || Boolean(layout.split);
   const openFilters = () => setPhoneFilterOpen(true);
-  /** The list header's switch: the board is `view=kanban` on the notebook's address, which a note's address leaves for. */
-  const choosePresentation = (next: typeof presentation) => {
-    if (next !== 'kanban') {
-      if (viewMode === 'kanban') setViewMode('flat');
-      return;
-    }
-    if (!editorRoute.note || !noteLink.inFocus) return setViewMode('kanban');
-    const notebookAddress = new URL(returnTo, 'https://workspace.invalid');
-    notebookAddress.searchParams.set('view', 'kanban');
-    navigate(notebookAddress.pathname + notebookAddress.search);
-  };
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
   const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
   const createNewKind = () => {
@@ -552,13 +539,13 @@ export const AppContent: React.FC = () => {
           <FolderLinks folders={immediateSubfolders} onSelect={setSelectedFolder}>{folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}</FolderLinks>
         </>
       )}
-      {(listViewMode === 'list' || listViewMode === 'flat') && (
+      {(viewMode === 'list' || viewMode === 'flat') && (
         <>
-          <FocusNoteList focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={canWriteFiles ? note => noteMove.moveNote(note)?.() : undefined} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} leading={listViewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={highlightQuery} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} groupOf={noteGroupOf} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
+          <FocusNoteList focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} canDelete={canWrite} confirmDelete={remote} notes={displayedNotes} loading={listResult.loading} uncommitted={listResult.uncommitted} hasFolderEntries={immediateSubfolders.length > 0 || Boolean(folderIndex)} onOpenNote={note => void openFromBrowse(note)} onDeleteNote={handleDeleteNote} onMoveNote={canWriteFiles ? note => noteMove.moveNote(note)?.() : undefined} onUpdateNoteStatus={handleUpdateNoteStatus} newKind={newKind} onNewNote={createNewKind} leading={viewMode === 'flat' && folderIndex ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} /> : undefined} highlightQuery={highlightQuery} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} groupOf={noteGroupOf} collapsedGroups={collapsedGroups} onToggleGroup={toggleGroup} />
           <NoteListSentinel hasMore={listResult.hasMore} loading={listResult.loadingMore} error={listResult.error} onLoadMore={listResult.loadMore} />
         </>
       )}
-      {listViewMode === 'kanban' && (
+      {viewMode === 'kanban' && (
         <KanbanView
           focusMode={browseFocusMode}
           statuses={notebookStatuses}
@@ -695,7 +682,7 @@ export const AppContent: React.FC = () => {
       path={listPath}
       count={filterProps.count}
       presentation={presentation}
-      onPresentationChange={choosePresentation}
+      onPresentationChange={next => { if (next !== presentation) setViewMode(next === 'kanban' ? 'kanban' : 'flat'); }}
       onCollapse={presentation === 'list' ? columns.toggleList : undefined}
       // Folded to its rail, the notebooks column leaves the folder to the path's menu.
       folderMenu={columns.layout.notebooks !== 'open' && route.kind === 'note'
@@ -874,7 +861,7 @@ export const AppContent: React.FC = () => {
                         )
                         : (
                           <main className='workspace-main notes-main'>
-                            <BrowseColumns layout={columns.layout} measure={columns.measure} merged={presentation !== 'list'} notebooks={notebookColumn} list={listColumn} note={noteFocus.layout ? focusArea : <p className='browse-note-empty'>{t('browse.noFocus')}</p>} restore={restoreColumns} />
+                            <BrowseColumns layout={columns.layout} measure={columns.measure} presentation={presentation} focusOpen={Boolean(noteFocus.layout) && !focusEmpty} notebooks={notebookColumn} list={listColumn} note={noteFocus.layout ? focusArea : <p className='browse-note-empty'>{t('browse.noFocus')}</p>} restore={restoreColumns} />
                           </main>
                         ))}
                       {activeTab === 'agent' && (

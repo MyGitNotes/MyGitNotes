@@ -2602,6 +2602,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'browse.view': '檢視',
   'browse.viewList': '清單',
   'browse.viewKanban': '看板',
+  'browse.resizeBoard': '調整看板與筆記的高度',
   'browse.statusButton': '狀態：{value}',
   'browse.statusAll': '全部',
   'browse.tagsButton': '標籤 · {count}',

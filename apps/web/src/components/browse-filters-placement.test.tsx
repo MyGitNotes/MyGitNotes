@@ -36,7 +36,8 @@ it('beside a note, the notebooks column holds the folders and the list column th
     <I18nProvider>
       <BrowseColumns
         layout={{ notebooks: 'open', list: true }}
-        merged={false}
+        presentation='list'
+        focusOpen
         notebooks={<NotebookColumn mode='open' columnId={NOTEBOOK_COLUMN_ID} notebooks={[notebook]} selectedNotebookId='life' onSelectNotebook={() => {}} counts={{ life: 7 }} current={<NotebookTree notebook={notebook} filters={controls} facets={facets} folders={folders} foldersLoading={false} foldersWritable selectedFolder={null} onSelectFolder={() => {}} onManageFiles={() => {}} expanded onToggleExpanded={() => {}} />} query='' onQueryChange={() => {}} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />}
         list={
           <NoteListColumn columnId={LIST_COLUMN_ID} notebookTitle='Life' path={[]} count={7} presentation='list' onPresentationChange={() => {}} onCollapse={() => {}} chips={<ListFilterButtons filters={controls} counts={listFacets(controls, facets)} notebookId='life' sortField='updated' sortOrder='desc' onSortChange={() => {}} sortable showHidden={false} hiddenNoteCount={0} onShowHiddenChange={() => {}} />}>

@@ -1,7 +1,8 @@
 import './browse-columns.css';
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { BrowseColumnsLayout } from '../lib/browse-columns.js';
+import { type ReactNode, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import type { BrowseColumnsLayout, BrowsePresentation } from '../lib/browse-columns.js';
 import { useTranslation } from '../lib/i18n/index.js';
+import { KanbanFocusSplit } from './KanbanFocusSplit.js';
 
 export const NOTEBOOK_COLUMN_ID = 'browse-notebooks';
 export const LIST_COLUMN_ID = 'browse-list';
@@ -10,8 +11,9 @@ export interface BrowseColumnsProps {
   layout: BrowseColumnsLayout;
   /** Measures the width the columns share. */
   measure?: (element: HTMLElement | null) => void;
-  /** The table or the board: the list column spans the note column, which stays mounted out of sight. */
-  merged: boolean;
+  presentation: BrowsePresentation;
+  /** The board takes the full height unless there is a note in the Focus. */
+  focusOpen: boolean;
   /** Column 1: the notebooks, open or as the rail. */
   notebooks: ReactNode;
   /** Column 2: the note list. */
@@ -38,16 +40,19 @@ type ListPhase = 'open' | 'closing' | 'closed' | 'opening';
  * switches; only their content follows. Folding the list hides it in place; the notebooks column turns into its rail inside the same element.
  * When the focused control goes with a fold, the keyboard moves to the toggle that brings that column back, else to the first toggle left.
  */
-export function BrowseColumns({ layout, measure, merged, notebooks, list, note, restore }: BrowseColumnsProps): JSX.Element {
+export function BrowseColumns({ layout, measure, presentation, focusOpen, notebooks, list, note, restore }: BrowseColumnsProps): JSX.Element {
   const { t } = useTranslation();
   const root = useRef<HTMLDivElement | null>(null);
   const focused = useRef<Element | null>(null);
-  const listShown = layout.list || merged;
+  const focusId = useId();
+  const board = presentation === 'kanban';
+  const split = board && focusOpen;
+  const listShown = layout.list || board;
   const [phase, setPhase] = useState<ListPhase>(listShown ? 'open' : 'closed');
   const [wasShown, setWasShown] = useState(listShown);
   if (wasShown !== listShown) {
     setWasShown(listShown);
-    setPhase(listShown ? (motionWelcome() ? 'opening' : 'open') : (motionWelcome() ? 'closing' : 'closed'));
+    setPhase(listShown ? (!board && motionWelcome() ? 'opening' : 'open') : (motionWelcome() ? 'closing' : 'closed'));
   }
   useEffect(() => {
     if (phase === 'closing') {
@@ -69,7 +74,7 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
     const target = toggles.find(toggle => column && toggle.getAttribute('aria-controls') === column) ?? toggles.find(toggle => toggle.getAttribute('aria-controls') === LIST_COLUMN_ID && !layout.list) ?? toggles[0];
     focused.current = null;
     target?.focus();
-  }, [layout.notebooks, layout.list, merged]);
+  }, [layout.notebooks, layout.list, board, split]);
   // Stable across renders: a new callback each render would hand `measure` null and the element again on every commit, and its state update
   // would render the page again without end.
   const attach = useCallback((element: HTMLDivElement | null) => {
@@ -82,7 +87,6 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
       className='browse-columns'
       data-notebooks={layout.notebooks}
       data-list={phase === 'open' ? 'open' : 'closed'}
-      data-merged={merged || undefined}
       onFocus={event => {
         focused.current = event.target;
       }}
@@ -91,22 +95,31 @@ export function BrowseColumns({ layout, measure, merged, notebooks, list, note, 
       }}
     >
       <aside id={NOTEBOOK_COLUMN_ID} className='browse-column browse-column-notebooks' aria-label={t('sidebar.notebooks')}>{notebooks}</aside>
-      <section
-        id={LIST_COLUMN_ID}
-        className='browse-column browse-column-list'
-        aria-label={t('browse.listColumn')}
-        hidden={phase === 'closed'}
-        {...(phase === 'closing' ? { inert: '' } : {})}
-        onTransitionEnd={event => {
-          if (event.target === event.currentTarget && phase === 'closing') setPhase('closed');
-        }}
-      >
-        {list}
-      </section>
-      <div className='browse-column browse-column-note' hidden={merged}>
-        {!layout.list && restore && <div className='browse-column-restore'>{restore}</div>}
-        <div className='browse-column-note-body'>{note}</div>
-      </div>
+      <KanbanFocusSplit
+        board={board}
+        split={split}
+        focusId={focusId}
+        list={
+          <section
+            id={LIST_COLUMN_ID}
+            className='browse-column browse-column-list'
+            aria-label={t('browse.listColumn')}
+            hidden={!board && phase === 'closed'}
+            {...(!board && phase === 'closing' ? { inert: '' } : {})}
+            onTransitionEnd={event => {
+              if (event.target === event.currentTarget && phase === 'closing') setPhase('closed');
+            }}
+          >
+            {list}
+          </section>
+        }
+        focus={
+          <div id={focusId} className='browse-column browse-column-note' hidden={board && !split}>
+            {!board && !layout.list && restore && <div className='browse-column-restore'>{restore}</div>}
+            {(!board || split) && <div className='browse-column-note-body'>{note}</div>}
+          </div>
+        }
+      />
     </div>
   );
 }

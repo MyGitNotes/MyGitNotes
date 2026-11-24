@@ -1,0 +1,23 @@
+.kanban-focus-split { display: contents; }
+.kanban-focus-split[data-board] {
+  display: grid;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 100fr) 0px minmax(0, 0fr);
+}
+.kanban-focus-split[data-split] { grid-template-rows: minmax(0, var(--kanban-board-share)) 8px minmax(0, var(--kanban-focus-share)); }
+.kanban-focus-split[data-board] > .browse-column-note { grid-row: 3; }
+/* At the smallest split, scroll the board body rather than squeezing its cards out entirely. */
+.kanban-focus-split[data-board][data-split] .browse-list-body { padding-bottom: 8px; }
+.kanban-focus-split[data-split] .kanban-view { min-height: 200px; }
+.kanban-focus-split[data-split] [data-kanban-columns] { padding-bottom: 8px; }
+.kanban-focus-split[data-split] .kanban-cards { min-height: 0; }
+.kanban-focus-divider { display: grid; place-items: center; background: var(--workspace-rail); cursor: row-resize; touch-action: none; user-select: none; }
+.kanban-focus-divider::after { content: ''; width: 32px; height: 2px; border-radius: 2px; background: var(--workspace-divider); }
+.kanban-focus-divider:is(:hover, :focus-visible)::after, [data-dragging] > .kanban-focus-divider::after { background: var(--color-primary); }
+.kanban-focus-divider:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+@media (prefers-reduced-motion: no-preference) {
+  .kanban-focus-split[data-split]:not([data-dragging]) { transition: grid-template-rows 160ms ease-out; }
+}
