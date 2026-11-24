@@ -134,7 +134,7 @@ class InfographicController {
     figure.addEventListener('dblclick', event => {
       if (widget.readOnly || (event.target as HTMLElement).closest('button, select, input, a, summary')) return;
       event.preventDefault();
-      if (problem) this.openMarkdown();
+      if (!block || problem) this.openMarkdown();
       else this.openEditor();
     });
     children.push(figure);

@@ -590,9 +590,11 @@ export function directiveBlockSpans(content: string, slides = false): { start: n
 }
 
 /** The line where the figure block (an infographic or an argument map) opened at `start` closes, tracking the containers nested in it; undefined when it never does. */
-function infographicEnd(lines: readonly string[], start: number, fenceLength: number): number | undefined {
+export function infographicEnd(lines: readonly string[], start: number, fenceLength: number): number | undefined {
   const fences = [fenceLength];
+  const inCode = fencedCodeLines();
   for (let j = start + 1; j < lines.length; j++) {
+    if (inCode(lines[j])) continue;
     const nested = parseDirectiveOpen(lines[j]);
     if (nested) {
       fences.push(nested.fenceLength);

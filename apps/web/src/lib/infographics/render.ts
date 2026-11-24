@@ -5,17 +5,14 @@
  * used; the app styles the figures from its theme tokens (`directives/infographics.css`).
  */
 
-import { escapeHtml, fill, type NoteLanguage, stringsFor } from '../directives.js';
+import { escapeHtml, fill, matchDirectiveClose, type NoteLanguage, parseDirectiveOpen, stringsFor } from '../directives.js';
 import type { TranslationKey } from '../i18n/en.js';
 import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, type InfographicKind, type InfographicRow, isLadderArrow, isLadderBridge, isLadderLink, isStrongField, ladderLinkField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
 
-/** A whole-figure error the blog fails its build on; the caller shows it in the figure's place. */
-export class InfographicError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'InfographicError';
-  }
-}
+import { attrOf, fail, highlightClass, type InfographicError, type InlineRenderer, tag } from './figure-html.js';
+import { processFlow } from './process.js';
+
+export { InfographicError } from './figure-html.js';
 
 export interface InfographicContext {
   /** Inline Markdown of the note's own dialect to HTML (emphasis, links, code, math), without a wrapping paragraph. */
@@ -27,31 +24,7 @@ export interface InfographicContext {
 /** More ticks than a figure can show come from a range far wider than its data; drawing them would hang the page. */
 const MAX_TICKS = 200;
 
-function fail(message: string): never {
-  throw new InfographicError(message);
-}
-
-// ---------------------------------------------------------------------------
-// HTML builders
-
-type AttrValue = string | number | boolean | string[] | undefined;
-
-/** `<name attrs>children</name>`; an empty class list, `false` and `undefined` leave the attribute out, `true` writes it bare. */
-function tag(name: string, attrs: Record<string, AttrValue> = {}, children: string | string[] = ''): string {
-  const parts = Object.entries(attrs).flatMap(([key, value]) => {
-    if (value === undefined || value === false) return [];
-    if (value === true) return [key];
-    const text = Array.isArray(value) ? value.join(' ') : String(value);
-    return Array.isArray(value) && !text ? [] : [`${key}="${escapeHtml(text)}"`];
-  });
-  const open = `<${name}${parts.length ? ` ${parts.join(' ')}` : ''}>`;
-  if (name === 'input') return open;
-  return `${open}${Array.isArray(children) ? children.join('') : children}</${name}>`;
-}
-
-const text = (value: string): string => escapeHtml(value);
-
-const highlightClass = (highlight: boolean): string[] => highlight ? ['is-highlight'] : [];
+const text = escapeHtml;
 
 // ---------------------------------------------------------------------------
 // Parsing helpers
@@ -63,11 +36,6 @@ interface Item {
 
 function itemsOf(rows: readonly InfographicRow[]): Item[] {
   return rows.map(row => ({ fields: row.fields, highlight: row.fields.some(isStrongField) }));
-}
-
-function attrOf(attrs: Record<string, string>, key: string): string | undefined {
-  const value = attrs[key];
-  return value === undefined ? undefined : value.trim();
 }
 
 function numberAttr(attrs: Record<string, string>, key: string): number | undefined {
@@ -93,10 +61,9 @@ function firstNumber(field: string | undefined): number | undefined {
   return numbers(plain(field))[0];
 }
 
-interface Renderer {
+interface Renderer extends InlineRenderer {
   /** The figure's own words, in the note's language. */
   strings: Record<TranslationKey, string>;
-  inline: (field: string | undefined) => string;
   /** A field that is only a number or range gets the directive's unit. */
   withUnit: (field: string | undefined, unit?: string) => string;
 }
@@ -632,16 +599,25 @@ let figureCount = 0;
  * HTML. Throws {@link InfographicError} for what the blog fails its build on.
  */
 export function renderInfographic(source: string, context: InfographicContext): string {
-  const block = parseInfographic(source);
-  if (!block) fail('not an infographic block');
-  const id = `ig-${++figureCount}`;
-  const palette = attrOf(block.attrs, 'palette');
+  const lines = source.trimEnd().split('\n');
+  const open = parseDirectiveOpen(lines[0]);
+  if (!open) fail('not an infographic block');
+  const palette = attrOf(open.attrs, 'palette');
   if (palette && !INFOGRAPHIC_PALETTES.includes(palette)) fail(`unknown palette "${palette}"`);
 
   const r = renderer(context);
-  const body = block.kind === 'key-numbers' ? keyNumbers(block, r) : block.kind === 'bars' ? bars(block, id, r) : block.kind === 'parts' ? parts(block, r) : block.kind === 'line' ? line(block, r) : block.kind === 'timeline' ? timeline(block, r) : block.kind === 'status-board' ? statusBoard(block, r) : block.kind === 'ladder' ? ladder(block, r) : map(block, r);
   // Only the data palettes draw differently; the blog's section palettes give the theme default.
   const dataPalette = palette && (['categorical', 'diverging', 'sequential'] as readonly string[]).includes(palette) ? palette : undefined;
+  if (open.name === 'process') {
+    const close = matchDirectiveClose(lines[lines.length - 1], open.fenceLength);
+    if (!close || close.trailing) fail('unclosed process block');
+    return frame(open.name, open.attrs, processFlow(lines.slice(1, -1).join('\n'), r), dataPalette, r, context.language);
+  }
+
+  const block = parseInfographic(source);
+  if (!block) fail('not an infographic block');
+  const id = `ig-${++figureCount}`;
+  const body = block.kind === 'key-numbers' ? keyNumbers(block, r) : block.kind === 'bars' ? bars(block, id, r) : block.kind === 'parts' ? parts(block, r) : block.kind === 'line' ? line(block, r) : block.kind === 'timeline' ? timeline(block, r) : block.kind === 'status-board' ? statusBoard(block, r) : block.kind === 'ladder' ? ladder(block, r) : map(block, r);
   // The bridge label's colon follows the note's language (full-width in Chinese, `:lang(en)` half-width).
   return frame(block.kind, block.attrs, body, dataPalette, r, block.kind === 'ladder' ? context.language : undefined);
 }

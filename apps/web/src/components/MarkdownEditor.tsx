@@ -13,7 +13,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { blockInsertion, DIRECTIVE_TEMPLATES, GRID_COLUMN_OPTIONS, localizedDirectiveSnippet } from '../lib/directive-editing.js';
 import { wrapImage } from '../lib/annotations/edit.js';
 import { INFOGRAPHIC_MENU, infographicTemplate } from '../lib/infographics/templates.js';
-import type { InfographicKind } from '../lib/infographics/model.js';
+import type { GridInfographicKind } from '../lib/infographics/model.js';
 import { kindLabel, kindPurpose } from './infographic-editor/labels.js';
 import './note-completion.css';
 import { copyLinePrompt } from '../lib/line-prompt-copy.js';
@@ -294,7 +294,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
     });
   };
   const insertDirective = (type = 'info', cols?: number) => insertBlockSource(localizedDirectiveSnippet(type, t, { cols }));
-  const insertInfographic = (kind: InfographicKind) => insertBlockSource(infographicTemplate(kind, t), true);
+  const insertInfographic = (kind: GridInfographicKind) => insertBlockSource(infographicTemplate(kind, t), true);
   const insertArgumentMap = () => insertBlockSource(t('argumentMap.template'));
 
   const insertTable = () => {

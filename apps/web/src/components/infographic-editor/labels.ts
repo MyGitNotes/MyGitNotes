@@ -1,7 +1,7 @@
 import type { TranslationKey } from '../../lib/i18n/en.js';
 import { en } from '../../lib/i18n/en.js';
 import { childNameKey } from '../../lib/infographics/grid.js';
-import { type AttrSpec, type CellIssue, childNameOf, type InfographicBlock, type InfographicKind, type InfographicProblem, KIND_SPECS } from '../../lib/infographics/model.js';
+import { type AttrSpec, type CellIssue, childNameOf, type InfographicBlock, type GridInfographicKind, type InfographicKind, type InfographicProblem, KIND_SPECS } from '../../lib/infographics/model.js';
 
 export type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
@@ -12,7 +12,7 @@ export const kindLabel = (t: Translate, kind: InfographicKind) => t(`infographic
 export const kindPurpose = (t: Translate, kind: InfographicKind) => t(`infographic.kind.${kind}.purpose` as TranslationKey);
 
 /** The header of grid column `index` of `kind`; columns past the kind's own are extra fields. */
-export function columnLabel(t: Translate, kind: InfographicKind, index: number): string {
+export function columnLabel(t: Translate, kind: GridInfographicKind, index: number): string {
   const column = KIND_SPECS[kind].columns[index];
   return column ? t(`infographic.column.${kind}.${column.key}` as TranslationKey) : t('infographic.editor.extraColumn', { number: index - KIND_SPECS[kind].columns.length + 1 });
 }
@@ -29,7 +29,7 @@ export function optionLabel(t: Translate, value: string): string {
 }
 
 /** The singular name of the kind's child container: scenario, series, lane or group. */
-export function childName(t: Translate, kind: InfographicKind): string {
+export function childName(t: Translate, kind: GridInfographicKind): string {
   const name = childNameOf(kind);
   return name ? t(`infographic.editor.child.${name}` as TranslationKey) : '';
 }

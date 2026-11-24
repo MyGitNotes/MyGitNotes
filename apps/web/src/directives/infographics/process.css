@@ -1,0 +1,21 @@
+/* A stage is a tinted card; the connector and travelling dot live in its gap. */
+ol.ig-process { display: grid; gap: 2.25rem; }
+.ig-figure .ig-stage { position: relative; min-width: 0; border: 1px solid var(--ig-line); border-radius: var(--radius-control, 6px); padding: 0.5rem 0.75rem 0.625rem 0.875rem; background: var(--ig-tint); overflow-wrap: anywhere; }
+.ig-figure .ig-stage.is-highlight { background: var(--ig-hl-tint); font-weight: inherit; }
+.ig-figure .ig-stage + .ig-stage::before,
+.ig-figure .ig-stage + .ig-stage::after { position: absolute; left: 1.5rem; content: ''; }
+.ig-figure .ig-stage + .ig-stage::before { top: calc(-2.25rem - 2px); height: 2.25rem; border-left: 2px solid var(--ig-neutral); }
+.ig-figure .ig-stage + .ig-stage::after { top: -0.6rem; margin-left: -0.35rem; border-top: 0.5rem solid var(--ig-neutral); border-right: 0.4rem solid transparent; border-left: 0.4rem solid transparent; }
+.ig-stage-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+.ig-stage-time { font-size: 0.8rem; font-weight: 700; color: var(--ig-hl); }
+.ig-stage-title { font-weight: 700; }
+.ig-figure .ig-stage-items { display: grid; gap: 0.3rem; margin-top: 0.4rem; }
+.ig-figure .ig-stage-items.is-many { grid-template-columns: repeat(auto-fill, minmax(min(100%, 10.5rem), 1fr)); gap: 0.4rem; }
+.ig-stage-item { display: grid; grid-template-columns: minmax(0, 1fr); }
+.ig-figure .ig-stage-items.is-many .ig-stage-item { border: 1px solid var(--ig-line); padding: 0.25rem 0.5rem; background: var(--color-surface); }
+.ig-stage-item-detail { font-size: 0.8rem; font-weight: 400; color: var(--color-muted); }
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes ig-stage-travel { from { transform: translateY(-2.25rem); } to { transform: translateY(-0.5rem); } }
+  .ig-figure .ig-stage + .ig-stage > .ig-stage-head::before { position: absolute; top: 0; left: 1.5rem; width: 0.6rem; height: 0.6rem; margin-left: -0.25rem; border-radius: 50%; background: var(--ig-hl); content: ''; animation: ig-stage-travel 1.2s ease-in-out infinite both; animation-delay: calc(var(--ig-i) * 0.4s); }
+}
