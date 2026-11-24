@@ -1,7 +1,7 @@
 import type { TranslationKey } from '../../lib/i18n/en.js';
 import { en } from '../../lib/i18n/en.js';
 import { childNameKey } from '../../lib/infographics/grid.js';
-import { type AttrSpec, type CellIssue, childNameOf, type InfographicBlock, type GridInfographicKind, type InfographicKind, type InfographicProblem, KIND_SPECS } from '../../lib/infographics/model.js';
+import { type AttrSpec, type CellIssue, childNameOf, type GridInfographicKind, type InfographicBlock, type InfographicKind, type InfographicProblem, KIND_SPECS } from '../../lib/infographics/model.js';
 
 export type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
 

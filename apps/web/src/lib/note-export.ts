@@ -6,6 +6,9 @@ import { currentAppearance, renderMermaidBlocks } from './mermaid.js';
 // Inlined because the print frame loads none of the app's stylesheets; Vite rewrites its font url()s to the served
 // asset paths, which the srcdoc frame resolves against the app's own URL.
 import KATEX_STYLE from 'katex/dist/katex.min.css?inline';
+import DECISION_STYLE from '../directives/infographics/decision.css?inline';
+import NESTED_STYLE from '../directives/infographics/nested.css?inline';
+import PROCESS_STYLE from '../directives/infographics/process.css?inline';
 
 const PRINT_STYLE = `
   body { margin: 0; padding: 0; font: 11pt/1.6 -apple-system, 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif; color: CanvasText; }
@@ -46,6 +49,16 @@ const PRINT_STYLE = `
   .ann-ref { font-weight: 700; text-decoration: none; }
   .ann-kind, .ann-state, .ann-by { margin-right: 0.5em; font-size: 9pt; opacity: 0.75; }
   .ann-comment { margin-left: 1.5em; }
+  /* Reuse the diagrams' layout and generated labels on paper, without depending on the app theme. */
+  .ig-figure:is(.ig-process, .ig-decision, .ig-nested) {
+    --color-surface: Canvas; --color-text: CanvasText; --color-muted: GrayText;
+    --ig-line: color-mix(in srgb, CanvasText 24%, Canvas); --ig-faint: var(--ig-line);
+    --ig-neutral: GrayText; --ig-tint: Canvas; --ig-hl: CanvasText; --ig-hl-tint: Canvas;
+    margin: 1em 0; line-height: 1.5;
+  }
+  .ig-figure:is(.ig-process, .ig-decision, .ig-nested) :where(p, ul, ol, li) { margin: 0; padding: 0; list-style: none; }
+  .ig-figure:is(.ig-process, .ig-decision, .ig-nested) .ig-title { font-weight: 700; }
+  .ig-figure:is(.ig-process, .ig-decision, .ig-nested) .ig-body { margin-top: 0.5em; }
   @page { margin: 18mm; }
 `;
 
@@ -83,7 +96,8 @@ export async function renderPrintableNote(content: string, notePath: string, err
 /** The standalone HTML document the print frame shows for a rendered note body. */
 export function printDocument(title: string, body: string): string {
   const escapedTitle = title.replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char] ?? char);
-  return `<!doctype html><html><head><meta charset='utf-8'><title>${escapedTitle}</title><style>${KATEX_STYLE}</style><style>${PRINT_STYLE}</style></head><body>${body}</body></html>`;
+  const lang = typeof document !== 'undefined' && document.documentElement.lang === 'zh-TW' ? 'zh-TW' : 'en';
+  return `<!doctype html><html lang='${lang}'><head><meta charset='utf-8'><title>${escapedTitle}</title><style>${KATEX_STYLE}</style><style>${PRINT_STYLE}\n${PROCESS_STYLE}\n${DECISION_STYLE}\n${NESTED_STYLE}</style></head><body>${body}</body></html>`;
 }
 
 /** Opens the browser's print dialog on the rendered note, where "Save as PDF" produces the file. */

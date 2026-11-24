@@ -13,10 +13,10 @@ interface Question {
 interface Branch {
   label: ListField;
   content: ListField;
-  next?: { question: Question; list: Tokens.List };
+  next?: { question: Question; list: Tokens.List; };
 }
 
-function itemParts(item: Tokens.ListItem): { fields: ListField[]; list?: Tokens.List } {
+function itemParts(item: Tokens.ListItem): { fields: ListField[]; list?: Tokens.List; } {
   const [paragraph, list, ...rest] = item.tokens.filter(token => token.type !== 'space');
   const inlines = paragraphInlines(paragraph);
   if (!inlines || (list && !isList(list)) || rest.length) fail('a decision item takes only one line and an optional list under it');

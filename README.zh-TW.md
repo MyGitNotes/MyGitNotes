@@ -93,6 +93,7 @@ Shell 環境變數仍優先於 `.env`。
 - frontmatter 寫 `type: slide` 的筆記是一份投影片，依標題讀：`---` 開始區塊，`##` 開始投影片，`###` 開始同一張的下一頁（`::vertical` 是錯誤，會提示改用 `###`）。`:::build` 讓清單項目、表格的列或其他區塊一步一步出現，`:::summary` 放講稿，`::block{minutes=5}` 與 `::slide{#id}` 設定區塊的屬性、替投影片命名，`::background{image="…" credit="…"}`（或 `video=`、`youtube=`，可加 `poster`、`start`、`end`、`dim`、`position`）替它所在的那一頁加背景，播放時在暗色遮罩下顯示，預覽則顯示靜態圖與出處。預覽會在每條 `---` 標出在那裡結束的區塊、替每個 `##`、`###` 標出投影片與頁、替步驟編號，投影片指令寫錯形式時顯示錯誤框。新增筆記選單有**投影片**範本，幾行就示範完這套結構。這裡不讀 `slideOptions.structure`；用 contour-deck 建置的部落格會讀，所以要放上部落格的筆記仍寫 `structure: headings`，範本就是這樣寫的。筆記工具列的**播放**用 [contour-deck](https://github.com/wayne930242/contour-deck) 把筆記開成全視窗的投影片（輪廓、步驟、換頁、講稿面板），**講稿**則開出可以在手機上捲動閱讀的講稿；第一次按播放時才下載投影片的程式。見[投影片筆記](docs/specs/2026-11-12-contour-deck/spec.md)。
 - `:en[English]` 寫出雙語頁面的英文行：在 Chinese 之下的小字淺色一行（`0.62em`；單獨成段時 `0.8em`），一般筆記、投影片預覽與播放（contour-deck 0.6.0）都有，行內 Markdown 照常生效。在投影片筆記中，`::en`、`:::en` 與任何屬性都是錯誤；只含 `:en[…]` 的段落屬於上方標題，不算該頁內容。
 - 文字行中的 `:qrcode{url="https://…" size="200"}` 與獨占一行的 `::qrcode{url="https://…"}` 會畫出該網址的 QR code（未指定 `size` 時 128 px，與部落格一致），在預覽、投影片預覽、即時編輯與播放中都有；QR code 本身仍是指向該網址的連結。**轉成 QR code**（命令面板、工具列、Mod+Shift+L）會把選取的文字或游標所在的網址轉成 QR code：行內選取變成 `:qrcode{…}`，整行變成 `::qrcode{…}`，Markdown 連結則保留連結、把 QR code 放在該行下方。
+- 用 Markdown 清單可畫出帶回流標記的流程圖、判準問答圖及集合包含圖；這三種圖直接改 Markdown，不走資料表格。見[資訊圖語法（英文）](docs/infographics.md)。
 - Agent 可透過本機 stdio 或遠端 Streamable HTTP MCP 連線，並使用具名唯讀或寫入授權。
 - 「檔案」頁可管理筆記本資料夾、筆記、文字檔與附件：上傳上限 3 MiB，讀取與修改上限 5 MiB，每次操作最多 200 個異動檔案。
 

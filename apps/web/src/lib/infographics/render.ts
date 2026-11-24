@@ -6,14 +6,14 @@
 
 import { escapeHtml, fill, matchDirectiveClose, type NoteLanguage, parseDirectiveOpen, stringsFor } from '../directives.js';
 import type { TranslationKey } from '../i18n/en.js';
-import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, type InfographicKind, type InfographicRow, isLadderArrow, isLadderBridge, isLadderLink, isStrongField, ladderLinkField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
+import { type GridInfographicKind, INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, type InfographicKind, type InfographicRow, isLadderArrow, isLadderBridge, isLadderLink, isStrongField, ladderLinkField, mapBase, MAX_SCENARIOS, numbers, parseInfographic, plainField, STATUS_VALUES } from './model.js';
 
 import { attrOf, fail, highlightClass, type InfographicError, type InlineRenderer, tag } from './figure-html.js';
 import { processFlow } from './process.js';
 import { decision } from './decision.js';
 import { nested } from './nested.js';
 
-const MARKDOWN_BODIES = { process: processFlow, decision, nested };
+const MARKDOWN_BODIES = { process: processFlow, decision, nested } satisfies Record<Exclude<InfographicKind, GridInfographicKind>, (body: string, r: InlineRenderer) => string>;
 
 function isMarkdownBodyKind(name: string): name is keyof typeof MARKDOWN_BODIES {
   return Object.hasOwn(MARKDOWN_BODIES, name);

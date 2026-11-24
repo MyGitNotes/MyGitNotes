@@ -9,7 +9,7 @@
 .ig-question-body { min-width: 0; }
 .ig-figure .ig-branches { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.45rem; margin-left: var(--ig-trunk-x); border-left: var(--ig-trunk-w) solid var(--ig-trunk); padding: 0.55rem 0 0 var(--ig-trunk-gap); }
 .ig-figure .ig-branch { display: flex; flex-wrap: wrap; gap: 0.2rem 0.5rem; align-items: baseline; }
-.ig-branch-label { max-width: 100%; font-size: 0.85rem; font-weight: 700; }
+.ig-branch-label { flex: 0 1 auto; min-width: 0; max-width: 100%; font-size: 0.85rem; font-weight: 700; }
 .ig-branch:not(.is-next) > .ig-branch-label::after { content: ' →'; font-weight: 400; color: var(--color-muted); }
 .ig-branch-result { flex: 0 1 auto; min-width: 0; }
 .ig-branch-result.is-highlight { border: 2px solid var(--ig-hl); border-radius: var(--radius-control, 6px); padding: 0.1rem 0.5rem; }
@@ -23,8 +23,4 @@
 @media (max-width: 35rem) { .ig-branch-result { flex-basis: 100%; } }
 @container (max-width: 35rem) { .ig-branch-result { flex-basis: 100%; } }
 
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .ig-question { animation: ig-rise ease-out both; animation-timeline: view(); animation-range: entry 15% cover 40%; }
-  }
-}
+@media screen and (prefers-reduced-motion: no-preference) { @supports (animation-timeline: view()) { .ig-question { animation: ig-rise ease-out both; animation-timeline: view(); animation-range: entry 15% cover 40%; } } }

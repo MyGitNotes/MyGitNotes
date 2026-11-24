@@ -11,8 +11,4 @@
 @media (max-width: 35rem) { .ig-figure .ig-ring { padding: 0.4rem 0.5rem 0.5rem; } }
 @container (max-width: 35rem) { .ig-figure .ig-ring { padding: 0.4rem 0.5rem 0.5rem; } }
 
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .ig-ring { animation: ig-fade ease-out both; animation-timeline: view(); animation-range: entry 15% cover 40%; }
-  }
-}
+@media screen and (prefers-reduced-motion: no-preference) { @supports (animation-timeline: view()) { .ig-ring { animation: ig-fade ease-out both; animation-timeline: view(); animation-range: entry 15% cover 40%; } } }

@@ -33,17 +33,7 @@ describe('process', () => {
     expect(stages[3].classList.contains('is-highlight')).toBe(true);
   });
 
-  it.each([
-    ['no stages', '- a', /process needs :::stage children/],
-    ['untitled stage', ':::stage\n- a\n:::', /every process stage needs a title/],
-    ['blank title', stage('  '), /every process stage needs a title/],
-    ['a self-target', stage('甲', '- ↺ 甲'), /↺ 甲 must name an earlier stage/],
-    ['a later target', [stage('甲'), stage('乙', '- ↺ 丙'), stage('丙')].join('\n'), /↺ 丙 must name an earlier stage/],
-    ['an absent target', [stage('甲'), stage('乙', '- ↺ A')].join('\n'), /↺ A must name an earlier stage/],
-    ['three fall-backs', [stage('甲'), stage('乙'), stage('丙', '- ↺ 甲\n- ↺ 乙\n- ↺ 甲｜又一次')].join('\n'), /at most 2 ↺ markers/],
-    ['a third field', [stage('甲'), stage('乙', '- ↺ 甲｜條件｜多')].join('\n'), /takes ↺ 目標步驟｜條件/],
-    ['an empty target', [stage('甲'), stage('乙', '- ↺｜條件')].join('\n'), /takes ↺ 目標步驟｜條件/],
-  ])('shows the infographic error for %s', (_label, body, message) => {
+  it.each([['no stages', '- a', /process needs :::stage children/], ['untitled stage', ':::stage\n- a\n:::', /every process stage needs a title/], ['blank title', stage('  '), /every process stage needs a title/], ['a self-target', stage('甲', '- ↺ 甲'), /↺ 甲 must name an earlier stage/], ['a later target', [stage('甲'), stage('乙', '- ↺ 丙'), stage('丙')].join('\n'), /↺ 丙 must name an earlier stage/], ['an absent target', [stage('甲'), stage('乙', '- ↺ A')].join('\n'), /↺ A must name an earlier stage/], ['three fall-backs', [stage('甲'), stage('乙'), stage('丙', '- ↺ 甲\n- ↺ 乙\n- ↺ 甲｜又一次')].join('\n'), /at most 2 ↺ markers/], ['a third field', [stage('甲'), stage('乙', '- ↺ 甲｜條件｜多')].join('\n'), /takes ↺ 目標步驟｜條件/], ['an empty target', [stage('甲'), stage('乙', '- ↺｜條件')].join('\n'), /takes ↺ 目標步驟｜條件/]])('shows the infographic error for %s', (_label, body, message) => {
     const doc = draw(`Before.\n\n${process(body)}\n\nAfter.`);
     expect(doc.querySelector('.ig-error-message')?.textContent ?? '').toMatch(message);
     expect(doc.querySelector('figure')).toBeNull();

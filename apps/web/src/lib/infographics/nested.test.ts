@@ -31,18 +31,7 @@ describe('nested', () => {
     expect(doc.querySelector('.ig-ring[style="--ig-i:4"] .ig-ring-note')).toBeNull();
   });
 
-  it.each([
-    ['one range', '- 只有一層', /2 to 5 ranges/],
-    ['six ranges', '- a\n- b\n- c\n- d\n- e\n- f', /2 to 5 ranges/],
-    ['a sublist', '- a\n  - b\n- c', /flat list written from outside in/],
-    ['a second paragraph', '- a\n\n  多一段\n- b', /flat list written from outside in/],
-    ['a third field', '- a｜b｜c\n- d', /名稱｜說明/],
-    ['an empty name', '- ｜說明\n- d', /名稱｜說明/],
-    ['an empty note', '- a｜\n- b', /名稱｜說明/],
-    ['other content before the list', '段落\n\n- a\n- b', /takes only one list/],
-    ['other content after the list', '- a\n- b\n\n段落', /takes only one list/],
-    ['multiple lists', '- a\n\n* b', /takes only one list/],
-  ])('shows the infographic error for %s', (_label, body, message) => {
+  it.each([['one range', '- 只有一層', /2 to 5 ranges/], ['six ranges', '- a\n- b\n- c\n- d\n- e\n- f', /2 to 5 ranges/], ['a sublist', '- a\n  - b\n- c', /flat list written from outside in/], ['a second paragraph', '- a\n\n  多一段\n- b', /flat list written from outside in/], ['a third field', '- a｜b｜c\n- d', /名稱｜說明/], ['an empty name', '- ｜說明\n- d', /名稱｜說明/], ['an empty note', '- a｜\n- b', /名稱｜說明/], ['other content before the list', '段落\n\n- a\n- b', /takes only one list/], ['other content after the list', '- a\n- b\n\n段落', /takes only one list/], ['multiple lists', '- a\n\n* b', /takes only one list/], ['a link reference definition', '- a\n- b\n\n[ref]: /other', /takes only one list/]])('shows the infographic error for %s', (_label, body, message) => {
     const doc = draw(`Before.\n\n${nested(body)}\n\nAfter.`);
     expect(doc.querySelector('.ig-error-message')?.textContent ?? '').toMatch(message);
     expect(doc.querySelector('figure')).toBeNull();
