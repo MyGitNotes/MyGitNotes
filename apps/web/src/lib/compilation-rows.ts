@@ -1,4 +1,4 @@
-import { compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
+import { type CompilationFile, compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { NotebookConfig } from './types.js';
@@ -63,6 +63,15 @@ export function parseCompilationNote(note: Pick<NoteListItem, 'path' | 'notebook
 
 /** The YAML a row is stored as. */
 export const compilationText = (row: CompilationRow) => serializeCompilation(compilationFile(row));
+
+/**
+ * A new file every deployment can open: until every one reads boards (the whiteboard spec's rollout), nothing creates
+ * an `arrangement: board` file, which an older Core refuses; a board is created as the graph it replaces, with its
+ * board data. An existing board file keeps its arrangement through edits.
+ */
+export const newCompilationFile = (file: CompilationFile): CompilationFile => file.arrangement === 'board' ? { ...file, arrangement: 'graph' } : file;
+/** A new row's form of `newCompilationFile`. */
+export const newCompilationRow = (row: CompilationRow): CompilationRow => row.view === 'board' ? { ...row, view: 'graph' } : row;
 
 /** What the note actions carry beside the YAML: the title, tags and status shown in listings. */
 export const compilationMetadata = (row: CompilationRow) => ({ title: row.name, tags: row.tags ?? [], ...(row.status ? { status: row.status } : {}) });

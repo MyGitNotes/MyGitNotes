@@ -47,12 +47,33 @@ export function takeCompilationExtensions(document: Document, knownKeys: Readonl
 /** Writes the known fields first, then the external fields in source order. */
 export function stringifyCompilationYaml(document: Document, extensions?: CompilationYamlExtensions): string {
   if (extensions && YAML.isMap(document.contents)) document.contents.items.push(...extensions.entries);
-  return document.toString({ lineWidth: 0 });
+  // A double-quoted scalar with line breaks stays on one line, as `\n`, however long: a board entry is one line.
+  return document.toString({ lineWidth: 0, doubleQuotedMinMultiLineLength: Number.MAX_SAFE_INTEGER });
+}
+
+/** Writes each entry of the board's lists as a one-line flow mapping, so moving a card changes one line and adding an arrow adds one. */
+function flowBoardEntries(document: Document) {
+  const board = document.get('board', true);
+  if (!YAML.isMap(board)) return;
+  for (const pair of board.items) {
+    if (!YAML.isSeq(pair.value)) continue;
+    for (const entry of pair.value.items) {
+      if (!YAML.isMap(entry)) continue;
+      entry.flow = true;
+      // A line break inside a flow mapping would spread it over lines; a double-quoted scalar writes it as `\n`.
+      YAML.visit(entry, {
+        Scalar(_key, scalar) {
+          if (typeof scalar.value === 'string' && /[\n\r]/.test(scalar.value)) scalar.type = 'QUOTE_DOUBLE';
+        },
+      });
+    }
+  }
 }
 
 /** Builds a fresh known section in the source schema so external tagged scalars can still stringify. */
 export function writeCompilationYaml(known: object, extensions?: CompilationYamlExtensions): string {
   const document = new YAML.Document(known, { schema: extensions?.schema });
   if (extensions?.directives) document.directives = extensions.directives.clone();
+  flowBoardEntries(document);
   return stringifyCompilationYaml(document, extensions);
 }

@@ -14,7 +14,7 @@ import { compilationRowItems, studyRowItems } from '../lib/compilation-content.j
 import { dragChapters } from '../lib/compilation-drag.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
-import { CompilationHeader } from './CompilationHeader.js';
+import { CompilationHeader, shownView } from './CompilationHeader.js';
 import { CompilationCard, type CompilationContentProps, compilationItemTitle } from './CompilationCard.js';
 import { NoteListSentinel } from './NoteListSentinel.js';
 import { useAltWheelHorizontalScroll } from '../lib/use-alt-wheel-horizontal-scroll.js';
@@ -124,8 +124,9 @@ export function CompilationLane({ row, graph, dragDisabled, disabled, study, fac
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
+  const view = shownView(row.view), graphed = view === 'graph';
   // Cards show a body, so the lane's page is read with content; a graph lane needs none.
-  const laneNotes = useLaneNotes(row, { content: row.view !== 'graph' });
+  const laneNotes = useLaneNotes(row, { content: !graphed });
   // While a card edits, its autosaves must not move or drop anything: the notes keep the copies they had (a note that leaves the loaded page stays a note card), the items their order (E11).
   const notes = useHeldNotes(laneNotes.notes);
   const content: CompilationContentProps = { notebooks, assets, onOpen, notes };
@@ -135,11 +136,11 @@ export function CompilationLane({ row, graph, dragDisabled, disabled, study, fac
   const canDrag = editable && !row.study?.status && !dragDisabled;
   const custom = row.kind === 'custom';
   const chapters = dragChapters(items, !custom && row.group === 'folder');
-  const drop = useDroppable({ id: `lane:${row.id}`, disabled: !canDrag || !custom || row.view === 'graph', data: { empty: custom && !row.items.length } });
+  const drop = useDroppable({ id: `lane:${row.id}`, disabled: !canDrag || !custom || graphed, data: { empty: custom && !row.items.length } });
   const remove = (id: string) => editable && custom && !row.study?.status && onRemove ? () => onRemove(id) : undefined;
   // A narrow compilation lists its cards top to bottom: nothing scrolls sideways, and cards sort along the column.
   const vertical = useLaneOrientation(host) === 'vertical';
-  useAltWheelHorizontalScroll(host, strip, undefined, row.view !== 'graph' && !vertical);
+  useAltWheelHorizontalScroll(host, strip, undefined, !graphed && !vertical);
   // Crossing the width threshold only changes CSS and the sorting strategy, so a card that edits keeps its editor and unsaved text; it is scrolled back into view (L7).
   const editingSlot = useCompilationEditingContext().editing?.slot;
   const seenVertical = useRef(vertical);
@@ -155,9 +156,9 @@ export function CompilationLane({ row, graph, dragDisabled, disabled, study, fac
     if (context) onCreateNote?.(context);
   };
   return (
-    <section id={`screen-lane-${row.id}`} ref={host} data-orientation={row.view === 'graph' ? undefined : vertical ? 'vertical' : 'horizontal'} className={`screen-lane screen-view-${row.view} ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`} aria-label={row.name}>
-      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onArrange={onArrange} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={row.view === 'graph' || vertical ? undefined : scrollButton} />
-      {row.view === 'graph' ? graph : (
+    <section id={`screen-lane-${row.id}`} ref={host} data-orientation={graphed ? undefined : vertical ? 'vertical' : 'horizontal'} className={`screen-lane screen-view-${view} ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`} aria-label={row.name}>
+      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onArrange={onArrange} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={graphed || vertical ? undefined : scrollButton} />
+      {graphed ? graph : (
         <div ref={readOnly ? undefined : drop.setNodeRef} className={!readOnly && drop.isOver ? 'screen-drop-target' : ''}>
           <div ref={strip} className='screen-lane-strip' tabIndex={0} aria-label={`${row.name} · ${t('screen.items')}`}>
             <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>

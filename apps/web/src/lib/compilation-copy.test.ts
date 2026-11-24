@@ -21,6 +21,15 @@ describe('planCompilationCopy', () => {
     expect(parseCompilation(plan.content, ['notes/life']).status).toBe('inbox');
   });
 
+  it('creates the copy of a board as the graph older Cores read, with its board on the fresh item ids', async () => {
+    const board: CompilationRow = { ...row, view: 'board', items: [{ id: 'n1', kind: 'note', notebookId: 'life', path: 'notes/life/a.md' }], board: { cards: [{ item: 'n1', x: 4, y: 8 }], texts: [{ id: 't1', x: 0, y: 0, text: 'T' }] } };
+    const plan = await planCompilationCopy(board);
+    const copy = parseCompilation(plan.content, ['notes/life']);
+    expect(copy.arrangement).toBe('graph');
+    expect(copy.board).toEqual({ cards: [{ item: copy.items![0].id, x: 4, y: 8 }], texts: [{ id: 't1', x: 0, y: 0, text: 'T' }] });
+    expect(copy.items![0].id).not.toBe('n1');
+  });
+
   it('stays without a status when the notebook has none', async () => {
     const plan = await planCompilationCopy(row);
     expect(plan.metadata).not.toHaveProperty('status');

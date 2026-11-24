@@ -4,6 +4,12 @@ import { NOTEBOOK_KEY_MAX_LENGTH, parseNotebookKey } from './notebook-key.js';
 import { type StudyProgression, StudyProgressionSchema } from './study-stages.js';
 import { isNoteHidden } from './note-status.js';
 import { type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
+import { boardCounts, BoardSchema, checkBoard, type CompilationBoard, fitBoard, orderedBoard, relocateBoard, remapBoardItems } from './compilation-board.js';
+import { COMPILATION_MAX_HEADINGS, COMPILATION_MAX_ORDER, compilationId as id, compilationRepoPath as repoPath } from './compilation-primitives.js';
+
+export * from './compilation-board.js';
+export * from './board-placement.js';
+export { COMPILATION_MAX_HEADINGS, COMPILATION_MAX_ORDER };
 
 /** The workspace `schema_version` that replaced the Screen file with compilation files. */
 export const COMPILATION_SCHEMA_VERSION = 3;
@@ -13,15 +19,8 @@ export const COMPILATION_SUFFIX = '.compilation.yml';
 export const COMPILATION_MAX_BYTES = 512 * 1024;
 /** The cap on content items: notes, folders, assets and videos. Chapter headings have their own cap. */
 export const COMPILATION_MAX_ITEMS = 100;
-export const COMPILATION_MAX_HEADINGS = 100;
-/** A manual order names every member of a dynamic compilation, which can outgrow the pinned-item limit. */
-export const COMPILATION_MAX_ORDER = 2000;
 export const isCompilationPath = (file: string) => file.endsWith(COMPILATION_SUFFIX);
 
-const id = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
-/* eslint-disable no-control-regex -- Reject control characters in persisted paths, identifiers or filenames. */
-const repoPath = z.string().min(1).max(2048).refine(value => !/[\\\x00-\x1f\x7f]/.test(value) && value.split('/').every(part => part !== '' && part !== '.' && part !== '..'), 'Invalid workspace path');
-/* eslint-enable no-control-regex */
 const notebookId = z.string().min(1).max(NOTEBOOK_KEY_MAX_LENGTH);
 const videoId = z.string().regex(/^[\w-]{11}$/);
 const start = z.number().int().min(0).max(86400).default(0);
@@ -53,13 +52,14 @@ const SortSchema = z.object({ field: z.enum(['updated', 'created', 'title', 'sta
 const StudySchema = z.object({ filter: z.enum(['all', 'due', 'future', 'paused']), dueFirst: z.boolean(), status: z.string().max(200).optional() }).strict();
 const tag = z.string().trim().min(1).max(200);
 
-export const COMPILATION_ARRANGEMENTS = ['lane', 'book', 'graph'] as const;
+/** `board` is the whiteboard; `graph` is the arrangement it replaces, still read and written until the board is drawn. */
+export const COMPILATION_ARRANGEMENTS = ['lane', 'book', 'graph', 'board'] as const;
 export const COMPILATION_SIZES = ['thumbnail', 'small', 'medium'] as const;
 /** How a dynamic compilation derives its chapters: `folder` makes one chapter per folder that holds members. */
 export const COMPILATION_GROUPS = ['folder'] as const;
 
 /** The stored file; it never repeats the notebook, which the path decides. */
-const knownCompilationFields = z.object({ version: z.literal(1), id, title: z.string().trim().min(1).max(100), description: z.string().trim().max(500).nullish().transform(value => value || undefined), arrangement: z.enum([...COMPILATION_ARRANGEMENTS, 'stack']).transform(value => value === 'stack' ? 'book' as const : value), size: z.enum(COMPILATION_SIZES).optional(), tags: z.array(tag).max(100).optional(), status: z.string().trim().min(1).max(200).optional(), items: z.array(FileItemSchema).max(COMPILATION_MAX_ITEMS + COMPILATION_MAX_HEADINGS).optional(), source: FileSourceSchema.optional(), sort: SortSchema.optional(), group: z.enum(COMPILATION_GROUPS).optional(), manualOrder: z.array(repoPath).max(COMPILATION_MAX_ORDER).optional(), study: StudySchema.optional(), progression: StudyProgressionSchema.optional(), graph: GraphLayoutSchema.optional() });
+const knownCompilationFields = z.object({ version: z.literal(1), id, title: z.string().trim().min(1).max(100), description: z.string().trim().max(500).nullish().transform(value => value || undefined), arrangement: z.enum([...COMPILATION_ARRANGEMENTS, 'stack']).transform(value => value === 'stack' ? 'book' as const : value), size: z.enum(COMPILATION_SIZES).optional(), tags: z.array(tag).max(100).optional(), status: z.string().trim().min(1).max(200).optional(), items: z.array(FileItemSchema).max(COMPILATION_MAX_ITEMS + COMPILATION_MAX_HEADINGS).optional(), source: FileSourceSchema.optional(), sort: SortSchema.optional(), group: z.enum(COMPILATION_GROUPS).optional(), manualOrder: z.array(repoPath).max(COMPILATION_MAX_ORDER).optional(), study: StudySchema.optional(), progression: StudyProgressionSchema.optional(), graph: GraphLayoutSchema.optional(), board: BoardSchema.optional() });
 const knownCompilationKeys = new Set(Object.keys(knownCompilationFields.shape));
 export const CompilationFileSchema = knownCompilationFields.superRefine((file, context) => {
   if ((file.items === undefined) === (file.source === undefined)) context.addIssue({ code: 'custom', message: 'Give exactly one of items or source', path: ['items'] });
@@ -75,6 +75,7 @@ export const CompilationFileSchema = knownCompilationFields.superRefine((file, c
     if (ids.has(item.id)) context.addIssue({ code: 'custom', message: `Duplicate item id ${item.id}`, path: ['items'] });
     ids.add(item.id);
   }
+  if (file.board) checkBoard(file.board, { items: file.items, group: file.group }, (message, path) => context.addIssue({ code: 'custom', message, path }));
 });
 // Opaque to MGN and not part of any listing/API metadata. Enumerable so row and file spreads carry it through edits.
 const compilationExtensions = Symbol('compilation extensions');
@@ -120,8 +121,8 @@ export function addToChapter<T extends { id: string; kind: string; }>(items: rea
   return [...items.slice(0, at), item, ...items.slice(at)];
 }
 
-export type CompilationView = 'thumbnail' | 'small' | 'medium' | 'graph' | 'book';
-export const COMPILATION_VIEWS: readonly CompilationView[] = ['thumbnail', 'small', 'medium', 'graph', 'book'];
+export type CompilationView = 'thumbnail' | 'small' | 'medium' | 'graph' | 'book' | 'board';
+export const COMPILATION_VIEWS: readonly CompilationView[] = ['thumbnail', 'small', 'medium', 'graph', 'book', 'board'];
 export interface CompilationStudy {
   filter: 'all' | 'due' | 'future' | 'paused';
   dueFirst: boolean;
@@ -139,11 +140,13 @@ interface CompilationRowBase extends CompilationExtraFields {
   /** The file's repository-relative path. */
   path: string;
   view: CompilationView;
-  /** The stored lane card size, kept while `view` is book or graph so switching back restores it. */
+  /** The stored lane card size, kept while `view` is book, graph or board so switching back restores it. */
   size?: CompilationFile['size'];
   tags?: string[];
   status?: string;
   graph?: GraphLayout;
+  /** Card positions, sections, text and arrows; kept whatever the arrangement, so switching back restores the board. */
+  board?: CompilationBoard;
   progression?: StudyProgression;
   study?: CompilationStudy;
 }
@@ -202,9 +205,9 @@ export function parseCompilation(raw: string, scope?: readonly string[]): Compil
 }
 
 export function serializeCompilation(file: CompilationFile): string {
-  const { version, id, title, arrangement, size, tags, status, items, source, sort, group, manualOrder, study, progression, graph } = file;
+  const { version, id, title, arrangement, size, tags, status, items, source, sort, group, manualOrder, study, progression, graph, board } = file;
   const description = file.description?.trim();
-  const ordered = { version, id, title, ...(description ? { description } : {}), arrangement, ...(size ? { size } : {}), ...(tags?.length ? { tags } : {}), ...(status ? { status } : {}), ...(items ? { items } : {}), ...(source ? { source } : {}), ...(sort ? { sort } : {}), ...(group ? { group } : {}), ...(manualOrder?.length ? { manualOrder } : {}), ...(study ? { study } : {}), ...(progression ? { progression } : {}), ...(graph ? { graph } : {}) };
+  const ordered = { version, id, title, ...(description ? { description } : {}), arrangement, ...(size ? { size } : {}), ...(tags?.length ? { tags } : {}), ...(status ? { status } : {}), ...(items ? { items } : {}), ...(source ? { source } : {}), ...(sort ? { sort } : {}), ...(group ? { group } : {}), ...(manualOrder?.length ? { manualOrder } : {}), ...(study ? { study } : {}), ...(progression ? { progression } : {}), ...(graph ? { graph } : {}), ...(board ? { board: orderedBoard(board) } : {}) };
   return writeCompilationYaml(ordered, file[compilationExtensions]);
 }
 
@@ -216,7 +219,7 @@ export function serializeCompilation(file: CompilationFile): string {
 export function compilationRow(file: CompilationFile, owner: { notebookId: string; path: string; }, notebookOf: (path: string) => string | undefined = () => undefined): CompilationRow {
   const notebookAt = (path: string) => notebookOf(path) ?? owner.notebookId;
   const view: CompilationView = file.arrangement === 'lane' ? file.size ?? 'small' : file.arrangement;
-  const base = { ...compilationExtraFields(file), id: file.id, name: file.title, notebookId: owner.notebookId, path: owner.path, view, ...(file.size ? { size: file.size } : {}), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}), ...(file.graph ? { graph: file.graph } : {}), ...(file.progression ? { progression: file.progression } : {}), ...(file.study ? { study: file.study } : {}) };
+  const base = { ...compilationExtraFields(file), id: file.id, name: file.title, notebookId: owner.notebookId, path: owner.path, view, ...(file.size ? { size: file.size } : {}), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}), ...(file.graph ? { graph: file.graph } : {}), ...(file.board ? { board: file.board } : {}), ...(file.progression ? { progression: file.progression } : {}), ...(file.study ? { study: file.study } : {}) };
   if (file.items) {
     return { ...base, kind: 'custom', items: file.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { ...item, notebookId: notebookAt(item.path) }) };
   }
@@ -233,12 +236,14 @@ export function compilationExtraFields(value?: CompilationExtraFields): Compilat
 
 /** The stored form of a lane model; the inverse of `compilationRow`. */
 export function compilationFile(row: CompilationRow): CompilationFile {
-  const lane = row.view !== 'graph' && row.view !== 'book';
+  const lane = row.view !== 'graph' && row.view !== 'book' && row.view !== 'board';
   const size = lane ? row.view as CompilationFile['size'] : row.size;
-  const common = { ...compilationExtraFields(row), version: 1 as const, id: row.id, title: row.name, arrangement: lane ? 'lane' as const : row.view as 'graph' | 'book', ...(size ? { size } : {}), ...(row.tags?.length ? { tags: row.tags } : {}), ...(row.status ? { status: row.status } : {}), ...(row.study ? { study: row.study } : {}), ...(row.progression ? { progression: row.progression } : {}), ...(row.graph ? { graph: row.graph } : {}) };
-  if (row.kind === 'custom') return { ...common, items: row.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { id: item.id, kind: item.kind, path: item.path, ...(item.kind === 'note' && item.anchor ? { anchor: item.anchor } : {}) }) };
+  const common = { ...compilationExtraFields(row), version: 1 as const, id: row.id, title: row.name, arrangement: lane ? 'lane' as const : row.view as 'graph' | 'book' | 'board', ...(size ? { size } : {}), ...(row.tags?.length ? { tags: row.tags } : {}), ...(row.status ? { status: row.status } : {}), ...(row.study ? { study: row.study } : {}), ...(row.progression ? { progression: row.progression } : {}), ...(row.graph ? { graph: row.graph } : {}) };
+  // Every way the app removes an item writes through here, so a removed item's card, section and arrows go with it.
+  const board = row.board && fitBoard(row.board, row.kind === 'custom' ? { items: row.items } : { group: row.group });
+  if (row.kind === 'custom') return { ...common, ...(board ? { board } : {}), items: row.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { id: item.id, kind: item.kind, path: item.path, ...(item.kind === 'note' && item.anchor ? { anchor: item.anchor } : {}) }) };
   const source = row.source.kind === 'tag' ? { kind: 'tag' as const, tag: row.source.tag } : { kind: 'folder' as const, path: row.source.path, recursive: row.source.recursive };
-  return { ...common, source, ...(row.sort ? { sort: row.sort } : {}), ...(row.group ? { group: row.group } : {}), ...(row.manualOrder?.length ? { manualOrder: row.manualOrder } : {}) };
+  return { ...common, ...(board ? { board } : {}), source, ...(row.sort ? { sort: row.sort } : {}), ...(row.group ? { group: row.group } : {}), ...(row.manualOrder?.length ? { manualOrder: row.manualOrder } : {}) };
 }
 
 export interface CompilationFields {
@@ -263,7 +268,7 @@ const fileTitle = (path: string) => path.split('/').pop()!.slice(0, -COMPILATION
 export function compilationFields(raw: string, path: string, scope?: readonly string[]): CompilationFields {
   try {
     const file = parseCompilation(raw, scope);
-    return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, ...(file.description ? { description: file.description } : {}), arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? listedItems(file.items) : { sourceKind: file.source!.kind, ...(file.group ? { group: file.group } : {}) }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}) } };
+    return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, ...(file.description ? { description: file.description } : {}), arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? listedItems(file.items) : { sourceKind: file.source!.kind, ...(file.group ? { group: file.group } : {}) }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}), ...(file.board ? { board: boardCounts(file.board) } : {}) } };
   } catch (error) {
     let value: unknown;
     try {
@@ -310,7 +315,10 @@ export function replaceCompilationTags(raw: string, tags: readonly string[]): st
   return stringifyCompilationYaml(document, extensions);
 }
 
-/** Rewrites the paths a compilation pins when files or folders move; returns the new text, or null when nothing it names moved. */
+/**
+ * Rewrites the paths a compilation pins when files or folders move; returns the new text, or null when nothing it
+ * names moved, or when the file has a board and is invalid before or after the move.
+ */
 export function relocateCompilation(raw: string, move: (path: string) => string): string | null {
   const document = YAML.parseDocument(raw);
   if (document.errors.length || !YAML.isMap(document.contents)) return null;
@@ -328,10 +336,59 @@ export function relocateCompilation(raw: string, move: (path: string) => string)
   if (value.source?.kind === 'folder') update(['source', 'path'], value.source.path);
   if (Array.isArray(value.manualOrder)) value.manualOrder.forEach((path, index) => update(['manualOrder', index], path));
   value.graph?.nodes?.forEach((node, index) => update(['graph', 'nodes', index, 'path'], node.path));
-  if (!edits.length) return null;
+  // Custom cards and arrows name item ids, whose own paths are rewritten above; a dynamic board names paths. A file
+  // with a board is rewritten only while it is valid, and only into a valid file: an invalid one shows its error and
+  // nothing overwrites it. Files without a board keep the older rule and follow every move.
+  const hasBoard = Object.hasOwn(value, 'board');
+  let board: CompilationBoard | undefined;
+  if (hasBoard) {
+    try {
+      board = parseCompilation(raw).board;
+    } catch {
+      return null;
+    }
+  }
+  const { edits: boardEdits, removals } = board ? relocateBoard(board, move) : { edits: [], removals: [] };
+  edits.push(...boardEdits);
+  if (!edits.length && !removals.length) return null;
+  const next = writeRelocated(document, raw, edits, removals);
+  if (hasBoard) {
+    try {
+      parseCompilation(next);
+    } catch {
+      return null;
+    }
+  }
+  return next;
+}
+
+function writeRelocated(document: YAML.Document, raw: string, edits: readonly { location: (string | number)[]; next: string; }[], removals: readonly (string | number)[][]): string {
   const extensions = takeCompilationExtensions(document, knownCompilationKeys);
-  for (const { location, next } of edits) document.setIn(location, next);
+  try {
+    for (const { location, next } of edits) document.setIn(location, next);
+    for (const location of removals) document.deleteIn(location);
+  } catch {
+    // An edit through an alias cannot be made in place: the known fields are written out plainly, each use of an alias its own copy.
+    const fresh = YAML.parseDocument(raw);
+    const freshExtensions = takeCompilationExtensions(fresh, knownCompilationKeys);
+    const plain = unshared(fresh.toJS({ maxAliasCount: 20 }));
+    for (const { location, next } of edits) setPlain(plain, location, next);
+    for (const location of removals) setPlain(plain, location, undefined);
+    return writeCompilationYaml(plain as object, freshExtensions);
+  }
   return stringifyCompilationYaml(document, extensions);
+}
+
+/** A copy of parsed YAML in which no two places share an object, as two uses of one alias do. */
+const unshared = (value: unknown): unknown => Array.isArray(value) ? value.map(unshared) : value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, unshared(entry)])) : value;
+
+/** Sets the value at a location of parsed YAML; `undefined` removes a list entry. */
+function setPlain(root: unknown, location: readonly (string | number)[], next: unknown) {
+  let parent = root as Record<string | number, unknown>;
+  for (const step of location.slice(0, -1)) parent = parent[step] as Record<string | number, unknown>;
+  const last = location[location.length - 1];
+  if (next === undefined && Array.isArray(parent)) parent.splice(Number(last), 1);
+  else parent[last] = next;
 }
 
 /** A file name stem from a title: letters and digits of any script, dashes between words. */
@@ -360,7 +417,8 @@ export function copyCompilation(file: CompilationFile, usedIds: Iterable<string>
   for (let n = 2; used.has(next); n++) next = `${file.id.slice(0, 64 - String(n).length - 6)}-copy-${n}`;
   const title = `${file.title} copy`.length <= 100 ? `${file.title} copy` : `${file.title.slice(0, 95).trimEnd()} copy`;
   const { [compilationExtensions]: _extensions, ...known } = file;
-  return { ...known, id: next, title, ...(file.items ? { items: file.items.map(item => ({ ...item, id: makeId() })) } : {}) };
+  const ids = new Map(file.items?.map(item => [item.id, makeId()]));
+  return { ...known, id: next, title, ...(file.items ? { items: file.items.map(item => ({ ...item, id: ids.get(item.id)! })) } : {}), ...(file.board ? { board: remapBoardItems(file.board, ids) } : {}) };
 }
 
 /** The file a copy of `path` is written to: `<name>-copy.compilation.yml` beside it. */
@@ -390,6 +448,18 @@ export function compilationNotes<T extends MemberNote>(row: CompilationRow, note
 }
 export function compilationNotePaths<T extends MemberNote>(row: CompilationRow, notes: T[]): string[] {
   return compilationNotes(row, notes).map(note => note.path);
+}
+
+/** Whether a compilation is a whiteboard: arranged as one (the graph arrangement it replaces included) or holding board data. */
+export const isBoardRow = (row: CompilationRow) => row.view === 'board' || row.view === 'graph' || row.board !== undefined;
+
+/**
+ * The boards a note is a card on: a custom board that pins it, or a dynamic board whose query takes it. `notes` is
+ * where the note's tags, status and metadata are read for a dynamic board; a note missing from it is on custom boards only.
+ */
+export function boardsContaining<T extends MemberNote>(note: { notebookId: string; path: string; }, rows: readonly CompilationRow[], notes: readonly T[]): CompilationRow[] {
+  const member = notes.find(candidate => candidate.notebookId === note.notebookId && candidate.path === note.path);
+  return rows.filter(row => isBoardRow(row) && (row.kind === 'custom' ? row.items.some(item => item.kind === 'note' && item.notebookId === note.notebookId && item.path === note.path) : member !== undefined && compilationNotes({ ...row, study: undefined }, [member]).length > 0));
 }
 
 /** The repository a notebook key names; a bare local id stands for itself. */
