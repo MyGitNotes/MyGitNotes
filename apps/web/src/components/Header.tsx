@@ -12,6 +12,7 @@ import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { AssistantDockToggle } from './assistant/AssistantDockToggle.js';
 import { usePiAgentOffer } from '../lib/pi-agent/session.js';
 import { type NewNoteActions, NewNoteMenu } from './NewNoteMenu.js';
+import { HeaderGitSync } from './HeaderGitSync.js';
 
 interface HeaderProps {
   /** Notebooks whose repository cannot serve them; the switcher marks them. */
@@ -41,7 +42,7 @@ interface HeaderProps {
 }
 
 /** The assistant dock's button, the command palette's, and the account controls: the header's right end, and a phone's Notes drawer where there is no header. */
-export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = false, onOpenCommands, accountControls, className = 'header-utilities' }: Pick<HeaderProps, 'activeTab' | 'setActiveTab' | 'navigationDisabled' | 'onOpenCommands' | 'accountControls'> & { className?: string; }) {
+export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = false, onOpenCommands, accountControls, syncControl, className = 'header-utilities' }: Pick<HeaderProps, 'activeTab' | 'setActiveTab' | 'navigationDisabled' | 'onOpenCommands' | 'accountControls'> & { className?: string; syncControl?: React.ReactNode; }) {
   const { t } = useTranslation();
   const dockOffer = usePiAgentOffer();
   // The button opens quick open on note search, the same as its chord.
@@ -49,6 +50,7 @@ export function HeaderUtilities({ activeTab, setActiveTab, navigationDisabled = 
   const paletteDetail = paletteKeys && formatKeys(paletteKeys, keyEnvironment).join(' ');
   return (
     <div className={className}>
+      {syncControl}
       {/* Where the assistant dock is offered, the Agents page opens from the dock's header instead, so the header shows one agent button; while the server has not yet said, the dock's own button waits disabled in its place. */}
       {dockOffer === 'none' && (
         <Tooltip label={t('nav.agent')}>
@@ -99,6 +101,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
           </Tooltip>
         </React.Fragment>
       ))}
+      {navOnly && <HeaderGitSync disabled={navigationDisabled} />}
     </nav>
   );
   // The Notes page's own actions; every other page shows only the notebook switcher and the utilities here.
@@ -138,7 +141,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
             )}
           </div>
           {notes && newNote && <NewNoteMenu {...newNote} />}
-          <HeaderUtilities activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={navigationDisabled} onOpenCommands={onOpenCommands} accountControls={accountControls} />
+          <HeaderUtilities syncControl={<HeaderGitSync disabled={navigationDisabled} />} activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={navigationDisabled} onOpenCommands={onOpenCommands} accountControls={accountControls} />
         </div>
       </div>
     </header>

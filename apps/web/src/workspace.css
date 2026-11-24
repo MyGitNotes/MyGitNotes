@@ -36,6 +36,7 @@
 .workspace-link-error { position: fixed; z-index: 100; bottom: 30px; left: 50%; transform: translateX(-50%); padding: 12px 16px; background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-line); border-radius: var(--radius-panel); box-shadow: var(--shadow-md); display: flex; align-items: center; gap: 16px; max-width: calc(100vw - 32px); }
 [data-workspace-link] { cursor: pointer; }
 .header-utilities { display: flex; align-items: center; gap: 10px; }
+.header-git-sync.ui-button { flex: none; justify-content: center; gap: 4px; padding-inline: 8px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .header-settings[aria-current='page'], .header-agent[aria-current='page'] { background: var(--workspace-selection); color: var(--color-text); }
 .header-user-menu { position: relative; }
 .header-user-button, .header-login { display: flex; align-items: center; gap: 7px; font-size: 12px; cursor: pointer; padding: 4px 7px; border-radius: 8px; color: var(--color-text); white-space: nowrap; }
@@ -586,6 +587,9 @@
   .workspace-header .header-nav .desktop-only { display: none !important; }
   .workspace-header .header-nav button { height: 56px; gap: 4px; padding: 4px 0; font-size: 11px; }
   .workspace-header .header-nav button svg { width: 20px; height: 20px; }
+  .workspace-header .header-nav .header-git-sync { align-self: center; min-height: 44px; height: 44px; padding: 2px; font-size: 11px; }
+  .workspace-header .header-nav .header-git-sync > svg { width: 14px; height: 14px; }
+  .workspace-header .header-nav .header-git-sync[aria-busy='true'] > span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .workspace-header .header-nav .mobile-nav-create { display: flex; width: 52px; height: 52px; justify-self: center; align-self: center; margin-top: -14px; padding: 0; border-radius: 9999px; color: var(--button-text); background: var(--button-bg); box-shadow: 0 6px 16px color-mix(in srgb, var(--color-primary) 36%, transparent); }
   .workspace-header .header-nav .mobile-nav-create:hover:not(:disabled) { color: var(--button-hover-text); background: var(--button-hover-bg); }
   .workspace-header .header-nav .mobile-nav-create:disabled { opacity: 0.45; }

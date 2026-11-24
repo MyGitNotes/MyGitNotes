@@ -125,7 +125,7 @@ it('streams a history event when the worktree commits', async () => {
   expect(watchedWorktreeCount()).toBe(0);
 });
 
-it('streams a change event when a file is added outside the app', async () => {
+it.each(['file', 'commit'])('streams a change event for a %s outside the app', async change => {
   vi.stubEnv('MYGITNOTES_SOURCE', 'local');
   vi.stubEnv('MYGITNOTES_LOCAL_PATH', root);
   vi.stubEnv('VERCEL', '');
@@ -150,11 +150,20 @@ it('streams a change event when a file is added outside the app', async () => {
   };
   await until('retry: 3000');
   await settle();
-  write('notes/a/added.md', '# Added\n');
-  await until('event: change');
-  expect(received).toMatch(/data: \{"repositories":\["[^"]+"\]\}/);
-
-  controller.abort();
+  try {
+    if (change === 'commit') git('commit', '--allow-empty', '-m', 'Advance HEAD without writing a worktree file');
+    else write('notes/a/added.md', '# Added\n');
+    // Fail promptly if an open stream never sends the expected event.
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+      await until('event: change');
+      expect(received).toMatch(/data: \{"repositories":\["[^"]+"\]\}/);
+    } finally {
+      clearTimeout(timeout);
+    }
+  } finally {
+    controller.abort();
+  }
   await settle();
   expect(watchedWorktreeCount()).toBe(0);
 });

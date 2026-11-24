@@ -72,10 +72,11 @@ function openWatcher(root: string): SharedWatcher {
 }
 
 /**
- * Calls `onChange` with the ids of the worktrees whose files changed, or that committed with `kind` `commits`,
- * at most once per debounce window. One watcher per worktree is shared by every subscriber; the returned function unsubscribes.
+ * Calls `onChange` with the ids of worktrees that changed in the requested ways, at most once per debounce window.
+ * One watcher per worktree is shared by every subscriber; the returned function unsubscribes.
  */
-export function watchWorktrees(worktrees: { id: string; root: string; }[], onChange: (ids: string[]) => void, kind: WatchKind = 'files'): () => void {
+export function watchWorktrees(worktrees: { id: string; root: string; }[], onChange: (ids: string[]) => void, kind: WatchKind | readonly WatchKind[] = 'files'): () => void {
+  const kinds = typeof kind === 'string' ? [kind] : kind;
   const changed = new Set<string>();
   let timer: NodeJS.Timeout | undefined;
   const subscriptions = worktrees.map(({ id, root }) => {
@@ -91,13 +92,13 @@ export function watchWorktrees(worktrees: { id: string; root: string; }[], onCha
         onChange(ids);
       }, WATCH_DEBOUNCE_MS);
     };
-    shared.listeners[kind].add(listener);
+    for (const kind of kinds) shared.listeners[kind].add(listener);
     return { key, shared, listener };
   });
   return () => {
     clearTimeout(timer);
     for (const { key, shared, listener } of subscriptions) {
-      shared.listeners[kind].delete(listener);
+      for (const kind of kinds) shared.listeners[kind].delete(listener);
       if (shared.listeners.files.size || shared.listeners.commits.size || watchers.get(key) !== shared) continue;
       closeWatcher(shared);
       watchers.delete(key);
@@ -111,5 +112,5 @@ export const watchedWorktreeCount = () => watchers.size;
 /** Subscribers watching one worktree, for tests; 0 when nothing watches it. */
 export function worktreeSubscriberCount(root: string): number {
   const shared = watchers.get(path.resolve(root));
-  return shared ? shared.listeners.files.size + shared.listeners.commits.size : 0;
+  return shared ? new Set([...shared.listeners.files, ...shared.listeners.commits]).size : 0;
 }

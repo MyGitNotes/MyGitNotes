@@ -2006,6 +2006,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'panel.pull': '只拉取',
   'panel.pullHint': '從 upstream 拉取 main，不推送。未 commit 的變更會先暫存，拉取後再放回。',
   'panel.syncStatus': '{upstream} · 待推送 {ahead} · 待拉取 {behind}',
+  'panel.headerSync': '待推送 {ahead} · 待拉取 {behind} — 按一下同步',
+  'panel.headerSyncSeveral': '待推送 {ahead} · 待拉取 {behind} — 開啟各儲存庫的同步區',
   'panel.syncStatusHint': '數字以最近一次 fetch 為準。',
   'panel.syncNow': '拉取並推送',
   'panel.syncing': '同步中…',

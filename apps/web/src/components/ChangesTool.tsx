@@ -9,7 +9,7 @@ import { Button } from './Button.js';
 import { DiffPreview } from './DiffPreview.js';
 import { EditorNotice } from './EditorNotice.js';
 import { GitPullSection } from './GitPullSection.js';
-import { GitSyncSection } from './GitSyncSection.js';
+import { ChangesSyncSections } from './ChangesSyncSections.js';
 
 interface ChangesToolProps {
   gitStatus: GitStatus | null;
@@ -20,20 +20,12 @@ interface ChangesToolProps {
   getPreview?: (file: FileChange) => string;
   writable: boolean;
   onSynced?: () => void;
-  /** Worktrees to sync; with more than one, each gets its own section. */
-  syncTargets?: SyncTarget[];
   /** The default worktree's absolute path, named in the pull failure prompt. */
   repoRoot?: string;
   /** Names a repository and branch; given when the workspace has several repositories, it groups changes under them. */
   repositoryHeading?: (repository: string | undefined) => string;
 }
-export interface SyncTarget {
-  id: string;
-  label: string;
-  gitStatus: GitStatus | null;
-}
-
-export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, syncTargets, repoRoot = '', repositoryHeading }: ChangesToolProps) {
+export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenCommitModal, remoteChanges, getPreview, writable, onSynced, repoRoot = '', repositoryHeading }: ChangesToolProps) {
   const { t } = useTranslation();
   const [localFiles, setFiles] = useState<FileChange[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
@@ -193,7 +185,7 @@ export function ChangesTool({ gitStatus, deletedNotes, onRestoreNote, onOpenComm
           </ul>
         </section>
       )}
-      {onSynced && (syncTargets && syncTargets.length > 1 ? syncTargets.map(target => <GitSyncSection key={target.id} repository={target.id} label={target.label} gitStatus={target.gitStatus} onSynced={onSynced} />) : <GitSyncSection gitStatus={gitStatus} onSynced={onSynced} />)}
+      <ChangesSyncSections />
       {onSynced && <GitPullSection onPulled={onSynced} repoRoot={repoRoot} upstream={gitStatus?.upstream} />}
       <Tooltip label='MyGitNotes by the MyGitNotes organization'>
         <a className='panel-credit' href='https://github.com/MyGitNotes/MyGitNotes' target='_blank' rel='noopener noreferrer'>

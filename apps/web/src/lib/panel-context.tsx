@@ -23,6 +23,8 @@ interface PanelContextValue {
   activeTool: PanelToolId;
   hasOpenNote: boolean;
   openTool: (id: PanelToolId) => void;
+  /** Opens a tool without toggling an already open tool closed. */
+  showTool: (id: PanelToolId) => void;
   close: () => void;
   /** A zoomed note or compilation mounts (`true`) or unmounts (`false`); every `true` is paired with a `false`. */
   setHasOpenNote: (open: boolean) => void;
@@ -49,16 +51,19 @@ export function PanelProvider({ children }: { children: ReactNode; }) {
     if (!isPhoneViewport()) savePanelState({ open: isOpen, tool: activeTool });
   }, [isOpen, activeTool]);
 
+  const showTool = (id: PanelToolId) => {
+    setActiveTool(id);
+    setIsOpen(true);
+  };
   const openTool = (id: PanelToolId) => {
     if (isOpen && activeTool === id) {
       setIsOpen(false);
       return;
     }
-    setActiveTool(id);
-    setIsOpen(true);
+    showTool(id);
   };
   const close = () => setIsOpen(false);
 
-  const value: PanelContextValue = { isOpen, activeTool, hasOpenNote, openTool, close, setHasOpenNote };
+  const value: PanelContextValue = { isOpen, activeTool, hasOpenNote, openTool, showTool, close, setHasOpenNote };
   return <PanelContext.Provider value={value}>{children}</PanelContext.Provider>;
 }
