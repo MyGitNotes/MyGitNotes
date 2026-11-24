@@ -46,14 +46,17 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
   const changeFilters: FilterControls['onChange'] = patch => {
     const { tags, notebookId: _notebookId, ...values } = patch;
     const next = { ...values, ...(tags ? { tag: tags } : {}) };
-    if (patch.folders && route.folder) {
+    const clearingNotesFolder = activeTab === 'notes' && !patch.kind && patch.folders?.length === 0;
+    if (clearingNotesFolder || (patch.folders && route.folder)) {
       const query = currentFilterSearch(next);
+      if (clearingNotesFolder) query.set('folder', '');
       void navigateFiltered(activeTab === 'graph' ? '/graph' : notebookRoute(selectedNotebookId), query);
     } else void setFilterQuery(next, { history: Object.keys(patch).length === 1 && 'q' in patch ? 'replace' : 'push' });
   };
   const clearFilters = () => {
     const query = currentFilterSearch({ q: '', kind: 'note', tag: [], folders: [], descendants: true, tagMode: 'any', status: null, live: [], showHidden: false, neighbors: false });
     query.delete('lanes');
+    if (activeTab === 'notes') query.set('folder', '');
     void navigateFiltered(activeTab === 'graph' ? '/graph' : notebookRoute(selectedNotebookId), query);
   };
   // Leaving the all-notebooks scope restores the folder filters chosen before it, within the current notebook.
@@ -112,6 +115,7 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
   };
   const setSelectedFolder = (folder: string | null) => {
     const query = currentFilterSearch({ folders: legacyFolderPaths(config?.notebooks || [], selectedNotebookId, folder), kind: 'note' });
+    if (folder === null) query.set('folder', '');
     void navigateFiltered(notebookRoute(selectedNotebookId), query);
   };
   const setViewMode = (mode: ViewMode) => {
