@@ -43,13 +43,12 @@ import { hasStoredFocusView } from './lib/focus-view.js';
 import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.js';
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
-import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, parseWorkspaceRoute } from './lib/routes.js';
+import { FOCUS_NOTE_STATE, notebookRoute, parseWorkspaceRoute } from './lib/routes.js';
 import { draftScope, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
 import { forgetNoteDrafts } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchGitStatus } from './lib/api.js';
 import { builtinNoteTemplates } from './lib/builtin-templates.js';
 import type { NotebookConfig, NoteItem } from './lib/types.js';
 import { useTagWorkspaceOperations } from './app/useTagWorkspaceOperations.js';
@@ -69,6 +68,7 @@ import { useTemplateManager } from './app/useTemplateManager.js';
 import { WorkspaceBanners } from './app/WorkspaceBanners.js';
 import { WorkspaceToasts } from './app/WorkspaceToasts.js';
 import { WorkspaceCommitModal } from './app/WorkspaceCommitModal.js';
+import { GraphRoute, NotebookUnavailableRoute, StudyRoute } from './app/WorkspacePages.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
@@ -107,14 +107,9 @@ import { RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js'
 import { useLeaveWarning } from './lib/use-leave-warning.js';
 import { useGistConfirm } from './components/GistConfirmDialog.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
-import { AlertCircle } from 'lucide-react';
-import { LoadingStatus } from './components/LoadingStatus.js';
 import { liveEditableKind } from './lib/live-api.js';
 import { useLiveHandover } from './app/useLiveHandover.js';
 import { liveActionLocked, liveDestinationFolder, type LiveDrafts, LiveDraftsProvider } from './components/live/live-drafts.js';
-
-const CompilationStudy = React.lazy(() => import('./components/CompilationStudy.js').then(module => ({ default: module.CompilationStudy })));
-const NotebookGraphPage = React.lazy(() => import('./components/NotebookGraphPage.js').then(module => ({ default: module.NotebookGraphPage })));
 
 /** A stable empty list while the workspace config loads, so the agent provider's value does not churn. */
 const NO_NOTEBOOKS: NotebookConfig[] = [];
@@ -402,18 +397,7 @@ export const AppContent: React.FC = () => {
                         />
                       }
                     >
-                      {notebookUnavailable && ['notes', 'assets', 'graph'].includes(activeTab) && (
-                        <main className='workspace-route notebook-unavailable'>
-                          <section role='alert' className='notebook-unavailable-card'>
-                            <AlertCircle aria-hidden='true' />
-                            <div>
-                              <h2>{t('notebook.unavailableTitle', { title: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.title ?? selectedNotebookId })}</h2>
-                              <p>{t(`notebook.unavailable.${notebookUnavailable.reason}`)}</p>
-                              <p className='notebook-unavailable-detail'>{notebookUnavailable.message}</p>
-                            </div>
-                          </section>
-                        </main>
-                      )}
+                      {notebookUnavailable && ['notes', 'assets', 'graph'].includes(activeTab) && <NotebookUnavailableRoute notebookTitle={selectedNotebook?.title ?? selectedNotebookId} unavailable={notebookUnavailable} />}
                       {!notebookUnavailable && activeTab === 'notes' && !route.study && renderNotesPage(focusArea)}
                       {activeTab === 'agent' && (
                         <main className='workspace-route agent-main'>
@@ -425,34 +409,8 @@ export const AppContent: React.FC = () => {
                           <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWriteFiles} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={new URLSearchParams(location.search).get('asset') || (new URLSearchParams(location.search).has('directory') ? `${folderRoot}/${config?.notebooks.find(nb => nb.id === selectedNotebookId)?.assets || 'assets'}${new URLSearchParams(location.search).get('directory') ? '/' + new URLSearchParams(location.search).get('directory') : ''}` : undefined)} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
                         </main>
                       )}
-                      {!notebookUnavailable && activeTab === 'notes' && route.study && (
-                        <React.Suspense fallback={<LoadingStatus className='p-8'>{t('screen.loading')}</LoadingStatus>}>
-                          <CompilationStudy
-                            key={`${selectedNotebookId}:${route.study}`}
-                            notebooks={config?.notebooks || []}
-                            folders={folders}
-                            notebookId={selectedNotebookId}
-                            path={route.study}
-                            onStudySaved={() => {
-                              if (remote) void refreshWorkspace(true);
-                              else invalidateNotes();
-                              void fetchGitStatus().then(result => setGitStatus(result.status)).catch(error => setActionError((error as Error).message));
-                            }}
-                            onOpenNote={handleOpenNote}
-                            onBack={() => {
-                              const notebook = config?.notebooks.find(nb => nb.id === selectedNotebookId);
-                              navigate(notebook ? noteRoute(notebook.id, route.study!.slice(notebook.root.length + 1)) : '/notes');
-                            }}
-                          />
-                        </React.Suspense>
-                      )}
-                      {!notebookUnavailable && activeTab === 'graph' && (
-                        <main className='workspace-route graph-main flex-1 w-full h-full relative min-h-0'>
-                          <React.Suspense fallback={<p role='status' className='p-8'>{t('graph.title')}</p>}>
-                            <NotebookGraphPage key={remote ? sourceId : repoRoot} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} filters={filterProps} folders={folders} />
-                          </React.Suspense>
-                        </main>
-                      )}
+                      {!notebookUnavailable && activeTab === 'notes' && route.study && <StudyRoute notebooks={config?.notebooks || []} folders={folders} notebookId={selectedNotebookId} notebook={selectedNotebook} path={route.study} remote={remote} refreshWorkspace={refreshWorkspace} invalidateNotes={invalidateNotes} setGitStatus={setGitStatus} setActionError={setActionError} handleOpenNote={handleOpenNote} navigate={navigate} />}
+                      {!notebookUnavailable && activeTab === 'graph' && <GraphRoute graphKey={remote ? sourceId : repoRoot} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} filters={filterProps} folders={folders} />}
                       {activeTab === 'settings' && (
                         <main className='workspace-route settings-main has-sidebar-drawer'>
                           <SettingsModal manifest={{ repositories, defaultRepository: sourceId, initialRepository: repositoryFor(selectedNotebookId)?.id ?? sourceId, onManifestRevision: setManifestRevision }} repositories={{ repositories, onMembershipChanged: membershipChanged, onOpenChanges: () => openCommitModal() }} recovery={nothingToShow} local={!remote} coreUpdates={coreUpdate} accountSettings={<AgentAccessSettings local={!remote} />} repositoryChoice={repositoryChoice && defaultRepository?.repository ? <RepositorySwitch repository={defaultRepository.repository} branch={defaultRepositoryBranch} /> : undefined} onRefreshWorkspace={refreshWorkspace} currentTheme={currentTheme} onSelectTheme={handleSelectTheme} />
