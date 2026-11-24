@@ -54,3 +54,12 @@ it('refuses to write a legacy graph that would grow past 512 KiB as a board, tho
   expect(() => writableCompilationText(row)).toThrow(/Big: not saved, the file would not open \(Compilation file exceeds 512 KiB\)/);
   expect(writableCompilationText({ ...row, board: undefined })).toContain('arrangement: board');
 });
+it('draws a legacy graph of more notes than a board holds, and marks it so no write loses the rest', () => {
+  const nodes = Array.from({ length: 2001 }, (_, index) => `    - { path: notes/nb1/${index}.md, x: ${index * 300}, y: 0 }`).join('\n');
+  const legacy = `version: 1\nid: wide\ntitle: Wide\narrangement: graph\nsource: { kind: tag, tag: x }\ngraph:\n  nodes:\n${nodes}\n`;
+  const parsed = parseCompilationNote({ ...note, content: legacy }, notebooks);
+  expect(parsed.row?.board?.cards).toHaveLength(2000);
+  expect(parsed.upgradeLoss).toBe('Wide: not saved, its legacy graph layout places 2001 notes and a whiteboard keeps 2000; remove positions from its graph section first');
+  // A layout that fits, or a file that already has a board, loses nothing.
+  expect(parseCompilationNote({ ...note, content: legacy.replace(/\n {4}- \{ path: notes\/nb1\/2000\.md.*\n$/, '\n') }, notebooks).upgradeLoss).toBeUndefined();
+});

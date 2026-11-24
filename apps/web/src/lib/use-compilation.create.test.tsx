@@ -4,10 +4,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 
 const create = vi.fn(async () => ({}));
-vi.mock('./compilation-actions.js', () => ({ useCompilationActions: () => ({ canWrite: () => true, create, save: vi.fn(), remove: vi.fn() }) }));
+const save = vi.fn(async () => ({}));
+let listed: unknown[] = [];
+vi.mock('./compilation-actions.js', () => ({ useCompilationActions: () => ({ canWrite: () => true, create, save, remove: vi.fn() }) }));
 vi.mock('./note-editing.js', () => ({ useEditorRegistry: () => () => () => {} }));
 let statuses: Record<string, number> = {};
-vi.mock('./use-note-queries.js', () => ({ useNoteList: () => ({ notes: [], uncommitted: [], loading: false, error: '', hasMore: false, loadingMore: false, loadMore: () => {} }), useNoteLookup: () => ({ notes: [], committed: [], loading: false, error: '' }), useNoteFacets: () => ({ facets: { life: { statuses } }, loading: false, error: '' }) }));
+vi.mock('./use-note-queries.js', () => ({ useNoteList: () => ({ notes: listed, uncommitted: [], loading: false, error: '', hasMore: false, loadingMore: false, loadMore: () => {} }), useNoteLookup: () => ({ notes: [], committed: [], loading: false, error: '' }), useNoteFacets: () => ({ facets: { life: { statuses } }, loading: false, error: '' }) }));
 const { useCompilations } = await import('./use-compilation.js');
 
 const notebooks = [{ id: 'life', title: 'Life', root: 'notes/life', statuses: ['inbox', 'done'] }];
@@ -16,6 +18,8 @@ const lane: CompilationRow = { id: 'g1', path: '', notebookId: 'life', name: 'La
 afterEach(() => {
   vi.useRealTimers();
   create.mockClear();
+  save.mockClear();
+  listed = [];
   statuses = {};
 });
 
@@ -64,4 +68,21 @@ it('refuses a row whose file would not open again, writing nothing and saying wh
   expect(create).not.toHaveBeenCalled();
   expect(result.current.page.rows).toEqual([]);
   expect(result.current.error).toMatch(/Big: not saved, the file would not open \(Compilation file exceeds 512 KiB\)/);
+});
+
+it('draws but never writes a legacy graph whose positions a board cannot keep', async () => {
+  vi.useFakeTimers();
+  const nodes = Array.from({ length: 2001 }, (_, index) => `    - { path: notes/life/${index}.md, x: ${index * 300}, y: 0 }`).join('\n');
+  const content = `version: 1\nid: wide\ntitle: Wide\narrangement: graph\nsource: { kind: tag, tag: x }\ngraph:\n  nodes:\n${nodes}\n`;
+  listed = [{ id: 'wide', path: 'notes/life/wide.compilation.yml', notebookId: 'life', title: 'Wide', content, metadata: {}, tags: [] }];
+  const { result } = renderHook(() => useCompilations('life', notebooks as never));
+  const [row] = result.current.page.rows;
+  expect(row.view).toBe('board');
+  act(() => result.current.change({ rows: [{ ...row, view: 'book' }] }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(save).not.toHaveBeenCalled();
+  expect(result.current.page.rows[0].view).toBe('board');
+  expect(result.current.error).toMatch(/Wide: not saved, its legacy graph layout places 2001 notes/);
 });

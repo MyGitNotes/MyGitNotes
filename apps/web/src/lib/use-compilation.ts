@@ -47,6 +47,8 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   const register = useEditorRegistry();
   const parsed = useMemo(() => entries.map(entry => parseCompilationNote(entry, notebooks)), [entries, notebooks]);
   const stored = useMemo(() => parsed.flatMap(entry => entry.row ? [entry.row] : []), [parsed]);
+  // Files a write would lose positions of: drawn, never written.
+  const lossy = useMemo(() => new Map(parsed.flatMap(entry => entry.row && entry.upgradeLoss ? [[entry.path, entry.upgradeLoss] as const] : [])), [parsed]);
   // Rows edited here and not yet seen in the stored files; null stands for a deleted file.
   const [pending, setPending] = useState<Record<string, CompilationRow | null>>({});
   const [error, setError] = useState('');
@@ -58,9 +60,9 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     return result;
   }, [stored, pending]);
 
-  const latest = useRef({ pending, stored, entries, rows, actions, newPath, initialStatus });
+  const latest = useRef({ pending, stored, entries, rows, actions, newPath, initialStatus, lossy });
   /* eslint-disable react/refs -- The write timer and the unmount flush read the newest state without restarting. */
-  latest.current = { pending, stored, entries, rows, actions, newPath, initialStatus };
+  latest.current = { pending, stored, entries, rows, actions, newPath, initialStatus, lossy };
   /* eslint-enable react/refs */
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inflight = useRef<Promise<void>>(Promise.resolve());
@@ -133,7 +135,12 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     const refused: string[] = [];
     for (const row of [...writes.save, ...created]) {
       if (!api.canWrite(row.notebookId)) continue;
-      // A row whose file would not open again is not written; its stored file and the rows shown stay as they were.
+      // A row whose file would not open again, or would lose a legacy layout's positions, is not written; its stored file and the rows shown stay as they were.
+      const loss = latest.current.lossy.get(row.path);
+      if (loss) {
+        refused.push(loss);
+        continue;
+      }
       try {
         writableCompilationText(row);
       } catch (caught) {
