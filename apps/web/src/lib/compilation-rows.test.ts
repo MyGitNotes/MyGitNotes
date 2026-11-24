@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { NotebookConfig } from './types.js';
-import { compilationText, parseCompilationNote } from './compilation-rows.js';
+import { compilationText, parseCompilationNote, writableCompilationText } from './compilation-rows.js';
 
 const notebooks: NotebookConfig[] = [{ id: 'nb1', title: 'NB1', root: 'notes/nb1' }];
 const content = 'version: 1\nid: dup\ntitle: Dup\narrangement: lane\nsource:\n  kind: tag\n  tag: x\n';
@@ -43,4 +43,14 @@ it('reads the graph arrangement as a board, its legacy layout as cards, and writ
   const text = compilationText(row);
   expect(text).toContain('arrangement: board\n');
   expect(text).not.toContain('graph');
+});
+it('refuses to write a legacy graph that would grow past 512 KiB as a board, though the legacy file opens', () => {
+  const nodes = Array.from({ length: 2000 }, (_, index) => `    - { path: notes/nb1/${index}-${'n'.repeat(210)}.md, x: 0, y: ${index * 152} }`).join('\n');
+  const legacy = `version: 1\nid: big\ntitle: Big\narrangement: graph\nsource: { kind: tag, tag: x }\ngraph:\n  nodes:\n${nodes}\n`;
+  expect(new TextEncoder().encode(legacy).length).toBeLessThan(512 * 1024);
+  const parsed = parseCompilationNote({ ...note, content: legacy }, notebooks);
+  expect(parsed.error).toBeUndefined();
+  const row = parsed.row!;
+  expect(() => writableCompilationText(row)).toThrow(/Big: not saved, the file would not open \(Compilation file exceeds 512 KiB\)/);
+  expect(writableCompilationText({ ...row, board: undefined })).toContain('arrangement: board');
 });

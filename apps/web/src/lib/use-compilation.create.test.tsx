@@ -51,3 +51,17 @@ it('creates a board row as a board', async () => {
   });
   expect((create.mock.calls[0] as unknown as unknown[])[2]).toContain('arrangement: board\n');
 });
+
+it('refuses a row whose file would not open again, writing nothing and saying why', async () => {
+  vi.useFakeTimers();
+  const { result } = renderHook(() => useCompilations('life', notebooks as never));
+  const cards = Array.from({ length: 2000 }, (_, index) => ({ path: `notes/life/${index}-${'n'.repeat(215)}.md`, x: 0, y: index * 152 }));
+  const huge: CompilationRow = { id: 'big', path: '', notebookId: 'life', name: 'Big', view: 'board', kind: 'dynamic', source: { kind: 'tag', tag: 'x', notebookId: 'life' }, board: { cards } };
+  act(() => result.current.change({ rows: [huge] }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(create).not.toHaveBeenCalled();
+  expect(result.current.page.rows).toEqual([]);
+  expect(result.current.error).toMatch(/Big: not saved, the file would not open \(Compilation file exceeds 512 KiB\)/);
+});

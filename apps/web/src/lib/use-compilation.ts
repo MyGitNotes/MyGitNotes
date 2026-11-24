@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CompilationPage, type CompilationRow, compilationSlug, uniqueCompilationPath } from '@mygitnotes/core/compilation';
 import { type NoteListItem, type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { useCompilationActions } from './compilation-actions.js';
-import { compilationMetadata, compilationText, parseCompilationNote, type ParsedCompilation, planCompilationWrites } from './compilation-rows.js';
+import { compilationMetadata, compilationText, parseCompilationNote, type ParsedCompilation, planCompilationWrites, writableCompilationText } from './compilation-rows.js';
 import { useEditorRegistry } from './note-editing.js';
 import { initialCompilationStatus } from './compilation-status.js';
 import { useNoteFacets, useNoteList, useNoteLookup } from './use-note-queries.js';
@@ -130,8 +130,16 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       return [{ ...row, path, ...(status ? { status } : {}) }];
     });
     const updates: Record<string, CompilationRow | null> = {};
+    const refused: string[] = [];
     for (const row of [...writes.save, ...created]) {
       if (!api.canWrite(row.notebookId)) continue;
+      // A row whose file would not open again is not written; its stored file and the rows shown stay as they were.
+      try {
+        writableCompilationText(row);
+      } catch (caught) {
+        refused.push(caught instanceof Error ? caught.message : String(caught));
+        continue;
+      }
       updates[row.path] = row;
       queued.current.set(row.path, row);
     }
@@ -140,7 +148,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       queued.current.set(path, null);
     }
     setPending(previous => ({ ...previous, ...updates }));
-    setError('');
+    setError(refused.join('\n'));
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), WRITE_DELAY);
   }, [flush]);

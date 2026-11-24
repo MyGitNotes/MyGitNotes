@@ -1,4 +1,4 @@
-import { boardCompilation, compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
+import { boardCompilation, CompilationError, compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { NotebookConfig } from './types.js';
@@ -64,6 +64,23 @@ export function parseCompilationNote(note: Pick<NoteListItem, 'path' | 'notebook
 
 /** The YAML a row is stored as. */
 export const compilationText = (row: CompilationRow) => serializeCompilation(compilationFile(row));
+
+/**
+ * `text` when the file it makes would open again, else a `CompilationError` naming `title`: a file over the 512 KiB cap
+ * (a legacy graph layout written as a board's one-line entries can grow past it) or outside the schema is not written,
+ * and the stored file stays as it is.
+ */
+export function openableCompilationText(text: string, title: string): string {
+  try {
+    parseCompilation(text);
+  } catch (error) {
+    throw new CompilationError(`${title}: not saved, the file would not open (${error instanceof Error ? error.message : String(error)})`);
+  }
+  return text;
+}
+
+/** The YAML a row is written as, refused as `openableCompilationText` refuses it. */
+export const writableCompilationText = (row: CompilationRow): string => openableCompilationText(compilationText(row), row.name);
 
 /** What the note actions carry beside the YAML: the title, tags and status shown in listings. */
 export const compilationMetadata = (row: CompilationRow) => ({ title: row.name, tags: row.tags ?? [], ...(row.status ? { status: row.status } : {}) });
