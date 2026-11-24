@@ -315,7 +315,10 @@ export function replaceCompilationTags(raw: string, tags: readonly string[]): st
   return stringifyCompilationYaml(document, extensions);
 }
 
-/** Rewrites the paths a compilation pins when files or folders move; returns the new text, or null when nothing it names moved. */
+/**
+ * Rewrites the paths a compilation pins when files or folders move; returns the new text, or null when nothing it
+ * names moved, or when the file has a board and is invalid before or after the move.
+ */
 export function relocateCompilation(raw: string, move: (path: string) => string): string | null {
   const document = YAML.parseDocument(raw);
   if (document.errors.length || !YAML.isMap(document.contents)) return null;
@@ -333,15 +336,33 @@ export function relocateCompilation(raw: string, move: (path: string) => string)
   if (value.source?.kind === 'folder') update(['source', 'path'], value.source.path);
   if (Array.isArray(value.manualOrder)) value.manualOrder.forEach((path, index) => update(['manualOrder', index], path));
   value.graph?.nodes?.forEach((node, index) => update(['graph', 'nodes', index, 'path'], node.path));
-  // Custom cards and arrows name item ids, whose own paths are rewritten above; a dynamic board names paths. Only a
-  // valid board moves, so the result is valid too; an invalid one stays as written, its error still named on reading.
+  // Custom cards and arrows name item ids, whose own paths are rewritten above; a dynamic board names paths. A file
+  // with a board is rewritten only while it is valid, and only into a valid file: an invalid one shows its error and
+  // nothing overwrites it. Files without a board keep the older rule and follow every move.
+  const hasBoard = Object.hasOwn(value, 'board');
   let board: CompilationBoard | undefined;
-  try {
-    board = parseCompilation(raw).board;
-  } catch { /* The file shows as invalid, with its board untouched. */ }
+  if (hasBoard) {
+    try {
+      board = parseCompilation(raw).board;
+    } catch {
+      return null;
+    }
+  }
   const { edits: boardEdits, removals } = board ? relocateBoard(board, move) : { edits: [], removals: [] };
   edits.push(...boardEdits);
   if (!edits.length && !removals.length) return null;
+  const next = writeRelocated(document, raw, edits, removals);
+  if (hasBoard) {
+    try {
+      parseCompilation(next);
+    } catch {
+      return null;
+    }
+  }
+  return next;
+}
+
+function writeRelocated(document: YAML.Document, raw: string, edits: readonly { location: (string | number)[]; next: string; }[], removals: readonly (string | number)[][]): string {
   const extensions = takeCompilationExtensions(document, knownCompilationKeys);
   try {
     for (const { location, next } of edits) document.setIn(location, next);

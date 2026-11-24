@@ -207,14 +207,17 @@ describe('board references when files and items change', () => {
     expect(changed).toEqual(['    - { folder: notes/one/moved, x: 0, y: 0 }', '    - { path: notes/one/moved/x.md, x: 24, y: 56 }', '    - { id: a1, from: { path: notes/one/moved/x.md }, to: { path: notes/one/cases/b/y.md } }', '    - { id: a2, from: { text: t1 }, to: { path: notes/one/moved/x.md } }']);
     expect(relocateCompilation(dynamicBoard, path => path.replace('notes/two', 'notes/three'))).toBeNull();
   });
-  it('leaves an invalid board as written while its other references still move', () => {
-    const invalid = dynamicBoard.replace('x: 24, y: 56', 'x: 1000001, y: 56');
-    const move = (path: string) => path.replace('notes/one/cases/a', 'notes/one/moved');
-    expect(relocateCompilation(invalid, move)).toBeNull();
-    const withOrder = invalid.replace('group: folder\n', 'group: folder\nmanualOrder: [notes/one/cases/a/x.md]\n');
-    const next = relocateCompilation(withOrder, move)!;
-    expect(YAML.parse(next).manualOrder).toEqual(['notes/one/moved/x.md']);
-    expect(next.slice(next.indexOf('board:'))).toBe(withOrder.slice(withOrder.indexOf('board:')));
+  it('never rewrites an invalid file with a board, whatever it names, and keeps the older rule for files without one', () => {
+    const invalid = dynamicBoard.replace('x: 24, y: 56', 'x: 1000001, y: 56').replace('group: folder\n', 'group: folder\nmanualOrder: [notes/one/cases/a/x.md]\n');
+    expect(relocateCompilation(invalid, path => path.replace('notes/one/cases/a', 'notes/one/moved'))).toBeNull();
+    expect(relocateCompilation(invalid, path => path.replace('notes/one/cases', 'notes/one/moved'))).toBeNull();
+    const withoutBoard = invalid.slice(0, invalid.indexOf('board:')).replace('arrangement: board', 'arrangement: carousel');
+    expect(YAML.parse(relocateCompilation(withoutBoard, path => path.replace('notes/one/cases', 'notes/one/moved'))!)).toMatchObject({ source: { path: 'notes/one/moved' }, manualOrder: ['notes/one/moved/a/x.md'] });
+  });
+  it('leaves a file with a board as it is when the move would make it invalid', () => {
+    // A path past the length limit is one the move can produce and the board cannot hold.
+    const long = `notes/one/${'x'.repeat(2050)}.md`;
+    expect(relocateCompilation(dynamicBoard, path => path === 'notes/one/cases/a/x.md' ? long : path)).toBeNull();
   });
   it('lets a path that moves onto a stale entry keep its own, so the board stays valid', () => {
     // b.md and folder b are not members now; a.md moves onto b.md and folder a onto folder b.
