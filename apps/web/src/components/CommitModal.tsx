@@ -11,7 +11,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { useStatusLabel } from '../lib/status-color.js';
 import { changeKey, groupChanges } from '../lib/file-changes.js';
 import { LoadingStatus } from './LoadingStatus.js';
-import { commitMessage, type NoteChangeFacts, polishedCommit, summarizeCommit } from '../lib/commit-summary.js';
+import { commitMessage, DEFAULT_LOCAL_COMMIT_SUBJECT, type NoteChangeFacts, polishedCommit, summarizeCommit } from '../lib/commit-summary.js';
 import { FEATURE_IDS, useCommitMessagePolish, useFeatureGate } from '../lib/web-features.js';
 import { useDemo } from '../lib/demo.js';
 
@@ -71,7 +71,7 @@ function Changes({ request, writable, gitStatus, remoteChanges, getPreview, desc
   // A remote commit is described from its drafts and follows the selection until the visitor writes their own subject.
   const described = describeChanges && staged.length ? describeChanges(staged) : undefined;
   const summary = described ? summarizeCommit(described.notes, described.documents, t, labelOf) : undefined;
-  const message = typed ?? summary?.subject ?? '';
+  const message = typed ?? summary?.subject ?? (remote ? '' : DEFAULT_LOCAL_COMMIT_SUBJECT);
   const setMessage = setTyped;
   // A polished body describes the notes it was written for, so a changed selection goes back to the generated one.
   const selection = staged.map(changeKey).join('|');

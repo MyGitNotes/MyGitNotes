@@ -1,5 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { RefreshCw } from 'lucide-react';
+import { useRef } from 'react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { primaryShortcutHint } from '../lib/keyboard/keymap.js';
 import { COMMIT_AND_SYNC_COMMAND, useWorkspaceGitSync } from '../lib/workspace-git-sync.js';
@@ -9,6 +10,7 @@ import { Tooltip } from './Tooltip.js';
 export function HeaderGitSync({ disabled }: { disabled: boolean; }) {
   const { t } = useTranslation();
   const sync = useWorkspaceGitSync();
+  const revealOnClose = useRef(false);
   if (!sync) return null;
   const pending = sync.targets.filter(({ gitStatus }) => gitStatus?.upstream && (gitStatus.ahead || gitStatus.behind));
   const dirty = sync.changedCount > 0;
@@ -52,13 +54,31 @@ export function HeaderGitSync({ disabled }: { disabled: boolean; }) {
         <DropdownMenu.Trigger {...buttonProps} className='ui-button header-git-sync'>{content}</DropdownMenu.Trigger>
       </Tooltip>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} onEscapeKeyDown={event => event.stopPropagation()}>
+        <DropdownMenu.Content
+          className='focus-menu'
+          align='end'
+          sideOffset={4}
+          collisionPadding={8}
+          onEscapeKeyDown={event => event.stopPropagation()}
+          onCloseAutoFocus={event => {
+            if (!revealOnClose.current) return;
+            revealOnClose.current = false;
+            event.preventDefault();
+            sync.revealChanges();
+          }}
+        >
           <DropdownMenu.Item onSelect={() => void sync.commitAll(true)}>
             <span>{t('command.workspace.commitAndSync')}</span>
             <kbd>{primaryShortcutHint(COMMIT_AND_SYNC_COMMAND)}</kbd>
           </DropdownMenu.Item>
           <DropdownMenu.Item onSelect={() => void sync.commitAll(false)}>{t('panel.commitAllOnly')}</DropdownMenu.Item>
-          <DropdownMenu.Item onSelect={() => sync.revealChanges()}>{t('panel.openChanges')}</DropdownMenu.Item>
+          <DropdownMenu.Item
+            onSelect={() => {
+              revealOnClose.current = true;
+            }}
+          >
+            {t('panel.openChanges')}
+          </DropdownMenu.Item>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

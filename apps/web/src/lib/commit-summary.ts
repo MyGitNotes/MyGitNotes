@@ -150,6 +150,8 @@ export function summarizeCommit(notes: NoteChangeFacts[], documents: string[], t
   return { subject: clip(subject), details: repeatsSubject ? trailers : `${lines.join('\n')}\n\n${trailers}` };
 }
 
+export const DEFAULT_LOCAL_COMMIT_SUBJECT = 'minor-mod';
+
 /**
  * The full commit message: the subject as the visitor left it, then the generated details. When a long body
  * (a very large commit, or a long polish) would pass the source's message limit, the body is cut at a line

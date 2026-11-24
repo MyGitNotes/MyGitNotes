@@ -1,10 +1,20 @@
 import { Request, Response, Router } from 'express';
 import fs from 'node:fs';
-import { agentFileAllowed, classifyResource, FILE_RESOURCE_TYPES, historyFile, managedNotebook, resolveAgentFile, resolveSafePath, versionedPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
+import { agentFileAllowed, agentWorkspaceFile, classifyResource, FILE_RESOURCE_TYPES, historyFile, managedNotebook, resolveAgentFile, resolveSafePath, versionedPath, WORKSPACE_DOCUMENTS, type WorkspaceConfig, workspaceDocument } from '@mygitnotes/core';
 import { changeFile, commitSelectedFiles, commitStagedFiles, fileDiff, generateCommitMessage, getDiff, getGitStatus, getRecentCommits, listChanges, refreshUpstream, stageAndCommit, SyncError, syncWorkspace } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { newVersion } from './note-history.js';
 import { eachRepository, type LocalHandle, repositoryOrDefault } from './request-workspace.js';
+
+/** Keep tracked edits, and give deliberate first-party dotfiles a manual commit path. */
+function changeListing(path: string, tracked: boolean, config: WorkspaceConfig): 'regular' | 'manual' | 'omit' {
+  if (tracked) return 'regular';
+  const name = path.split('/').pop() ?? '';
+  if (name.startsWith('.#') || /^(?:4913|Thumbs\.db)$/i.test(name) || /(?:\.(?:swp|swo|tmp)|~)$/i.test(name)) return 'omit';
+  if (!/(?:^|\/)\./.test(path)) return 'regular';
+  const { type } = classifyResource(path, config);
+  return type === 'workspace_config' || type === 'template' || workspaceDocument(path) || versionedPath(path) || agentWorkspaceFile(path, config.notebooks) ? 'manual' : 'omit';
+}
 
 export function createLocalGitRouter(): Router {
   const router = Router();
@@ -36,9 +46,11 @@ export function createLocalGitRouter(): Router {
     try {
       const worktrees = req.query.repository === undefined ? (await eachRepository(res)).map(({ handle, config }) => ({ ...(handle as LocalHandle), config })) : [await worktree(res, req.query.repository)];
       const changes = await Promise.all(worktrees.map(async ({ id, root: repoRoot, config }) =>
-        (await listChanges(repoRoot)).map(file => {
+        (await listChanges(repoRoot)).flatMap(file => {
+          const listing = changeListing(file.path, file.tracked, config);
+          if (listing === 'omit') return [];
           const managed = canManageChange(repoRoot, config, file.path);
-          return { ...file, repository: id, available: file.available && managed, unavailableReason: file.kind === 'conflict' ? 'conflict' : !managed ? 'protected' : !file.available ? 'unsupported' : undefined };
+          return [{ ...file, repository: id, available: file.available && managed, unavailableReason: file.kind === 'conflict' ? 'conflict' : !managed ? 'protected' : !file.available ? 'unsupported' : undefined, ...(listing === 'manual' ? { manualCommitOnly: true } : {}) }];
         })
       ));
       res.json({ changes: changes.flat() });

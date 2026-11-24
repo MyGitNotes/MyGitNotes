@@ -88,7 +88,7 @@ it('opens, saves, renames and deletes a template file through the note and file 
   expect((await fetch(`${base}/api/templates?notebookId=${nb('example')}`).then(r => r.json())).templates.map((template: { id: string; }) => template.id)).toEqual(['registered', 'Meeting notes', 'reading']);
   expect((await fetch(`${base}/api/notes`, json({ path: 'notes/example/.templates/Meeting notes.md', notebookId: nb('example'), createOnly: true, noCommit: true, content: 'again' }))).status).toBe(409);
   const changes = await fetch(`${base}/api/git/changes`).then(r => r.json());
-  expect(changes.changes.find((change: { path: string; }) => change.path === 'notes/example/.templates/Meeting notes.md')).toMatchObject({ available: true });
+  expect(changes.changes.find((change: { path: string; }) => change.path === 'notes/example/.templates/Meeting notes.md')).toMatchObject({ available: true, manualCommitOnly: true });
 
   const moved = await fetch(`${base}/api/files`, json({ command: { kind: 'move', notebookId: nb('example'), path: file, destination: 'notes/example/.templates/books.md' } }));
   expect(moved.status).toBe(200);

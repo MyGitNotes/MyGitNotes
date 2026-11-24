@@ -7,6 +7,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { useNoteEditing } from '../lib/note-editing.js';
 import { useFollowedKey } from '../lib/note-follows.js';
 import { usePanelContext } from '../lib/panel-context.js';
+import { useWorkspaceGitSync } from '../lib/workspace-git-sync.js';
 import { NoteEditor } from './NoteEditor.js';
 import { useAssistantDockVisible } from './assistant/useAssistantDockVisible.js';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -44,6 +45,13 @@ export const EditorModal: React.FC<EditorModalProps> = ({ note, committed, loadi
 /** The action error above the zoom's content, where the person sees it. */
 const ZoomError: React.FC<{ error?: string; }> = ({ error }) => error ? <p role='alert' className='shrink-0 px-4 py-2 text-sm text-danger'>{error}</p> : null;
 
+function ZoomCommitNotice() {
+  const refusal = useWorkspaceGitSync()?.zoomRefusal;
+  const [atOpen] = useState(refusal);
+  const { t } = useTranslation();
+  return refusal !== atOpen ? <ZoomError error={t('panel.closeZoomBeforeCommit')} /> : null;
+}
+
 /**
  * The zoom is a modal dialog, except while the assistant dock is open beside it: the dock stays usable, so assistive
  * technology and focus must be able to reach it, and the zoom stops claiming the rest of the page is inert.
@@ -64,7 +72,10 @@ const EditorModalLoading: React.FC = () => {
   }, [setHasOpenNote]);
   return (
     <div role='dialog' aria-modal={modal} aria-busy='true' aria-label={t('notes.loadingNote')} className='viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-4'>
-      <LoadingStatus className='px-6 py-4 rounded-xl text-sm' style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}>{t('notes.loadingNote')}</LoadingStatus>
+      <div className='px-6 py-4 rounded-xl text-sm' style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}>
+        <ZoomCommitNotice />
+        <LoadingStatus>{t('notes.loadingNote')}</LoadingStatus>
+      </div>
     </div>
   );
 };
@@ -87,6 +98,7 @@ const CompilationFrame: React.FC<{ children: ReactNode; hidden?: boolean; error?
   return (
     <div ref={frame} className='note-overlay viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-3 animate-fadeIn' style={hidden ? { visibility: 'hidden' } : undefined} data-behind={hidden || undefined}>
       <div role='dialog' aria-modal={modal} aria-label='Compilation' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>
+        {!hidden && <ZoomCommitNotice />}
         <ZoomError error={error} />
         {children}
       </div>
@@ -113,6 +125,7 @@ const ZoomFrame: React.FC<{ note: NoteItem; committed?: NoteItem; error?: string
   return (
     <div className='note-overlay viewport-overlay dock-edge fixed inset-0 z-50 bg-scrim/60 backdrop-blur-sm flex items-center justify-center p-3 animate-fadeIn'>
       <div role='dialog' aria-modal={modal} aria-label='Note editor' className='note-dialog ui-dialog shadow-2xl w-full max-w-none h-full flex flex-col overflow-hidden transition-colors'>
+        <ZoomCommitNotice />
         <ZoomError error={error} />
         {borrowed ? <div ref={setSlot} className='note-editor-slot' /> : <NoteEditor key={`${props.draftScope}:${editorKey}`} {...props} note={note} frame='zoom' active onClose={editing.closeZoom} onMove={editing.moveNote?.(note)} onRename={editing.renameNote?.(note) && (title => editing.renameNote?.(note, undefined, title)?.())} />}
       </div>

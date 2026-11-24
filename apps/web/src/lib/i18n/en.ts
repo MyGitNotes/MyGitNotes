@@ -2009,6 +2009,7 @@ export const en = {
   'panel.headerCommitAll': '{count} uncommitted file(s) — open commit options',
   'panel.commitAllOnly': 'Commit all only',
   'panel.openChanges': 'Open Changes…',
+  'panel.closeZoomBeforeCommit': 'Close the full-screen view before committing and syncing.',
   'panel.flushBeforeCommitFailed': 'Could not save all open editors. Check the editors and try again.',
   'panel.syncing': 'Syncing…',
   'panel.syncNoUpstream': 'main has no upstream branch. Run git push -u origin main in a terminal.',

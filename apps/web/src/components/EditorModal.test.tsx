@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
-import { createElement, forwardRef, useLayoutEffect, useState } from 'react';
+import { createElement, forwardRef, type ReactNode, useLayoutEffect, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { followMovedNote } from '../app/follow-moved-note.js';
+import { KeyboardRoot } from '../lib/keyboard/KeyboardDispatcher.js';
+import { keyEnvironment } from '../lib/keyboard/platform.js';
 import { NoteEditingProvider } from '../lib/note-editing.js';
+import { WorkspaceGitSyncProvider } from '../lib/workspace-git-sync.js';
 import { assistantDock } from '../lib/assistant-dock.js';
 import { PanelProvider, usePanelContext } from '../lib/panel-context.js';
 import { PiAgentContext, type PiAgentValue } from '../lib/pi-agent/session.js';
@@ -67,7 +70,7 @@ const View = () => {
   return createElement('button', { type: 'button' }, 'Open Alpha');
 };
 /* eslint-disable react/no-children-prop -- The provider's props type names its children. */
-const modal = (props: { note: typeof alpha | null; loading?: boolean; behind?: { notebookId: string; path: string; }; error?: string; }) => createElement(PanelProvider, null, createElement(Rail), createElement(NoteEditingProvider, { register: () => () => {}, flushEditors: async () => true, refreshNotes: async () => {}, closeZoom: () => {}, addToFocus: () => undefined, editorProps: () => ({ statuses: [], onSave: async () => alpha, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' }), children: createElement(EditorModal, { loading: false, isOpen: true, renderCompilation: () => createElement(View), ...props }) }));
+const modal = (props: { note: typeof alpha | null; loading?: boolean; behind?: { notebookId: string; path: string; }; error?: string; }, wrap = (child: ReactNode) => child) => createElement(PanelProvider, null, createElement(Rail), wrap(createElement(NoteEditingProvider, { register: () => () => {}, flushEditors: async () => true, refreshNotes: async () => {}, closeZoom: () => {}, addToFocus: () => undefined, editorProps: () => ({ statuses: [], onSave: async () => alpha, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' }), children: createElement(EditorModal, { loading: false, isOpen: true, renderCompilation: () => createElement(View), ...props }) })));
 /* eslint-enable react/no-children-prop */
 const behind = { notebookId: 'a', path: reading.path };
 
@@ -124,6 +127,25 @@ it('says a refused move or rename inside zoom, where the person sees it, not beh
   rerender(modal({ note: reading, error: 'A note already exists at notes/ideas.md.' }));
   expect(within(screen.getByRole('dialog', { name: 'Compilation' })).getByRole('alert')).toHaveTextContent('A note already exists');
   rerender(modal({ note: alpha }));
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+it('refuses Mod+Shift+S in a zoomed note with a visible notice inside the dialog', () => {
+  const flushEditors = vi.fn(async () => true);
+  const refresh = vi.fn(async () => {});
+  const wrap = (children: ReactNode) => <WorkspaceGitSyncProvider enabled targets={[]} onSynced={refresh} flushEditors={flushEditors}>{children}</WorkspaceGitSyncProvider>;
+  const view = (note: typeof alpha | null) => <KeyboardRoot>{modal({ note }, wrap)}</KeyboardRoot>;
+  const { rerender } = render(view(alpha));
+  const dialog = screen.getByRole('dialog', { name: 'Note editor' });
+  const typing = within(dialog).getByRole('textbox');
+  typing.focus();
+  fireEvent.keyDown(typing, { key: 'S', shiftKey: true, ...(keyEnvironment.platform === 'mac' ? { metaKey: true } : { ctrlKey: true }) });
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('Close the full-screen view before committing and syncing.');
+  expect(flushEditors).not.toHaveBeenCalled();
+  expect(refresh).not.toHaveBeenCalled();
+  expect(typing).toHaveFocus();
+  rerender(view(null));
+  rerender(view(alpha));
   expect(screen.queryByRole('alert')).toBeNull();
 });
 

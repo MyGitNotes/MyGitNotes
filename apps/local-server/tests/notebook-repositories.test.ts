@@ -227,6 +227,50 @@ describe('bookmarks in distinct notebook repositories', () => {
 });
 
 describe('Git changes in each worktree', () => {
+  const changesUrl = '/api/git/changes';
+  const scoped = (repository: string) => `${changesUrl}?${new URLSearchParams({ repository })}`;
+
+  it('returns exactly the requested member’s changes, and rejects invalid or repeated repository parameters', async () => {
+    const { home, trpg } = await serve();
+    fs.writeFileSync(path.join(home, 'notes/life/note.md'), '# Home changed\n');
+    fs.writeFileSync(path.join(trpg, 'notes/life/note.md'), '# TRPG changed\n');
+    const [homeMember, trpgMember, unmapped] = (await get('/api/workspace')).body.repositories;
+    const { changes } = (await get(changesUrl)).body;
+    expect(changes).toHaveLength(2);
+    for (const { id } of [homeMember, trpgMember]) {
+      const expected = changes.filter((change: { repository: string; }) => change.repository === id);
+      expect(expected).toHaveLength(1);
+      expect(await get(scoped(id))).toEqual({ status: 200, body: { changes: expected } });
+    }
+    for (const id of ['github:owner/unknown@main', '../../etc', trpg, 'local:/etc', unmapped.id]) {
+      expect((await get(scoped(id))).status, id).toBe(400);
+    }
+    expect((await get(`${scoped(homeMember.id)}&${new URLSearchParams({ repository: trpgMember.id })}`)).status).toBe(400);
+  });
+
+  it('omits untracked hidden and temporary junk, not tracked changes or new notebook files', async () => {
+    const { home } = await serve();
+    const write = (file: string, data = 'fixture\n') => {
+      fs.mkdirSync(path.dirname(path.join(home, file)), { recursive: true });
+      fs.writeFileSync(path.join(home, file), data);
+    };
+    const tracked = ['.git-blame-ignore-revs', 'notes/life/.tracked', 'notes/life/old.tmp'];
+    for (const file of tracked) write(file);
+    execFileSync('git', ['add', '-f', '--', ...tracked], { cwd: home });
+    execFileSync('git', ['commit', '-m', 'track unusual names'], { cwd: home });
+    for (const file of tracked) write(file, 'updated\n');
+    const additions = ['notes/life/new.md', 'notes/life/assets/map.png'];
+    const junk = ['.secret', 'notes/life/.DS_Store', 'notes/life/.private/secret.md', 'notes/life/note.md.swp', 'notes/life/note.md.swo', 'notes/life/note.md~', 'notes/life/note.md.tmp', 'notes/life/.#note.md', '.mygitnotes/versions/notes/life/.#note.md.yaml', 'notes/life/4913'];
+    for (const file of [...additions, ...junk]) write(file);
+    const [{ id }] = (await get('/api/workspace')).body.repositories;
+    for (const url of [changesUrl, scoped(id)]) {
+      const { body: { changes } } = await get(url);
+      expect(changes.map((file: { path: string; }) => file.path).sort()).toEqual([...tracked, ...additions].sort());
+      for (const file of tracked) expect(changes).toContainEqual(expect.objectContaining({ path: file, tracked: true, kind: 'modified' }));
+      for (const file of additions) expect(changes).toContainEqual(expect.objectContaining({ path: file, available: true, tracked: false }));
+    }
+  });
+
   it('lists changes by repository and commits each worktree on its own', async () => {
     const { home, trpg } = await serve();
     fs.writeFileSync(path.join(home, 'notes/life/note.md'), '# Home changed\n');

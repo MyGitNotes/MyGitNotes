@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useRef, useState } from 'react';
+import { createContext, type ReactNode, useContext, useMemo, useRef, useState } from 'react';
 import { GitSyncError, syncGitWorkspace } from './api.js';
 import { useRegisterCommands } from './commands/registry.js';
 import { useTranslation } from './i18n/index.js';
@@ -20,7 +20,8 @@ interface WorkspaceGitSync {
   changedCount: number;
   committing: boolean;
   commitError: string;
-  commitAll: (andSync: boolean) => Promise<void>;
+  commitAll: (andSync: boolean, keepFocus?: boolean) => Promise<void>;
+  zoomRefusal: number;
   run: (target: SyncTarget, strategy?: Strategy) => Promise<void>;
   resolveManually: (id: string) => void;
   canReveal: boolean;
@@ -55,7 +56,7 @@ function failureState(failure: unknown): SyncState {
 const errorMessage = (failure: unknown) => failure instanceof Error ? failure.message : String(failure);
 
 function WorkspaceCommitShortcut({ commitAll }: { commitAll: WorkspaceGitSync['commitAll']; }) {
-  useRegisterCommands([{ id: COMMIT_AND_SYNC_COMMAND, run: () => commitAll(true) }]);
+  useRegisterCommands([{ id: COMMIT_AND_SYNC_COMMAND, run: ({ source }) => commitAll(true, source === 'key') }]);
   return null;
 }
 
@@ -69,16 +70,18 @@ interface WorkspaceGitSyncProps {
 }
 
 /** One action and result per local repository, shared by the header and the Changes panel. */
-export function WorkspaceGitSyncProvider({ enabled, targets, onSynced, flushEditors, onRevealChanges, children }: WorkspaceGitSyncProps) {
+export function WorkspaceGitSyncProvider({ enabled, targets: repositories, onSynced, flushEditors, onRevealChanges, children }: WorkspaceGitSyncProps) {
   const panel = usePanelContext();
   const { t } = useTranslation();
   const [states, setStates] = useState<ReadonlyMap<string, SyncState>>(() => new Map());
   const [reveal, setReveal] = useState<{ repository?: string; } | null>(null);
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState('');
+  const [zoomRefusal, setZoomRefusal] = useState(0);
   const inFlight = useRef(new Set<string>());
   const batch = useRef(false);
-  const changedCount = useUncommittedCount(enabled ? targets : NO_TARGETS);
+  const targets = useMemo(() => enabled ? repositories.filter(repository => repository.writable) : NO_TARGETS, [enabled, repositories]);
+  const changedCount = useUncommittedCount(targets);
   const update = (id: string, state: SyncState) => setStates(previous => new Map(previous).set(id, state));
   const revealChanges = (repository?: string) => {
     onRevealChanges?.();
@@ -111,8 +114,13 @@ export function WorkspaceGitSyncProvider({ enabled, targets, onSynced, flushEdit
     }
   };
 
-  const commitAll = async (andSync: boolean) => {
-    if (!enabled || batch.current || inFlight.current.size) return;
+  const commitAll = async (andSync: boolean, keepFocus = false) => {
+    if (!enabled) return;
+    if (panel.hasOpenNote) {
+      setZoomRefusal(previous => previous + 1);
+      return;
+    }
+    if (!targets.length || batch.current || inFlight.current.size) return;
     batch.current = true;
     setCommitting(true);
     setCommitError('');
@@ -134,14 +142,20 @@ export function WorkspaceGitSyncProvider({ enabled, targets, onSynced, flushEdit
           update(id, { kind: 'error', message: errorMessage(failure) });
         }
       }
-      if (andSync || failed.size) revealChanges();
+      const showProgress = andSync && !keepFocus;
+      let needsAttention = failed.values().next().value;
+      if (showProgress) revealChanges();
       if (andSync) {
         // The rendered status predates the flush and commits. The existing sync route checks
         // the worktree again, refusing any tracked changes left over or made during the batch.
         for (const { id, gitStatus } of targets) {
-          if (!failed.has(id) && gitStatus?.upstream) update(id, await syncRepository(id));
+          if (failed.has(id) || !gitStatus?.upstream) continue;
+          const outcome = await syncRepository(id);
+          update(id, outcome);
+          if (outcome.kind !== 'done') needsAttention ??= id;
         }
       }
+      if (!showProgress && needsAttention !== undefined) revealChanges(needsAttention);
       await onSynced();
     } catch (failure) {
       setCommitError(errorMessage(failure));
@@ -152,5 +166,5 @@ export function WorkspaceGitSyncProvider({ enabled, targets, onSynced, flushEdit
     }
   };
 
-  return <WorkspaceGitSyncContext.Provider value={enabled ? { targets, states, changedCount, committing, commitError, commitAll, run, resolveManually: id => update(id, { kind: 'manual' }), canReveal: !panel.hasOpenNote, reveal, revealChanges, didReveal: () => setReveal(null) } : null}>{enabled && <WorkspaceCommitShortcut commitAll={commitAll} />}{children}</WorkspaceGitSyncContext.Provider>;
+  return <WorkspaceGitSyncContext.Provider value={enabled ? { targets, states, changedCount, committing, commitError, commitAll, zoomRefusal, run, resolveManually: id => update(id, { kind: 'manual' }), canReveal: !panel.hasOpenNote, reveal, revealChanges, didReveal: () => setReveal(null) } : null}>{enabled && <WorkspaceCommitShortcut commitAll={commitAll} />}{children}</WorkspaceGitSyncContext.Provider>;
 }

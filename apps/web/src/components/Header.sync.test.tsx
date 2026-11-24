@@ -11,11 +11,12 @@ import { PanelProvider, usePanelContext } from '../lib/panel-context.js';
 import type { GitStatus } from '../lib/types.js';
 import { type SyncTarget, WorkspaceGitSyncProvider } from '../lib/workspace-git-sync.js';
 import { ChangesTool } from './ChangesTool.js';
+import { CommitModal } from './CommitModal.js';
 import { Header } from './Header.js';
 
 vi.mock('../lib/api.js', async original => ({ ...await original<typeof import('../lib/api.js')>(), fetchFileChanges: vi.fn(), commitStagedChanges: vi.fn(), syncGitWorkspace: vi.fn() }));
 
-const target = (id: string, ahead = 2, behind = 3, upstream: string | null = 'origin/main', modified: string[] = []): SyncTarget => ({ id, label: id, gitStatus: { branch: 'main', upstream, ahead, behind, staged: [], modified, untracked: [], isClean: !modified.length } });
+const target = (id: string, ahead = 2, behind = 3, upstream: string | null = 'origin/main', modified: string[] = []): SyncTarget => ({ id, label: id, writable: true, gitStatus: { branch: 'main', upstream, ahead, behind, staged: [], modified, untracked: [], isClean: !modified.length } });
 const refreshed = vi.fn();
 const sync = vi.mocked(syncGitWorkspace);
 const changes = vi.mocked(fetchFileChanges);
@@ -35,7 +36,8 @@ function Workspace({ remote, targets, phone }: { remote: boolean; targets: SyncT
   return (
     <WorkspaceGitSyncProvider enabled={!remote} targets={current} onSynced={onSynced} flushEditors={flushEditors}>
       <Header workspaceTitle='Notes' activeTab='settings' setActiveTab={() => {}} notebooks={[]} selectedNotebookId='' onSelectNotebook={() => {}} onOpenCommands={() => {}} navOnly={phone} />
-      {panel.isOpen && panel.activeTool === 'changes' && <ChangesTool writable gitStatus={current[0]?.gitStatus ?? null} deletedNotes={[]} onRestoreNote={() => {}} onOpenCommitModal={() => {}} />}
+      <textarea aria-label='Note body' />
+      {!panel.hasOpenNote && panel.isOpen && panel.activeTool === 'changes' && <ChangesTool writable gitStatus={current[0]?.gitStatus ?? null} deletedNotes={[]} onRestoreNote={() => {}} onOpenCommitModal={() => {}} />}
     </WorkspaceGitSyncProvider>
   );
 }
@@ -102,7 +104,7 @@ it('shows the localized dirty message for a change made after status was read', 
 });
 
 const openDirtyMenu = async () => {
-  const button = screen.getByRole('button', { name: /uncommitted (file|change)/i });
+  const button = await screen.findByRole('button', { name: /uncommitted (file|change)/i });
   await act(async () => {
     button.focus();
     fireEvent.keyDown(button, { key: 'Enter' });
@@ -110,14 +112,14 @@ const openDirtyMenu = async () => {
   return button;
 };
 const file = (repository: string, path = 'notes/a.md') => ({ repository, path, kind: 'modified' as const, revision: 'revision', staged: true, unstaged: true, available: true, tracked: true });
-const chord = () => fireEvent.keyDown(document.body, { key: 'S', shiftKey: true, ...(keyEnvironment.platform === 'mac' ? { metaKey: true } : { ctrlKey: true }) });
+const chord = (from: HTMLElement = document.body) => fireEvent.keyDown(from, { key: 'S', shiftKey: true, ...(keyEnvironment.platform === 'mac' ? { metaKey: true } : { ctrlKey: true }) });
 
 it('counts each changed path once per repository and opens an accessible menu instead of syncing', async () => {
   const first = target('one', 2, 0, undefined, ['notes/a.md']);
   first.gitStatus!.staged = ['notes/a.md'];
   const second = target('two', 0, 0, null);
   second.gitStatus!.untracked = ['notes/a.md', 'unmanaged.js'];
-  changes.mockImplementation(async repository => repository === 'two' ? [{ ...file('two'), kind: 'added', staged: false, tracked: false }, { ...file('two', 'unmanaged.js'), kind: 'added', staged: false, tracked: false, available: false }] : []);
+  changes.mockImplementation(async repository => repository === 'two' ? [{ ...file('two'), kind: 'added', staged: false, tracked: false }, { ...file('two', 'unmanaged.js'), kind: 'added', staged: false, tracked: false, available: false }] : repository === 'one' ? [file('one')] : []);
   mount([first, second]);
   await waitFor(() => expect(screen.getByRole('button', { name: /2 uncommitted/ })).toHaveTextContent('● 2 ↑ 2'));
   const button = await openDirtyMenu();
@@ -133,7 +135,7 @@ it('flushes editors before reading changes, and only commits eligible workspace 
   const a = file('notes'), b = file('work'), live = file('notes', 'notes/.live/checked-out.md');
   changes.mockImplementation(async repository => {
     if (!repository) return [];
-    expect(flushEditors.mock.settledResults.at(-1)?.value).toBe(true);
+    if (flushEditors.mock.calls.length) expect(flushEditors.mock.settledResults.at(-1)?.value).toBe(true);
     return repository === 'notes' ? [a, live] : [b];
   });
   mount([target('notes', 0, 0, null, [a.path]), target('work', 0, 0, null)]);
@@ -141,7 +143,104 @@ it('flushes editors before reading changes, and only commits eligible workspace 
   fireEvent.click(screen.getByRole('menuitem', { name: 'Commit all only' }));
   await waitFor(() => expect(refreshed).toHaveBeenCalledOnce());
   expect(commit.mock.calls).toEqual([[[a], 'minor-mod', true], [[b], 'minor-mod', true]]);
+  const readsAfterFlush = changes.mock.calls.filter((_, index) => changes.mock.invocationCallOrder[index] > flushEditors.mock.invocationCallOrder[0]);
+  expect(readsAfterFlush).toEqual([['notes'], ['work']]);
   expect(sync).not.toHaveBeenCalled();
+});
+
+it('keeps first-party hidden drafts for manual review and commits new notes, assets, and tracked hidden files', async () => {
+  const note = { ...file('notes', 'notes/new.md'), kind: 'added' as const, staged: false, tracked: false };
+  const asset = { ...note, path: 'notes/assets/photo.png' };
+  const tracked = file('notes', 'notes/.tracked');
+  const template = { ...note, path: 'notes/.templates/draft.md', manualCommitOnly: true };
+  changes.mockResolvedValue([note, asset, tracked, template]);
+  const repo = target('notes', 0, 0, null, [tracked.path]);
+  repo.gitStatus!.untracked = [note.path, asset.path, template.path, 'notes/.DS_Store', 'notes/note.md.swp'];
+  mount([repo]);
+  await screen.findByRole('button', { name: /uncommitted/ });
+  await openDirtyMenu();
+  fireEvent.click(screen.getByRole('menuitem', { name: /Open Changes/ }));
+  expect(await screen.findByRole('checkbox', { name: `Select ${template.path}` })).toBeEnabled();
+  expect(screen.queryByText('notes/.DS_Store')).not.toBeInTheDocument();
+  expect(screen.queryByText('notes/note.md.swp')).not.toBeInTheDocument();
+  chord();
+  await waitFor(() => expect(commit).toHaveBeenCalledExactlyOnceWith([note, asset, tracked], 'minor-mod', true));
+});
+
+it('counts only manageable changes in writable repositories and skips a read-only worktree', async () => {
+  const eligible = file('notes');
+  const blocked = { ...file('notes', 'README.md'), available: false };
+  const live = file('notes', 'notes/.live/checked-out.md');
+  const readOnly = { ...target('feature', 0, 0, null, ['notes/a.md']), writable: false };
+  readOnly.gitStatus!.branch = 'feature';
+  changes.mockImplementation(async repository => repository === 'feature' ? [file('feature')] : [eligible, blocked, live]);
+  mount([target('notes', 0, 0, null, [eligible.path, blocked.path, live.path]), readOnly]);
+  expect(await screen.findByRole('button', { name: /1 uncommitted/ })).toHaveTextContent('● 1');
+  chord();
+  await waitFor(() => expect(refreshed).toHaveBeenCalledOnce());
+  expect(commit).toHaveBeenCalledExactlyOnceWith([eligible], 'minor-mod', true);
+  expect(changes).not.toHaveBeenCalledWith('feature');
+});
+
+it('counts both paths of a staged rename when the commit listing splits it into add and delete', async () => {
+  const added = { ...file('notes', 'notes/new.md'), kind: 'added' as const, tracked: false };
+  const deleted = { ...file('notes', 'notes/old.md'), kind: 'deleted' as const };
+  changes.mockResolvedValue([added, deleted]);
+  const repo = target('notes', 0, 0, null);
+  repo.gitStatus!.staged = [added.path];
+  mount([repo]);
+  expect(await screen.findByRole('button', { name: /2 uncommitted/ })).toHaveTextContent('● 2');
+  chord();
+  await waitFor(() => expect(commit).toHaveBeenCalledExactlyOnceWith([added, deleted], 'minor-mod', true));
+});
+
+it('uses the same default Git subject in the local Changes dialog', async () => {
+  HTMLDialogElement.prototype.showModal = function() {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function() {
+    this.removeAttribute('open');
+  };
+  render(<CommitModal isOpen writable gitStatus={null} onChanged={async () => {}} onCommitted={async () => {}} onClose={() => {}} />);
+  expect(await screen.findByRole('textbox', { name: 'Commit Message' })).toHaveValue('minor-mod');
+});
+
+it('keeps focus in the Changes panel after choosing Open Changes by keyboard', async () => {
+  changes.mockResolvedValue([file('notes')]);
+  mount([target('notes', 0, 0, null, ['notes/a.md'])]);
+  await waitFor(() => expect(screen.getByRole('button', { name: /1 uncommitted/ })).toBeVisible());
+  const trigger = await openDirtyMenu();
+  const item = screen.getByRole('menuitem', { name: /Open Changes/ });
+  item.focus();
+  fireEvent.keyDown(item, { key: 'Enter' });
+  await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+  // Radix schedules close autofocus after the menu's focus scope unmounts.
+  await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
+  expect(trigger).not.toHaveFocus();
+  expect(document.activeElement?.closest('.changes-tool')).not.toBeNull();
+});
+
+it('keeps editor focus through a successful shortcut, and moves to Changes on a conflict', async () => {
+  let finish!: (result: Awaited<ReturnType<typeof syncGitWorkspace>>) => void;
+  sync.mockImplementationOnce(() => new Promise(resolve => finish = resolve));
+  sync.mockRejectedValueOnce(new GitSyncError('conflict', 'CONFLICT', ['notes/a.md']));
+  mount([target('notes', 0, 1)]);
+  const editor = screen.getByRole('textbox', { name: 'Note body' });
+  editor.focus();
+  chord(editor);
+  await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
+  expect(editor).toHaveFocus();
+  await act(async () => finish({ upstream: 'origin/main', pushed: 0, pulled: 1 }));
+  expect(refreshed).toHaveBeenCalledOnce();
+  expect(editor).toHaveFocus();
+  // A fresh upstream change permits another sync, this time requiring attention.
+  cleanup();
+  mount([target('notes', 0, 1)]);
+  const reopened = screen.getByRole('textbox', { name: 'Note body' });
+  reopened.focus();
+  chord(reopened);
+  expect(await screen.findByRole('button', { name: 'Use remote' })).toBeVisible();
+  expect(document.activeElement?.closest('.changes-tool')).not.toBeNull();
 });
 
 it('commits before syncing, skips a failed repository, and keeps conflicts in Changes', async () => {

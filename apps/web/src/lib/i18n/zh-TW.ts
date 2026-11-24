@@ -2008,6 +2008,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'panel.headerCommitAll': '有 {count} 個檔案尚未提交 — 開啟提交選單',
   'panel.commitAllOnly': '只全部提交',
   'panel.openChanges': '打開變更面板…',
+  'panel.closeZoomBeforeCommit': '請先離開全螢幕，再提交並同步。',
   'panel.flushBeforeCommitFailed': '無法儲存所有開啟中的編輯器。請檢查後再試一次。',
   'panel.syncStatusHint': '數字以最近一次 fetch 為準。',
   'panel.syncNow': '拉取並推送',
