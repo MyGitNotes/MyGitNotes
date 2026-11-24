@@ -91,6 +91,18 @@ describe('board format', () => {
     // Items and the other fields keep their block style.
     expect(text).toContain('items:\n  - id: h1\n    kind: heading\n');
   });
+  it('keeps a long text with line breaks on its entry’s one line', () => {
+    const row = custom(compilationRow(parseCompilation(example, scope), owner));
+    const text = ` line ${'a'.repeat(70)}\n${'b'.repeat(70)}\n end `;
+    const written = serializeCompilation(compilationFile({ ...row, board: { ...row.board, texts: [{ id: 't1', x: 0, y: 0, text }] } }));
+    expect(written.split('\n').filter(line => line.includes('id: t1'))).toHaveLength(1);
+    expect(written).toContain(`    - { id: t1, x: 0, y: 0, text: " line ${'a'.repeat(70)}\\n${'b'.repeat(70)}\\n end " }\n`);
+    expect(parseCompilation(written, scope).board!.texts![0].text).toBe(text);
+    // A move rewrites such a board in place without spreading the entry over lines.
+    const dynamic = dynamicBoard.replace('text: Open', `text: ${JSON.stringify(text)}`);
+    const moved = relocateCompilation(dynamic, path => path.replace('notes/one/cases/a', 'notes/one/moved'))!;
+    expect(moved.split('\n').filter(line => line.includes('id: t1'))).toHaveLength(1);
+  });
   it('rejects every misfit of the board, naming the field', () => {
     const custom = (board: string) => example.slice(0, example.indexOf('board:')) + board;
     const dynamic = (board: string, group = 'group: folder\n') => `version: 1\nid: d\ntitle: D\narrangement: board\nsource: { kind: tag, tag: t }\n${group}${board}`;
@@ -162,6 +174,16 @@ graph:
     // A lane or book keeps its arrangement; only its legacy layout becomes a board.
     expect(boardCompilation(parseCompilation(legacy.replace('arrangement: graph', 'arrangement: book'), scope))).toMatchObject({ arrangement: 'book', board: { cards: expect.any(Array) } });
   });
+  it('keeps a converted legacy layout inside the board’s range and card limit', () => {
+    const far = boardCompilation(parseCompilation('version: 1\nid: d\ntitle: D\narrangement: graph\nsource: { kind: tag, tag: t }\ngraph: { nodes: [{ path: notes/one/a.md, x: 5000000, y: 0 }, { path: notes/one/b.md, x: 5001000, y: 0 }, { path: notes/one/c.md, x: -9000000, y: -9000000 }] }\n', scope));
+    const cards = far.board!.cards!;
+    for (let i = 0; i < cards.length; i++) for (let j = i + 1; j < cards.length; j++) expect(overlap(cards[i], cards[j]), `${i}/${j}`).toBe(false);
+    expect(parseCompilation(serializeCompilation(far), scope)).toEqual(far);
+    const nodes = Array.from({ length: 2001 }, (_, n) => `{ path: notes/one/n${n}.md, x: ${(n % 50) * 300}, y: ${Math.floor(n / 50) * 200} }`).join(', ');
+    const many = boardCompilation(parseCompilation(`version: 1\nid: d\ntitle: D\narrangement: graph\nsource: { kind: tag, tag: t }\ngraph: { nodes: [${nodes}] }\n`, scope));
+    expect(many.board!.cards).toHaveLength(2000);
+    expect(() => parseCompilation(serializeCompilation(many), scope)).not.toThrow();
+  });
   it('still writes a graph-arranged file as graph with its layout until the board is drawn, so older readers keep it', () => {
     const file = parseCompilation(legacy, scope);
     const row = compilationRow(file, owner);
@@ -222,6 +244,16 @@ board:
     // The same when the moved entry comes first.
     const reversed = relocateCompilation(stale.replace('    - { path: notes/one/b.md, x: 1, y: 1 }\n    - { path: notes/one/a.md, x: 2, y: 2 }\n', '    - { path: notes/one/a.md, x: 2, y: 2 }\n    - { path: notes/one/b.md, x: 1, y: 1 }\n'), move)!;
     expect(parseCompilation(reversed, scope).board!.cards).toEqual([{ path: 'notes/one/b.md', x: 2, y: 2 }, { path: 'notes/one/c.md', x: 3, y: 3 }]);
+  });
+  it('relocates a board whose arrow ends share an alias, giving each use its own path', () => {
+    const aliased = dynamicBoard.replace('    - { id: a1, from: { path: notes/one/cases/a/x.md }, to: { path: notes/one/cases/b/y.md } }\n    - { id: a2, from: { text: t1 }, to: { path: notes/one/cases/a/x.md } }\n', '    - { id: a1, from: &x { path: notes/one/cases/a/x.md }, to: { path: notes/one/cases/b/y.md } }\n    - { id: a2, from: { text: t1 }, to: *x }\n');
+    expect(parseCompilation(aliased, scope).board!.arrows![1].to).toEqual({ path: 'notes/one/cases/a/x.md' });
+    const next = relocateCompilation(aliased, path => path.replace('notes/one/cases/a', 'notes/one/moved'))!;
+    const file = parseCompilation(next, scope);
+    expect(file.board!.arrows).toEqual([{ id: 'a1', from: { path: 'notes/one/moved/x.md' }, to: { path: 'notes/one/cases/b/y.md' } }, { id: 'a2', from: { text: 't1' }, to: { path: 'notes/one/moved/x.md' } }]);
+    expect(file.board!.cards![0]).toEqual({ path: 'notes/one/moved/x.md', x: 24, y: 56 });
+    expect(file.source).toEqual({ kind: 'folder', path: 'notes/one/cases', recursive: true });
+    expect(next).toContain('    - { id: a2, from: { text: t1 }, to: { path: notes/one/moved/x.md } }\n');
   });
   it('leaves a custom board alone when a pinned note moves: its cards name the item', () => {
     const next = relocateCompilation(example, path => path.replace('第三章導論', '導論'))!;

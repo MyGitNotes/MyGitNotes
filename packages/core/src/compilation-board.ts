@@ -190,7 +190,9 @@ const clampCoordinate = (value: number) => Math.max(-BOARD_COORDINATE_LIMIT, Mat
 export function boardFromGraph(graph: GraphLayout, scope: { items?: readonly ({ id: string; kind: string; path?: string; })[]; }): CompilationBoard {
   const placed: { key: { item: string; } | { path: string; }; x: number; y: number; }[] = [];
   const seen = new Set<string>();
-  for (const node of graph.nodes) {
+  // Centres are kept inside the board's range before cards are separated, so two far-out nodes never meet on its edge.
+  const inside = (value: number, half: number) => Math.max(-BOARD_COORDINATE_LIMIT + half, Math.min(BOARD_COORDINATE_LIMIT - half, value));
+  for (const node of graph.nodes.map(node => ({ ...node, x: inside(node.x, BOARD_CARD_WIDTH / 2), y: inside(node.y, BOARD_CARD_HEIGHT / 2) }))) {
     if (scope.items) {
       for (const item of scope.items) {
         if (item.kind === 'heading' || item.path !== node.path || seen.has(`item:${item.id}`)) continue;
@@ -202,8 +204,16 @@ export function boardFromGraph(graph: GraphLayout, scope: { items?: readonly ({ 
       placed.push({ key: { path: node.path }, x: node.x, y: node.y });
     }
   }
-  const { nodes } = arrangeGraphLayout({ nodes: placed.map((card, index) => ({ id: String(index), x: card.x, y: card.y, expanded: true, width: BOARD_CARD_WIDTH, height: BOARD_CARD_HEIGHT })) });
-  return { cards: placed.map((card, index) => ({ ...card.key, x: clampCoordinate(nodes[index].x - BOARD_CARD_WIDTH / 2), y: clampCoordinate(nodes[index].y - BOARD_CARD_HEIGHT / 2) })) };
+  // A board holds at most BOARD_MAX_CARDS positions; members past them are auto-placed when the board is drawn.
+  const kept = placed.slice(0, BOARD_MAX_CARDS);
+  const { nodes } = arrangeGraphLayout({ nodes: kept.map((card, index) => ({ id: String(index), x: card.x, y: card.y, expanded: true, width: BOARD_CARD_WIDTH, height: BOARD_CARD_HEIGHT })) });
+  // Separating may push cards past an edge of the range; the layout shifts back inside as a whole, keeping its gaps.
+  const shift = (values: number[], size: number) => {
+    const low = Math.min(...values) - size / 2, high = Math.max(...values) + size / 2;
+    return low < -BOARD_COORDINATE_LIMIT ? -BOARD_COORDINATE_LIMIT - low : high > BOARD_COORDINATE_LIMIT ? BOARD_COORDINATE_LIMIT - high : 0;
+  };
+  const dx = nodes.length ? shift(nodes.map(node => node.x), BOARD_CARD_WIDTH) : 0, dy = nodes.length ? shift(nodes.map(node => node.y), BOARD_CARD_HEIGHT) : 0;
+  return { cards: kept.map((card, index) => ({ ...card.key, x: clampCoordinate(nodes[index].x + dx - BOARD_CARD_WIDTH / 2), y: clampCoordinate(nodes[index].y + dy - BOARD_CARD_HEIGHT / 2) })) };
 }
 
 /**

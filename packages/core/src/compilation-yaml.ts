@@ -47,7 +47,8 @@ export function takeCompilationExtensions(document: Document, knownKeys: Readonl
 /** Writes the known fields first, then the external fields in source order. */
 export function stringifyCompilationYaml(document: Document, extensions?: CompilationYamlExtensions): string {
   if (extensions && YAML.isMap(document.contents)) document.contents.items.push(...extensions.entries);
-  return document.toString({ lineWidth: 0 });
+  // A double-quoted scalar with line breaks stays on one line, as `\n`, however long: a board entry is one line.
+  return document.toString({ lineWidth: 0, doubleQuotedMinMultiLineLength: Number.MAX_SAFE_INTEGER });
 }
 
 /** Writes each entry of the board's lists as a one-line flow mapping, so moving a card changes one line and adding an arrow adds one. */

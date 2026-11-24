@@ -343,9 +343,31 @@ export function relocateCompilation(raw: string, move: (path: string) => string)
   edits.push(...boardEdits);
   if (!edits.length && !removals.length) return null;
   const extensions = takeCompilationExtensions(document, knownCompilationKeys);
-  for (const { location, next } of edits) document.setIn(location, next);
-  for (const location of removals) document.deleteIn(location);
+  try {
+    for (const { location, next } of edits) document.setIn(location, next);
+    for (const location of removals) document.deleteIn(location);
+  } catch {
+    // An edit through an alias cannot be made in place: the known fields are written out plainly, each use of an alias its own copy.
+    const fresh = YAML.parseDocument(raw);
+    const freshExtensions = takeCompilationExtensions(fresh, knownCompilationKeys);
+    const plain = unshared(fresh.toJS({ maxAliasCount: 20 }));
+    for (const { location, next } of edits) setPlain(plain, location, next);
+    for (const location of removals) setPlain(plain, location, undefined);
+    return writeCompilationYaml(plain as object, freshExtensions);
+  }
   return stringifyCompilationYaml(document, extensions);
+}
+
+/** A copy of parsed YAML in which no two places share an object, as two uses of one alias do. */
+const unshared = (value: unknown): unknown => Array.isArray(value) ? value.map(unshared) : value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype ? Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, unshared(entry)])) : value;
+
+/** Sets the value at a location of parsed YAML; `undefined` removes a list entry. */
+function setPlain(root: unknown, location: readonly (string | number)[], next: unknown) {
+  let parent = root as Record<string | number, unknown>;
+  for (const step of location.slice(0, -1)) parent = parent[step] as Record<string | number, unknown>;
+  const last = location[location.length - 1];
+  if (next === undefined && Array.isArray(parent)) parent.splice(Number(last), 1);
+  else parent[last] = next;
 }
 
 /** A file name stem from a title: letters and digits of any script, dashes between words. */
