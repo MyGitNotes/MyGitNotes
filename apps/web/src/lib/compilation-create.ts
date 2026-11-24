@@ -1,5 +1,5 @@
 import type { CompilationRow } from '@mygitnotes/core/compilation';
-import { compilationMetadata, compilationText } from './compilation-rows.js';
+import { compilationMetadata, compilationText, newCompilationRow } from './compilation-rows.js';
 import { newCompilationPath } from './use-compilation.js';
 import { firstFreePath } from './compilation-paths.js';
 import type { NotebookConfig } from './types.js';
@@ -14,5 +14,5 @@ export interface NewCompilation {
 export async function planNewCompilation(row: CompilationRow, notebook: NotebookConfig, folder: string, stem = row.name, initialStatus?: string): Promise<NewCompilation> {
   const path = await firstFreePath(notebook.id, taken => newCompilationPath(notebook, stem, taken, folder));
   const created = row.status || !initialStatus ? row : { ...row, status: initialStatus };
-  return { path, content: compilationText({ ...created, path }), metadata: compilationMetadata(created) };
+  return { path, content: compilationText(newCompilationRow({ ...created, path })), metadata: compilationMetadata(created) };
 }

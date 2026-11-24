@@ -41,3 +41,13 @@ it('keeps a status the row already has', async () => {
   });
   expect((create.mock.calls[0] as unknown as unknown[])[3]).toMatchObject({ status: 'done' });
 });
+
+it('creates a board row as the graph older Cores read', async () => {
+  vi.useFakeTimers();
+  const { result } = renderHook(() => useCompilations('life', notebooks as never));
+  act(() => result.current.change({ rows: [{ ...lane, view: 'board' }] }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect((create.mock.calls[0] as unknown as unknown[])[2]).toContain('arrangement: graph\n');
+});
