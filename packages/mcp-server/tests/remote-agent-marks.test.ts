@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { isAgentEdit, openRemoteRepository } from '@mygitnotes/core';
 import { callRemoteTool } from '../src/remote-tools.js';
 import { gitlabFixture } from '../../core/tests/fixtures/gitlab.js';
@@ -17,6 +17,18 @@ it('marks the commits of cp, mv and replace_notes as agent edits', async () => {
   const replaced = await callRemoteTool(reader(f), 'replace_notes', { search: 'Beta', replace: 'Gamma', revision: f.head }, true);
   expect(replaced.commit.message).toMatch(/^docs\(notes\): replace "Beta" across 1 notes \(Agent, /);
   expect(isAgentEdit(replaced.commit.message)).toBe(true);
+});
+
+it('aborts replacement when reading source style fails', async () => {
+  const f = gitlabFixture();
+  const repo = reader(f);
+  const head = f.head;
+  const notes = await repo.notes();
+  vi.spyOn(repo, 'notes').mockResolvedValue(notes);
+  vi.spyOn(repo, 'readFile').mockRejectedValue(new Error('transport failed'));
+  await expect(callRemoteTool(repo, 'replace_notes', { search: 'Beta', replace: 'Gamma', revision: head }, true)).rejects.toThrow('transport failed');
+  await expect(repo.commitNotes([{ path: 'notes/ex/a.md', content: 'New body', metadata: {} }], head, 'Edit note')).rejects.toThrow('transport failed');
+  expect(f.head).toBe(head);
 });
 
 // A post of an Astro blog reads `pubDatetime` with `z.date()`: a replace in its body leaves its bare date bare.

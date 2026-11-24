@@ -5,6 +5,20 @@ import { patchFrontmatterField } from '../src/frontmatter-patch.js';
 import { serializeNoteFile } from '../src/note-file.js';
 import { renderNoteTemplate } from '../src/note-template.js';
 
+it('quotes a plain field only when its reader type changes', () => {
+  for (const title of ['yes', '2026-01-01', '12:30']) {
+    const raw = serializeNoteContent({ title, date: '2026-02-02' }, 'new', false, new Date(), '---\ntitle: foo\ndate: 2025-01-01\n---\nold');
+    expect(raw).toContain(`title: "${title}"`);
+    expect(raw).toContain('date: 2026-02-02');
+  }
+});
+
+it('preserves each reordered map item’s date style', () => {
+  const raw = '---\nev:\n  - at: 2025-01-01\n  - at: "2025-02-02"\n---\nold';
+  const result = serializeNoteContent({ ev: [{ at: '2025-02-02' }, { at: '2025-01-01' }] }, 'new', false, new Date(), raw);
+  expect(result).toContain('- at: "2025-02-02"\n  - at: 2025-01-01');
+});
+
 // A post of the boss's Astro blog: its schema reads `pubDatetime` with `z.date()`, so the bare value must stay a YAML date.
 const post = '---\ntitle: Post\npubDatetime: 2026-11-24T09:00:00+08:00\ndate: 2025-01-01\ndraft: no\nquoted: "2025-01-01"\nsingle: \'2025-01-01\'\ntags:\n  - astro\n  - on\n---\n\nBody.\n';
 const kept = ['pubDatetime: 2026-11-24T09:00:00+08:00', 'date: 2025-01-01', 'draft: no', 'quoted: "2025-01-01"', "single: '2025-01-01'"];
@@ -38,7 +52,7 @@ describe('a key keeps the style its note wrote it in', () => {
     expect(lines(serializeNoteFile(file, edits, parseNoteContent(post).content, false, now, post))).toEqual(expect.arrayContaining(expected));
     expect(lines(serializeNoteFile(file, edits, 'New body.\n', false, now, post))).toEqual(expect.arrayContaining(expected));
     expect(lines(patchNoteFrontmatter(post, metadata, edits))).toEqual(expect.arrayContaining(expected));
-    expect(replaceNoteStatus('---\nstatus: inbox\n---\nBody\n', 'on')).toBe('---\nstatus: on\n---\nBody\n');
+    expect(replaceNoteStatus('---\nstatus: inbox\n---\nBody\n', 'on')).toBe('---\nstatus: "on"\n---\nBody\n');
   });
 
   it('never writes a value MGN would read back as another one', () => {

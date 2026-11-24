@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { agentEditMessage, agentSystemHint, callAgentSystem, callNoteShell, configuredNoteStatuses, DEFAULT_NOTE_STATUSES, inAssetScope, isNotebookContent, keptNoteMetadata, listTemplates, liveBase, type LiveNoteState, NOTE_DESCRIPTION_LIMIT, notebookKey, noteFromTemplate, type NoteItem, type NoteMetadata, type NoteMetadataEdits, type NoteSearchOptions, noteShellWrites, noteSummary, noteWebPath, presignR2Object, r2PreviewType, r2ReferenceKeys, RemoteSource, searchNotes, serializeNoteContent, skillFile, TemplateError, textSearchRegex, versionFileChanges, withNoteEdits } from '@mygitnotes/core';
+import { agentEditMessage, agentSystemHint, callAgentSystem, callNoteShell, configuredNoteStatuses, DEFAULT_NOTE_STATUSES, inAssetScope, isNotebookContent, keptNoteMetadata, listTemplates, liveBase, type LiveNoteState, NOTE_DESCRIPTION_LIMIT, notebookKey, noteFromTemplate, type NoteItem, type NoteMetadata, type NoteMetadataEdits, type NoteSearchOptions, noteShellWrites, noteSummary, noteWebPath, presignR2Object, r2PreviewType, r2ReferenceKeys, RemoteSource, searchNotes, serializeNoteContent, skillFile, SourceError, TemplateError, textSearchRegex, versionFileChanges, withNoteEdits } from '@mygitnotes/core';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { type AssetUpload, deleteR2Asset, envToolAssets, listR2Assets, type ToolAssets, uploadR2Asset } from './tools/assets.js';
 import { TEMPLATE_GUIDANCE } from './template-guidance.js';
@@ -378,7 +378,10 @@ async function runRemoteTool(reader: RemoteSource, name: string, args: Record<st
       // A note whose frontmatter cannot be read holds it in its content, which is written as it is: a rendered block would go in front of it.
       // The stored text is the source of each key's style, so a frontmatter key keeps how the note wrote it (a bare date stays bare).
       await reader.prefetchFiles(modified.map((n) => n.path));
-      const changes = await Promise.all(modified.map(async (n) => ({ path: n.path, content: n.frontmatterInvalid ? n.content : serializeNoteContent(n.metadata, n.content, false, new Date(), await reader.readFile(n.path).then((raw) => raw.toString('utf8'), () => undefined)) })));
+      const changes = await Promise.all(modified.map(async (n) => ({ path: n.path, content: n.frontmatterInvalid ? n.content : serializeNoteContent(n.metadata, n.content, false, new Date(), await reader.readFile(n.path).then((raw) => raw.toString('utf8'), error => {
+        if (!(error instanceof SourceError && error.status === 404)) throw error;
+        return undefined;
+      })) })));
       // Marked as an agent edit, as every note text an agent commits, so history shows who changed the notes.
       const receipt = await reader.commitChanges(changes, rev, 'replace', 'notes', agentEditMessage(`docs(notes): replace "${search}" across ${modified.length} notes`));
       return { success: true, dryRun: false, search, replace, matchedFiles: modified.map((n) => n.path), totalFiles: modified.length, commit: receipt.commit };

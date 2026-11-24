@@ -1348,7 +1348,10 @@ export abstract class RemoteSource {
       changes.push(
         ...await Promise.all(
           writes.slice(i, i + 6).map(async note => {
-            const existingRaw = note.createOnly ? undefined : await this.readFile(note.path).then(b => b.toString('utf8')).catch(() => undefined);
+            const existingRaw = note.createOnly ? undefined : await this.readFile(note.path).then(b => b.toString('utf8')).catch(error => {
+              if (!(error instanceof SourceError && error.status === 404)) throw error;
+              return undefined;
+            });
             return { path: note.path, content: serializeNoteFile(note.path, note.metadata, note.content, Boolean(note.createOnly), new Date(), existingRaw) };
           }),
         ),

@@ -44,7 +44,7 @@ describe('portable YAML frontmatter', () => {
   it('keeps a changed field as written, quotes a new one and updated, and leaves untouched frontmatter and body bytes alone on save', () => {
     const raw = '---\r\ncreated: "2000-01-01T00:00:00.000Z"\r\nlegacy: 2025-01-01 # untouched\r\ndate: old # keep\r\n---\r\n\r\nBody\n';
     const result = save({ ...parseNoteContent(raw).metadata, date: '2026-11-24', due: '2026-12-01' }, raw);
-    expect(result).toBe(raw.replace('date: old # keep', 'date: 2026-11-24 # keep\r\ndue: "2026-12-01"\r\nupdated: "2026-11-24T10:00:00.000Z"'));
+    expect(result).toBe(raw.replace('date: old # keep', 'date: "2026-11-24" # keep\r\ndue: "2026-12-01"\r\nupdated: "2026-11-24T10:00:00.000Z"'));
   });
 
   it('uses the same quoting when Live creates a block or patches an existing one', () => {

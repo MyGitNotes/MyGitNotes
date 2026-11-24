@@ -247,7 +247,7 @@ export function createLiveRouter(): express.Router {
         const body = content ?? '';
         const parsed = parseNoteContent(body);
         // A note that names no title of its own takes the one given, so its first check-in files it under that title.
-        text = typeof parsed.metadata.title === 'string' && parsed.metadata.title.trim() || NOTE_H1.test(parsed.content) ? body : serializeNoteContent({ ...parsed.metadata, title: title.trim() }, parsed.content, true, now);
+        text = typeof parsed.metadata.title === 'string' && parsed.metadata.title.trim() || NOTE_H1.test(parsed.content) ? body : serializeNoteContent({ ...parsed.metadata, title: title.trim() }, parsed.content, true, now, parsed.hasFrontmatter ? body : undefined);
         rule = `${folder ? `${folder}/` : ''}{{title}}.md`;
       }
       if (Buffer.byteLength(text, 'utf8') > LIVE_MAX_BYTES) throw new LiveTooLargeError();

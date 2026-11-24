@@ -81,6 +81,14 @@ describe('POST /api/live/checkout', () => {
     expect(await liveNotes.service.checkouts(repository)).toEqual([]);
   });
 
+  it('preserves posted date style when adding a live note title', async () => {
+    await start();
+    const { checkout } = (await call('POST', '/api/live/new', { notebookId: 'notes~life', title: 'Idea', content: '---\npubDatetime: 2026-01-01\n---\nIdea body' })).body;
+    const { content } = await liveNotes.person(pat).read(repository, checkout.id);
+    expect(content).toContain('pubDatetime: 2026-01-01\n');
+    expect(content).toContain('created:');
+  });
+
   it('creates a live note on the Git text, and a second checkout joins it', async () => {
     await start();
     const first = await call('POST', '/api/live/checkout', { notebookId: 'notes~life', path: 'notes/life/a.md' });
