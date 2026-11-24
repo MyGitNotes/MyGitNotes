@@ -1,5 +1,6 @@
 import YAML from 'yaml';
 import { useState } from 'react';
+import { stringifyFrontmatterYaml } from '@mygitnotes/core/frontmatter';
 import { patchFrontmatterField } from '@mygitnotes/core/frontmatter-patch';
 import { useTranslation } from '../lib/i18n/index.js';
 import { AddMetadataField, FrontmatterHeader, type FrontmatterViewMode, FrontmatterYaml, MetadataFieldList, metadataFieldSpecs } from './note-editor/FrontmatterParts.js';
@@ -35,7 +36,7 @@ export function withSkillFrontmatterSource(content: string, source: string): str
 export function withSkillMetadata(content: string, next: Metadata): string {
   const { metadata, error } = readSkillFrontmatter(content);
   if (error) return content;
-  if (!FRONTMATTER.test(content)) return Object.keys(next).length ? `---\n${YAML.stringify(next).trimEnd()}\n---\n\n${content}` : content;
+  if (!FRONTMATTER.test(content)) return Object.keys(next).length ? `---\n${stringifyFrontmatterYaml(next).trimEnd()}\n---\n\n${content}` : content;
   let patched = content;
   for (const key of Object.keys(metadata)) if (!(key in next)) patched = patchFrontmatterField(patched, key, undefined);
   for (const [key, value] of Object.entries(next)) if (JSON.stringify(metadata[key]) !== JSON.stringify(value)) patched = patchFrontmatterField(patched, key, value);

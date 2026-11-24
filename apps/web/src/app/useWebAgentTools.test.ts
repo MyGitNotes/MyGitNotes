@@ -229,9 +229,12 @@ it('filters the templates by a query, orders them by the last use, cuts at the l
   expect(after.templates.map(template => template.id)).toEqual(['meeting', 'weekly', 'reading']);
   expect(after.templates[0].lastUsed).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
+  const templatePath = 'notes/.templates/reading.md';
+  const template = server.get(templatePath)!;
+  server.set(templatePath, { ...template, metadata: { ...template.metadata, reviewed: '2026-11-24' } });
   const one = await list({ notebookId: 'life', templateId: 'reading' });
   expect(one).toMatchObject({ templates: [{ id: 'reading', lastUsed: '2026-11-01T08:00:00.000Z' }], total: 1, truncated: false });
-  expect(one.templates[0].content).toMatch(/^---\ntemplate:\n {2}name: Reading\n[\s\S]*---\n# \{\{title\}\}\n\n> \{\{takeaway\}\}\n$/);
+  expect(one.templates[0].content).toMatch(/^---\ntemplate:\n {2}name: Reading\n[\s\S]*reviewed: "2026-11-24"\n---\n# \{\{title\}\}\n\n> \{\{takeaway\}\}\n$/);
   expect(after.templates[0]).not.toHaveProperty('content');
   await expect(list({ templateId: 'reading' })).rejects.toThrow(/notebookId/);
   await expect(list({ notebookId: 'life', templateId: 'nope' })).rejects.toThrow(/no template 'nope'.*meeting, reading, weekly/);

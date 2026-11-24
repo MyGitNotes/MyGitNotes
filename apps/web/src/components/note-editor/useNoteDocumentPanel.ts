@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import YAML from 'yaml';
+import { stringifyFrontmatterYaml } from '@mygitnotes/core/frontmatter';
 import { chooseOutlineHeading, findOutlineIndexForLine, findTextMatches, parseMarkdownOutline } from '../../lib/note-navigation.js';
 import { isEditableTarget } from '../../lib/keyboard/context.js';
 import { matchesCommand } from '../../lib/keyboard/keymap.js';
@@ -82,7 +82,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
   // switching to another document-panel tab and back.
   const [newFieldKey, setNewFieldKey] = useState('');
   const [frontmatterViewMode, setFrontmatterViewMode] = useState<'form' | 'yaml'>('form');
-  const [yamlText, setYamlText] = useState(() => YAML.stringify(metadata || {}));
+  const [yamlText, setYamlText] = useState(() => stringifyFrontmatterYaml(metadata || {}));
   const [yamlError, setYamlError] = useState('');
 
   // Tag autocomplete state

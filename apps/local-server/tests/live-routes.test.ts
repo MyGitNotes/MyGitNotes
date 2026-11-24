@@ -125,7 +125,7 @@ describe('POST /api/live/new and /api/live/checkin', () => {
     expect(row.pathRule).toBe('會議/週會/{{date}} {{title}}.md');
     const text = (await liveNotes.person(pat).read(repository, checkout.id)).content;
     expect(text).toContain('template: meeting');
-    expect(text).toContain('date: 2026-11-20\n');
+    expect(text).toContain('date: "2026-11-20"\n');
     expect(text).toContain('# 週會\n\nKind: 週會, room: {{room}}');
     // A pending note reads live by its virtual path.
     expect((await call('GET', `/api/notes/read?notebookId=notes~life&path=${encodeURIComponent(checkout.path)}`)).body.note).toMatchObject({ title: '週會', live: { pending: true } });

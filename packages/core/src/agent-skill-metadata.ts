@@ -1,4 +1,5 @@
 import YAML from 'yaml';
+import { frontmatterYamlOptions, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 
 const SKILL_ENTRY = /^(.*\/(?:\.agents|\.codex|\.claude|\.agent)\/skills|(?:\.agents|\.codex|\.claude|\.agent)\/skills)\/([^/]+)\/SKILL\.md$/;
 const VALID_SKILL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -48,7 +49,7 @@ export function newAgentSkillEntryPath(slug: string, folder = ''): string {
 /** A minimal, immediately valid SKILL.md: frontmatter with a name and empty description, plus a heading. */
 export function newAgentSkillEntryContent(slug: string): string {
   const value = validateAgentSkillSlug(slug);
-  const yaml = YAML.stringify({ name: value, description: '' }).trim();
+  const yaml = stringifyFrontmatterYaml({ name: value, description: '' }).trim();
   return `---\n${yaml}\n---\n\n# ${value}\n`;
 }
 
@@ -69,8 +70,8 @@ export function rewriteAgentSkillReferences(content: string, oldDirectory: strin
 export function renameAgentSkillEntryContent(content: string, oldDirectory: string, newDirectory: string, newSlug: string): string {
   const rewritten = rewriteAgentSkillReferences(content, oldDirectory, newDirectory);
   const match = rewritten.match(FRONTMATTER);
-  if (!match) return `---\nname: ${newSlug}\n---\n\n${rewritten}`;
-  const document = YAML.parseDocument(match[1]);
+  if (!match) return `---\n${stringifyFrontmatterYaml({ name: newSlug })}---\n\n${rewritten}`;
+  const document = YAML.parseDocument(match[1], frontmatterYamlOptions);
   if (document.errors.length || !YAML.isMap(document.contents)) throw new Error('Fix the SKILL.md frontmatter before renaming this skill.');
   document.set('name', newSlug);
   return `---\n${document.toString({ lineWidth: 0 }).trimEnd()}\n---\n${rewritten.slice(match[0].length)}`;

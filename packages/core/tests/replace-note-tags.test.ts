@@ -53,7 +53,7 @@ describe('replaceNoteTags preserves the original frontmatter text', () => {
 
   it('keeps CRLF line endings inside a rewritten block sequence', () => {
     const raw = '---\r\nid: x\r\ntags:\r\n  - a\r\n  - b\r\n---\r\nbody\r\n';
-    expect(replaceNoteTags(raw, ['a', 'x', 'y'])).toBe('---\r\nid: x\r\ntags:\r\n  - a\r\n  - x\r\n  - y\r\n---\r\nbody\r\n');
+    expect(replaceNoteTags(raw, ['a', 'x', 'y'])).toBe('---\r\nid: x\r\ntags:\r\n  - a\r\n  - x\r\n  - "y"\r\n---\r\nbody\r\n');
   });
 
   it('leaves the body and every other field untouched, including a note with no body', () => {

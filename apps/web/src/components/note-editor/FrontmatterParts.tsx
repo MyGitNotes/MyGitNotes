@@ -1,6 +1,7 @@
 import { Tooltip } from '../Tooltip.js';
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import YAML from 'yaml';
+import { stringifyFrontmatterYaml } from '@mygitnotes/core/frontmatter';
 import { Code } from 'lucide-react';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { LoadingStatus } from '../LoadingStatus.js';
@@ -25,7 +26,7 @@ export function FrontmatterHeader({ mode, metadata, yamlSource, onMode, onYaml, 
         <button
           type='button'
           onClick={() => {
-            onYaml(yamlSource ?? YAML.stringify(metadata));
+            onYaml(yamlSource ?? stringifyFrontmatterYaml(metadata));
             onMode('yaml');
           }}
           className={`px-2 py-0.5 rounded font-medium flex items-center gap-1 transition-colors ${mode === 'yaml' ? 'bg-surface text-fg shadow-sm' : 'text-muted hover:text-fg'}`}

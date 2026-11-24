@@ -2,7 +2,10 @@ import YAML from 'yaml';
 import { NoteMetadata } from './types.js';
 import { stampSaveTimestamps } from './note-timestamps.js';
 import { fillEmptyBlock, FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
+import { createFrontmatterDocument, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 import { NOTE_H1 } from './note-title.js';
+
+export { stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 
 export interface ParsedNote {
   metadata: NoteMetadata;
@@ -91,7 +94,7 @@ function quoteTimestampScalars(document: YAML.Document): void {
 }
 
 function stringifyMetadata(metadata: NoteMetadata): string {
-  const doc = new YAML.Document(metadata);
+  const doc = createFrontmatterDocument(metadata);
   quoteTimestampScalars(doc);
   return doc.toString();
 }
@@ -314,7 +317,7 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
   if (match && parseNoteContent(raw).hasFrontmatter) {
     const yaml = match[1] ?? '';
     const document = YAML.parseDocument(yaml);
-    if (document.contents === null) return status === null ? raw : fillEmptyBlock(raw, match, [`status: ${new YAML.Document(new YAML.Scalar(status)).toString({ lineWidth: 0 }).trimEnd()}`]);
+    if (document.contents === null) return status === null ? raw : fillEmptyBlock(raw, match, [`status: ${stringifyFrontmatterYaml(status, { lineWidth: 0 }).trimEnd()}`]);
     if (!YAML.isMap(document.contents)) return raw;
     const map = document.contents;
     const index = map.items.findIndex(pair => YAML.isScalar(pair.key) && pair.key.value === 'status');
@@ -325,7 +328,7 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
     const patch = (start: number, end: number, text: string) => raw.slice(0, offset + start) + text + raw.slice(offset + end);
     const node = new YAML.Scalar(status);
     if (YAML.isScalar(pair?.value) && ['QUOTE_SINGLE', 'QUOTE_DOUBLE'].includes(pair.value.type || '')) node.type = pair.value.type;
-    const rendered = new YAML.Document(node).toString({ lineWidth: 0 }).trimEnd();
+    const rendered = stringifyFrontmatterYaml(node, { lineWidth: 0 }).trimEnd();
     if (!pair) {
       if (map.flow) {
         const end = yaml.lastIndexOf('}');
@@ -355,7 +358,7 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
   }
   // A block that cannot be read keeps the text as it is, rather than a second block going in front of it (CFR2-F001):
   // the caller compares the result to tell.
-  return status === null || hasUnreadableFrontmatter(raw) ? raw : `---\n${YAML.stringify({ status })}---\n${raw}`;
+  return status === null || hasUnreadableFrontmatter(raw) ? raw : `---\n${stringifyFrontmatterYaml({ status })}---\n${raw}`;
 }
 
 /**
@@ -374,7 +377,7 @@ export function replaceNoteTags(raw: string, tags: string[]): string {
   if (!pair || !YAML.isNode(pair.value) || !pair.value.range || !pair.key.range) return raw;
 
   const flow = YAML.isSeq(pair.value) ? pair.value.flow === true : false;
-  const newDocument = new YAML.Document({ tags });
+  const newDocument = createFrontmatterDocument({ tags });
   if (flow && tags.length > 0) {
     const seqNode = newDocument.get('tags', true);
     if (YAML.isSeq(seqNode)) seqNode.flow = true;

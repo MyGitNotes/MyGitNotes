@@ -26,7 +26,7 @@ describe('skill metadata helpers', () => {
   });
 
   it('creates frontmatter for a skill that has none', () => {
-    expect(withSkillMetadata('# Skill\n', { description: 'Does things' })).toBe('---\ndescription: Does things\n---\n\n# Skill\n');
+    expect(withSkillMetadata('# Skill\n', { description: 'Does things', reviewed: '2026-11-24' })).toBe('---\ndescription: Does things\nreviewed: "2026-11-24"\n---\n\n# Skill\n');
   });
 
   it('leaves malformed frontmatter untouched and reports it', () => {

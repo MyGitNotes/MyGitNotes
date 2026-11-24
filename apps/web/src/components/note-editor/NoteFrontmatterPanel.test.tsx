@@ -48,6 +48,13 @@ it('edits the title as a field where the note cannot be renamed', () => {
   expect(setMetadata).toHaveBeenCalledWith({ title: 'Retitled', status: 'todo' });
 });
 
+it('seeds the YAML editor with a quoted date when it has only parsed metadata', () => {
+  const setYamlText = vi.fn();
+  panel({ metadata: { title: 'Untitled', date: '2026-11-24' }, setYamlText });
+  fireEvent.click(screen.getByRole('button', { name: 'YAML Source' }));
+  expect(setYamlText).toHaveBeenCalledWith('title: Untitled\ndate: "2026-11-24"\n');
+});
+
 it('leaves the title field disabled for a note that is locked, as in a read-only notebook', () => {
   const { title } = panel({ locked: true, onRename: vi.fn() });
   expect(title).toBeDisabled();

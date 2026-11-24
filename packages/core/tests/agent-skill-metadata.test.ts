@@ -45,6 +45,17 @@ describe('agent skill metadata', () => {
     expect(renameAgentSkillEntryContent(content, '.agents/skills/run', '.agents/skills/execute', 'execute')).toBe('---\nname: execute\ndescription: Run the tests, then run lint.\ncustom: keep\n---\nUse $run at `.agents/skills/execute/SKILL.md`.\n');
   });
 
+  it('writes a skill name that YAML 1.1 could read as a boolean as text', () => {
+    const oldDir = '.agents/skills/run';
+    const newDir = '.agents/skills/on';
+    for (const content of [newAgentSkillEntryContent('on'), renameAgentSkillEntryContent('# Run\n', oldDir, newDir, 'on'), renameAgentSkillEntryContent('---\nname: &skill run\nalias: *skill\n---\n# Run\n', oldDir, newDir, 'on')]) {
+      const yaml = splitAgentSkillContent(content).frontmatter.replace(/^---\n/, '').replace(/\n---\n$/, '');
+      const metadata = YAML.parse(yaml, { version: '1.1' });
+      expect(metadata.name).toBe('on');
+      if ('alias' in metadata) expect(metadata.alias).toBe('on');
+    }
+  });
+
   it('splits frontmatter from body, round-tripping a key the panel does not expose and CRLF line endings', () => {
     const content = '---\r\nname: review\r\ndescription: Review prose\r\ncustom: keep\r\n---\r\n# Review\r\nBody text.\r\n';
     const split = splitAgentSkillContent(content);

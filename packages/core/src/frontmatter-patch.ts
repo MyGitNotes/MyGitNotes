@@ -1,4 +1,5 @@
 import YAML from 'yaml';
+import { createFrontmatterDocument, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 
 /**
  * A note's leading frontmatter block: `---` on the first line, the YAML, and a closing `---` that ends its line (trailing
@@ -46,7 +47,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
     if (value === undefined) return raw;
     const node = value !== null && typeof value === 'object' ? value : new YAML.Scalar(value);
     if (YAML.isScalar(node) && typeof value === 'string' && (key === 'created' || key === 'updated')) node.type = 'QUOTE_DOUBLE';
-    return fillEmptyBlock(raw, match, new YAML.Document({ [key]: node }).toString({ lineWidth: 0, flowCollectionPadding: false }).trimEnd().split('\n'));
+    return fillEmptyBlock(raw, match, stringifyFrontmatterYaml({ [key]: node }, { lineWidth: 0, flowCollectionPadding: false }).trimEnd().split('\n'));
   }
   if (!YAML.isMap(document.contents)) return raw;
   const map = document.contents;
@@ -85,7 +86,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
       if (typeof value === 'string' && (key === 'created' || key === 'updated')) node.type = 'QUOTE_DOUBLE';
       insertedValue = node;
     }
-    const newDocument = new YAML.Document({ [key]: insertedValue });
+    const newDocument = createFrontmatterDocument({ [key]: insertedValue });
     if (isCollection && map.flow) {
       const newNode = newDocument.get(key, true);
       if (YAML.isSeq(newNode) || YAML.isMap(newNode)) newNode.flow = true;
@@ -102,7 +103,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
 
   if (isCollection || YAML.isSeq(oldValue) || YAML.isMap(oldValue)) {
     const flow = (YAML.isSeq(oldValue) || YAML.isMap(oldValue)) ? oldValue.flow === true : false;
-    const newDocument = new YAML.Document({ [key]: value });
+    const newDocument = createFrontmatterDocument({ [key]: value });
     if (flow) {
       const newNode = newDocument.get(key, true);
       if (YAML.isSeq(newNode) || YAML.isMap(newNode)) newNode.flow = true;
@@ -125,7 +126,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
   if (typeof oldValue.comment === 'string') node.comment = oldValue.comment;
   // Rendered inside its own key so a multiline value gets a block-scalar indicator with
   // correctly indented content, matching where it would sit under the real key.
-  const rendered = new YAML.Document({ [key]: node }).toString({ lineWidth: 0 });
+  const rendered = stringifyFrontmatterYaml({ [key]: node }, { lineWidth: 0 });
   let replacement = rendered.slice(renderedKeyEnd(rendered));
   // As the last field, a value ending in a blank line is ambiguous with the closing `---`
   // delimiter's own separator: the shared frontmatter boundary match always attributes that one

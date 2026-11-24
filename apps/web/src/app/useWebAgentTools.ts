@@ -4,6 +4,7 @@ import { isNoteFile } from '@mygitnotes/core/note-file';
 import { differsOnlyInCase } from '@mygitnotes/core/case-collision';
 import { useCallback } from 'react';
 import YAML from 'yaml';
+import { stringifyFrontmatterYaml } from '@mygitnotes/core/frontmatter';
 import { lastUseOf, type ListedNoteTemplate, listTemplates, localTemplateClock, noteFromTemplate, templateLastUse } from '@mygitnotes/core/note-template';
 import { fetchAgentResources, fetchNoteTemplates, readAgentResource } from '../lib/api.js';
 import { noteDrafts, overlayDraftTemplates } from '../lib/note-templates.js';
@@ -247,7 +248,7 @@ export function useWebAgentTools({ config, activeWorkingNotes, repositoryFor, ca
           const { note: file } = await current(named, template.file);
           if (!file) throw new Error(`The template file ${template.file} could not be read.`);
           // The file as the person sees it: its frontmatter, then its body.
-          return { templates: [{ ...template, content: Object.keys(file.metadata).length ? `---\n${YAML.stringify(file.metadata)}---\n${file.content}` : file.content }], total: 1, truncated: false };
+          return { templates: [{ ...template, content: Object.keys(file.metadata).length ? `---\n${stringifyFrontmatterYaml(file.metadata)}---\n${file.content}` : file.content }], total: 1, truncated: false };
         }
         const notebooks = named ? [named] : (config?.notebooks ?? []).map(notebook => notebook.id);
         return listTemplates((await Promise.all(notebooks.map(async id => (await templatesOf(id)).templates))).flat(), { query: args.query, limit: args.limit });

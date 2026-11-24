@@ -80,7 +80,7 @@ describe('patchNoteFrontmatter', () => {
   it('rewrites only changed keys, keeping comments, order and body', () => {
     const before = parseNoteContent(raw).metadata;
     const next = patchNoteFrontmatter(raw, before, { ...before, tags: ['x', 'y'] });
-    expect(next).toBe('---\n# keep me\ntitle: A\ntags: [x, y]\nnested:\n  a: 1\n---\n\nBody\n');
+    expect(next).toBe('---\n# keep me\ntitle: A\ntags: [x, "y"]\nnested:\n  a: 1\n---\n\nBody\n');
   });
 
   it('adds and removes keys', () => {
