@@ -11,6 +11,13 @@ import { INFOGRAPHIC_PALETTES, type InfographicBlock, type InfographicChild, typ
 
 import { attrOf, fail, highlightClass, type InfographicError, type InlineRenderer, tag } from './figure-html.js';
 import { processFlow } from './process.js';
+import { decision } from './decision.js';
+
+const MARKDOWN_BODIES = { process: processFlow, decision };
+
+function isMarkdownBodyKind(name: string): name is keyof typeof MARKDOWN_BODIES {
+  return Object.hasOwn(MARKDOWN_BODIES, name);
+}
 
 export { InfographicError } from './figure-html.js';
 
@@ -608,10 +615,12 @@ export function renderInfographic(source: string, context: InfographicContext): 
   const r = renderer(context);
   // Only the data palettes draw differently; the blog's section palettes give the theme default.
   const dataPalette = palette && (['categorical', 'diverging', 'sequential'] as readonly string[]).includes(palette) ? palette : undefined;
-  if (open.name === 'process') {
+  if (isMarkdownBodyKind(open.name)) {
     const close = matchDirectiveClose(lines[lines.length - 1], open.fenceLength);
-    if (!close || close.trailing) fail('unclosed process block');
-    return frame(open.name, open.attrs, processFlow(lines.slice(1, -1).join('\n'), r), dataPalette, r, context.language);
+    if (!close || close.trailing) fail(`unclosed ${open.name} block`);
+    // A directive label becomes a paragraph before the list, as in remark.
+    const body = `${open.label ? `${open.label}\n\n` : ''}${lines.slice(1, -1).join('\n')}`;
+    return frame(open.name, open.attrs, MARKDOWN_BODIES[open.name](body, r), dataPalette, r, context.language);
   }
 
   const block = parseInfographic(source);

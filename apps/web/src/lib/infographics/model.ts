@@ -11,7 +11,7 @@ import { matchDirectiveClose, parseDirectiveOpen } from '../directives.js';
 export const GRID_INFOGRAPHIC_KINDS = ['key-numbers', 'bars', 'parts', 'line', 'timeline', 'status-board', 'map', 'ladder'] as const;
 export type GridInfographicKind = typeof GRID_INFOGRAPHIC_KINDS[number];
 
-export const INFOGRAPHIC_KINDS = [...GRID_INFOGRAPHIC_KINDS, 'process'] as const;
+export const INFOGRAPHIC_KINDS = [...GRID_INFOGRAPHIC_KINDS, 'process', 'decision'] as const;
 export type InfographicKind = typeof INFOGRAPHIC_KINDS[number];
 
 export function isInfographicKind(name: string): name is InfographicKind {

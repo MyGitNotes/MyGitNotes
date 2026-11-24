@@ -353,6 +353,7 @@ export const en = {
   'infographic.kind.map': 'Map',
   'infographic.kind.ladder': 'Ladder',
   'infographic.kind.process': 'Process flow',
+  'infographic.kind.decision': 'Decision tree',
   'infographic.kind.key-numbers.purpose': 'A few big figures, each with a label',
   'infographic.kind.bars.purpose': 'Compare values as bars, with scenarios to switch between',
   'infographic.kind.parts.purpose': 'Show how a total splits into shares',

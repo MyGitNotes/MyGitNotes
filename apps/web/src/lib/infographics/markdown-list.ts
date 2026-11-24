@@ -1,6 +1,7 @@
 import { Marked, type Token, type Tokens } from 'marked';
 import markedCjkFriendly from 'marked-cjk-friendly';
 import { markedMath } from '../math.js';
+import { fail } from './figure-html.js';
 import { FIELD_SEPARATOR } from './model.js';
 
 // The list structure is CommonMark. Use the note's CJK and math extensions so a
@@ -13,6 +14,12 @@ export function listBlocks(body: string): Token[] {
 
 export function isList(token: Token | undefined): token is Tokens.List {
   return token?.type === 'list';
+}
+
+export function onlyList(body: string, directive: string): Tokens.List {
+  const blocks = listBlocks(body);
+  if (blocks.length !== 1 || !isList(blocks[0])) fail(`${directive} takes only one list`);
+  return blocks[0];
 }
 
 /** A tight list's paragraphs are `text` tokens in Marked. */

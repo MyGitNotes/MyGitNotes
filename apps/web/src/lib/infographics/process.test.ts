@@ -1,12 +1,7 @@
 // @vitest-environment node
-import createDOMPurify from 'dompurify';
-import { JSDOM } from 'jsdom';
 import { describe, expect, it } from 'vitest';
-import { createNoteRenderer } from '../markdown.js';
+import { draw } from './note-test-helpers.js';
 
-const { window } = new JSDOM('');
-const { renderNote } = createNoteRenderer({ parser: new window.DOMParser() as unknown as DOMParser, purify: createDOMPurify(window as unknown as Window & typeof globalThis), language: 'en' });
-const draw = (source: string) => new window.DOMParser().parseFromString(renderNote(source, 'n.md'), 'text/html');
 const process = (body: string) => `::::process{title="一期識報的一天"}\n${body}\n::::`;
 const stage = (title: string, body = '') => `:::stage{title="${title}"}\n${body ? `${body}\n` : ''}:::`;
 

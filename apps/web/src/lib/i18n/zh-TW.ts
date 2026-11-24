@@ -355,6 +355,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'infographic.kind.map': '地圖',
   'infographic.kind.ladder': '階梯圖',
   'infographic.kind.process': '流程圖',
+  'infographic.kind.decision': '判準問答圖',
   'infographic.kind.key-numbers.purpose': '幾個大數字，各附標籤與說明',
   'infographic.kind.bars.purpose': '用橫條比較數值，可切換情境',
   'infographic.kind.parts.purpose': '顯示一個總量如何分成幾份',
