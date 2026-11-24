@@ -3,6 +3,7 @@ import YAML from 'yaml';
 import { parseNoteContent, patchNoteFrontmatter, replaceNoteStatus, replaceNoteTags, serializeNoteContent } from '../src/frontmatter.js';
 import { patchFrontmatterField } from '../src/frontmatter-patch.js';
 import { serializeNoteFile } from '../src/note-file.js';
+import { renderNoteTemplate } from '../src/note-template.js';
 
 // A post of the boss's Astro blog: its schema reads `pubDatetime` with `z.date()`, so the bare value must stay a YAML date.
 const post = '---\ntitle: Post\npubDatetime: 2026-11-24T09:00:00+08:00\ndate: 2025-01-01\ndraft: no\nquoted: "2025-01-01"\nsingle: \'2025-01-01\'\ntags:\n  - astro\n  - on\n---\n\nBody.\n';
@@ -54,5 +55,16 @@ describe('a key keeps the style its note wrote it in', () => {
       expect(lines(raw)).toEqual(expect.arrayContaining([...kept, 'due: "2026-12-01"']));
       expect(YAML.parse(raw.split('---\n')[1], { version: '1.1' }).due).toBe('2026-12-01');
     }
+  });
+});
+
+describe('a note made from a template', () => {
+  // moldplan's 會議記錄 template writes its date placeholder quoted; the note keeps it quoted, as text for every reader.
+  it.each(['"{{date}}"', "'{{date}}'"])('writes date: %s quoted', placeholder => {
+    const template = parseNoteContent(`---\ntemplate:\n  name: Meeting\ndate: ${placeholder}\n---\n# {{title}}\n`);
+    const { metadata: filled, content } = renderNoteTemplate(template, { title: 'Sync', date: '2026-11-24', time: '10:00' });
+    const raw = serializeNoteFile('notes/sync.md', filled, content, true, now);
+    expect(lines(raw)).toContain('date: "2026-11-24"');
+    expect(YAML.parse(raw.split('---\n')[1], { version: '1.1' }).date).toBe('2026-11-24');
   });
 });
