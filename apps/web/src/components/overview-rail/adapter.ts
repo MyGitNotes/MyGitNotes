@@ -34,11 +34,11 @@ export const RAIL_SPACE = '12px';
  * The source textarea's rail. It does not wrap, so every line takes the same height and a line's top is exact. Text set from outside
  * (another editor, an agent) fires no event; the rail is told of it by its `revision` instead.
  */
-export function textareaRailAdapter(area: HTMLTextAreaElement, slides: boolean, labels: RailLabels): RailAdapter {
+export function textareaRailAdapter(area: HTMLTextAreaElement, slides: boolean, labels: () => RailLabels): RailAdapter {
   const top = (line: number, style = getComputedStyle(area)) => (Number.parseFloat(style.paddingTop) || 0) + (line - 1) * (Number.parseFloat(style.lineHeight) || 22.75);
   return {
     scroller: () => area.isConnected ? area : null,
-    landmarks: () => textLandmarks(area.value, slides, labels),
+    landmarks: () => textLandmarks(area.value, slides, labels()),
     tops(places) {
       const style = getComputedStyle(area);
       return places.map(place => top(place.line, style));
