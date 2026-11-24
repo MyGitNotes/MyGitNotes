@@ -1,5 +1,6 @@
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import { useMemo } from 'react';
+import type { LiveDrafts } from '../components/live/live-drafts.js';
 import { type NoteLocation, noteLocation } from '../lib/note-location.js';
 import type { WorkspaceState } from './workspace-state.js';
 
@@ -16,7 +17,7 @@ interface Params {
   selectedNotebookId: string;
 }
 
-/** What the workspace's repositories add up to: their pending changes, how Changes and the notebook switchers name them, and which can serve or write. */
+/** What the workspace's repositories add up to: their pending changes, how Changes and the notebook switchers name them, which can serve or write, and what their live editors do with a pending note. */
 export function useWorkspaceOverview({ config, remote, repositories, defaultRepository, repositoryFor, sourceId, gitStatus, activeWorkingNotes, pendingDocuments, selectedNotebookId }: Params) {
   /** Where a note lives, for the note Info tab: the repository and branch of its notebook, and why it is read-only. */
   const locateNote = (note: NoteRef): NoteLocation | undefined => {
@@ -50,5 +51,13 @@ export function useWorkspaceOverview({ config, remote, repositories, defaultRepo
   const notebookGroups = repositories.length > 1 ? repositories.filter(repository => repository.notebooks.length).map(repository => ({ label: repository.title, notebooks: repository.notebooks })) : undefined;
   const unavailableNotebooks = repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks);
   const syncTargets = useMemo(() => remote ? [] : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), writable: repository.write, gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null })), [remote, repositories, sourceId, gitStatus]);
-  return { locateNote, remoteTrash, changeCount, repositoryHeading, notebookUnavailable, manifestWritable, canManageTags, notebookGroups, unavailableNotebooks, syncTargets };
+  // What each repository's live editor can do with a pending note (未歸檔): discard it on delete, move and rename it.
+  const liveDrafts = useMemo<LiveDrafts>(() => {
+    const live = (notebookId: string) => {
+      const repository = repositoryFor(notebookId);
+      return repository?.write ? repository.live : undefined;
+    };
+    return { discards: notebookId => Boolean(live(notebookId)?.discard), retargets: notebookId => Boolean(live(notebookId)?.retarget), releasesUntouched: notebookId => live(notebookId)?.kind === 'builtin' };
+  }, [repositoryFor]);
+  return { locateNote, remoteTrash, changeCount, repositoryHeading, notebookUnavailable, manifestWritable, canManageTags, notebookGroups, unavailableNotebooks, syncTargets, liveDrafts };
 }

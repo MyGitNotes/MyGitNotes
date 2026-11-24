@@ -68,6 +68,7 @@ import { useTemplateManager } from './app/useTemplateManager.js';
 import { WorkspaceBanners } from './app/WorkspaceBanners.js';
 import { WorkspaceToasts } from './app/WorkspaceToasts.js';
 import { WorkspaceCommitModal } from './app/WorkspaceCommitModal.js';
+import { useWorkspaceHandover } from './app/useWorkspaceHandover.js';
 import { GraphRoute, NotebookUnavailableRoute, StudyRoute } from './app/WorkspacePages.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
@@ -107,9 +108,7 @@ import { RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js'
 import { useLeaveWarning } from './lib/use-leave-warning.js';
 import { useGistConfirm } from './components/GistConfirmDialog.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
-import { liveEditableKind } from './lib/live-api.js';
-import { useLiveHandover } from './app/useLiveHandover.js';
-import { liveActionLocked, liveDestinationFolder, type LiveDrafts, LiveDraftsProvider } from './components/live/live-drafts.js';
+import { liveActionLocked, liveDestinationFolder, LiveDraftsProvider } from './components/live/live-drafts.js';
 
 /** A stable empty list while the workspace config loads, so the agent provider's value does not churn. */
 const NO_NOTEBOOKS: NotebookConfig[] = [];
@@ -151,7 +150,7 @@ export const AppContent: React.FC = () => {
   // The Focus file is read for the open notebook's repository, which is the demo repository's; a file that fails to load names no Focus.
   const demoFocuses = demoFocusesOf(focusPage);
   useDemoScenario({ config, loading, pathname: location.pathname, navigate, hasGuide: async (notebookId, path) => (await queryClient.fetchQuery(noteLookupOptions(queryScope, [{ notebookId, path }], false))).notes.length > 0, hasRestoredView: notebookKey => hasStoredFocusView(repositoryFor(notebookKey)?.id ?? '', notebookKey), focuses: demoFocuses });
-  const { locateNote, remoteTrash, changeCount, repositoryHeading, notebookUnavailable, manifestWritable, canManageTags, notebookGroups, unavailableNotebooks, syncTargets } = useWorkspaceOverview({ config, remote, repositories, defaultRepository, repositoryFor, sourceId, gitStatus, activeWorkingNotes, pendingDocuments, selectedNotebookId });
+  const { locateNote, remoteTrash, changeCount, repositoryHeading, notebookUnavailable, manifestWritable, canManageTags, notebookGroups, unavailableNotebooks, syncTargets, liveDrafts } = useWorkspaceOverview({ config, remote, repositories, defaultRepository, repositoryFor, sourceId, gitStatus, activeWorkingNotes, pendingDocuments, selectedNotebookId });
   const editorRegistry = useNoteEditorRegistry();
 
   const { queryClient, queryScope, invalidateNotes, refreshNotes, staleNotice, findCommittedNote, listCommittedPaths, readCommittedNote, readNoteForChange } = useWorkspaceNotes({ sourceId, repositories, activeWorkingNotes, remote, refreshWorkspace, readDraft, t });
@@ -187,14 +186,6 @@ export const AppContent: React.FC = () => {
   // Aggregated tags across the workspace for autocomplete
   const availableTags = useMemo(() => Array.from(new Set(workspaceTagNames.map(tag => tag.trim()))).filter(Boolean).sort(), [workspaceTagNames]);
 
-  // What each repository's live editor can do with a pending note (未歸檔): discard it on delete, move and rename it.
-  const liveDrafts = useMemo<LiveDrafts>(() => {
-    const live = (notebookId: string) => {
-      const repository = repositoryFor(notebookId);
-      return repository?.write ? repository.live : undefined;
-    };
-    return { discards: notebookId => Boolean(live(notebookId)?.discard), retargets: notebookId => Boolean(live(notebookId)?.retarget), releasesUntouched: notebookId => live(notebookId)?.kind === 'builtin' };
-  }, [repositoryFor]);
   const { deletedNotes, setDeletedNotes, undoToast, setUndoToast, handleDeleteNote, handleRestoreNote } = useDeletionUndo({ canWriteNotebook, revisionFor, setNotebookRevision, updateDraft, editingNote, setEditingNote, navigate, returnTo, remote, setActionError, readNoteForChange, invalidateNotes, gitStatus, setGitStatus, repositoryFor });
 
   useSourceReset({ sourceId, setEditingNote, setDeletedNotes });
@@ -263,23 +254,7 @@ export const AppContent: React.FC = () => {
   };
   const noteMove = useNoteMove({ config, remote, canWriteNotebook: canChangeFiles, readDraft, updateDraft, stageWorkingNote, saveNote: handleSaveNote, focus: focusPage, queryClient, queryScope, flushEditors: editorRegistry.flushEditors, beforeFileChange, onFilesChanged, setNotebookRevision, forgetDrafts, setActionError, t, retargets: liveDrafts.retargets, releasesUntouched: liveDrafts.releasesUntouched });
   // Offline handover (collab-first A3.2): once online, drafts of notes the built-in live editor covers go to their live notes.
-  const liveHandover = useLiveHandover({
-    ready: Boolean(remote && sourceId && config),
-    drafts: activeWorkingNotes,
-    covered: draftNote => {
-      const repository = repositoryFor(draftNote.notebookId);
-      const notebook = config?.notebooks.find(nb => nb.id === draftNote.notebookId);
-      return repository?.live?.kind === 'builtin' && repository.write && notebook && liveEditableKind(draftNote.path) && !isTemplate(draftNote) ? { scope: draftScope(repository), notebookRoot: notebook.root } : null;
-    },
-    updateDraft,
-    readDraft,
-    stageWorkingNote,
-    invalidateNotes,
-    // A note made offline is a pending live note now: an editor showing its draft opens it there.
-    onCreated: (draftNote, checkout) => {
-      if (routedNote && sameNote(routedNote, draftNote)) void handleOpenNote({ id: checkout.id, path: checkout.path, notebookId: checkout.notebookId, title: draftNote.title, tags: [], metadata: {}, live: { since: checkout.since, activeEditors: checkout.activeEditors, pending: true, editorUrl: checkout.editorUrl } });
-    },
-  });
+  const liveHandover = useWorkspaceHandover({ config, remote, sourceId, activeWorkingNotes, repositoryFor, updateDraft, readDraft, stageWorkingNote, invalidateNotes, isTemplate, routedNote, handleOpenNote });
   const templateActions = useTemplateActions({ config, remote, canWriteNotebook, readDraft, updateDraft, stageWorkingNote, revisionFor, queryClient, queryScope, invalidateNotes, setGitStatus, openInZoom: handleOpenNote, deleteNote: note => handleDeleteNote(note), relocateFile: noteMove.relocateFile, t });
   const templateManager = useTemplateManager({ selectedNotebook, notebookTemplates, templateActions, canWrite, canWriteFiles, t });
   const movingNotebook = noteMove.request?.mode === 'move' ? config?.notebooks.find(nb => nb.id === noteMove.request?.note.notebookId) : undefined;
