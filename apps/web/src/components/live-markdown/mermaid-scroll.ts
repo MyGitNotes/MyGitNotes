@@ -9,6 +9,8 @@ interface FenceBox {
   /** Line start of the fence, the position its diagram widget is anchored at. */
   pos: number;
   diagram: boolean;
+  /** Within the drawn viewport: a fence outside it shows neither diagram nor source. */
+  inViewport: boolean;
   /** Distance from the top of the scroller to the top of the fence's block. */
   top: number;
   height: number;
@@ -31,7 +33,7 @@ function measureFences(view: EditorView): FenceBox[] {
   return findMermaidFences(view.state).map(fence => {
     const pos = view.state.doc.lineAt(fence.from).from;
     const block = view.lineBlockAt(pos);
-    return { pos, diagram: drawn.has(pos), top: view.documentTop + block.top - scrollerTop, height: block.height };
+    return { pos, diagram: drawn.has(pos), inViewport: pos >= view.viewport.from && pos <= view.viewport.to, top: view.documentTop + block.top - scrollerTop, height: block.height };
   });
 }
 
@@ -76,6 +78,9 @@ export function holdTop(view: EditorView, pos: number, top: number) {
   frame = requestAnimationFrame(check);
 }
 
+/** Ends a `holdTop` on the view, for scroll input the scroller does not hear itself (the overview rail). */
+export const releaseHold = (view: EditorView) => holds.get(view)?.();
+
 /**
  * A mermaid fence swaps between its diagram and its raw source as the cursor enters or leaves it, and
  * the two differ in height. Entering keeps the fence's top where the diagram's top was, so the source
@@ -84,15 +89,17 @@ export function holdTop(view: EditorView, pos: number, top: number) {
 export function anchorMermaidSwap(trs: readonly Transaction[], view: EditorView) {
   if (placing) return view.update(trs);
   holds.get(view)?.();
-  if (trs.some(tr => tr.docChanged)) return view.update(trs);
+  // Only the cursor entering or leaving a fence swaps it. A transaction that leaves the selection alone (a scroll to a heading) may
+  // still bring fences into view that were not drawn before, which is no swap: holding the cursor's line then would undo the scroll.
+  if (trs.some(tr => tr.docChanged) || !trs.some(tr => tr.selection)) return view.update(trs);
   const before = measureFences(view);
   const head = trs[trs.length - 1].newSelection.main.head;
   const headTop = view.documentTop + view.lineBlockAt(head).top - view.scrollDOM.getBoundingClientRect().top;
   view.update(trs);
   if (!before.length) return;
-  const after = new Map(measureFences(view).map(box => [box.pos, box.diagram]));
+  const after = new Map(measureFences(view).filter(box => box.inViewport).map(box => [box.pos, box.diagram]));
   const height = view.scrollDOM.clientHeight;
-  const swapped = before.filter(box => after.get(box.pos) === !box.diagram);
+  const swapped = before.filter(box => box.inViewport && after.get(box.pos) === !box.diagram);
   const entered = swapped.find(box => box.diagram);
   if (entered) {
     const top = sourceTopAfterEnter(entered, height);
