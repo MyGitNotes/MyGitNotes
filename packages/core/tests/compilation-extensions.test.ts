@@ -94,3 +94,9 @@ it('trims descriptions and omits blank ones, still requiring a bounded string', 
 it('still rejects unknown keys inside a pinned item', () => {
   expect(() => parseCompilation(raw.replace('    kind: note\n', '    kind: note\n    extra: true\n'))).toThrow(/items\.0: Unrecognized key\(s\) in object: 'extra'/);
 });
+
+it('reads a description key left without a value as no description', () => {
+  const blank = raw.replace(/^description: .*$/m, 'description:');
+  expect(parseCompilation(blank).description).toBeUndefined();
+  expect(compilationFields(blank, owner.path).invalid).toBeUndefined();
+});
