@@ -69,7 +69,7 @@ export interface LiveCollabEditorProps {
   body?: string;
   /** Beside the editor in its body: the note's document panel. */
   children?: ReactNode;
-  /** Shows the scroll overview beside the scrollbar, in Live and Source alike; left out, there is none. */
+  /** Shows the scroll overview in place of the scrollbar, in Live and Source alike; left out, there is none. */
   overviewRail?: OverviewRailOptions;
 }
 

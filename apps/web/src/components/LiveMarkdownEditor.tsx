@@ -114,7 +114,7 @@ interface Props {
    * `content`, and carries nothing to or from another view. Read once, when the view is created.
    */
   collab?: { extension: Extension; text: string; };
-  /** Shows the scroll overview beside the scrollbar, with find's matches; left out, there is none. */
+  /** Shows the scroll overview in place of the scrollbar, with find's matches; left out, there is none. */
   overviewRail?: OverviewRailOptions;
 }
 const focusChanged = StateEffect.define<boolean>();

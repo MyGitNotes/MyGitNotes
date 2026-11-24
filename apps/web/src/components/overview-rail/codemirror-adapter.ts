@@ -2,6 +2,7 @@ import type { EditorState, Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 import type { RailAdapter, RailChange } from './adapter.js';
 import { landmarksOf, type RailLabels, wholeTree } from './landmarks-of.js';
+import { holdTop, releaseHold } from '../live-markdown/mermaid-scroll.js';
 import { slideNote } from '../live-markdown/slide-structure.js';
 
 export interface CodeMirrorRailOptions {
@@ -9,6 +10,15 @@ export interface CodeMirrorRailOptions {
   labels: () => RailLabels;
   /** Where the note's body starts in the view's text: after the frontmatter a collab view holds. */
   bodyFrom?: (state: EditorState) => number;
+}
+
+/** A jump leaves this much room above the line it goes to. */
+const JUMP_MARGIN = 20;
+
+/** The document's top within the scroller's content: the height map counts from there. */
+function contentOffset(view: EditorView): number {
+  const scroller = view.scrollDOM;
+  return view.documentTop - scroller.getBoundingClientRect().top - scroller.clientTop + scroller.scrollTop;
 }
 
 export interface CodeMirrorRail {
@@ -46,16 +56,26 @@ export function codeMirrorRail({ labels, bodyFrom = () => 0 }: CodeMirrorRailOpt
   });
   const adapter: RailAdapter = {
     scroller: () => view?.scrollDOM ?? null,
-    landmarks: () => view ? landmarksOf(view.state, wholeTree(view.state), labels(), bodyFrom(view.state)) : { headings: [], breaks: [], endLabel: null },
+    landmarks: () => view ? landmarksOf(view.state, wholeTree(view.state), labels(), bodyFrom(view.state)) : { headings: [], breaks: [], endLabel: null, blocks: [] },
     tops(places) {
       if (!view) return places.map(() => 0);
-      const { doc } = view.state, scroller = view.scrollDOM;
-      // The document's top within the scroller's content: the height map counts from there.
-      const offset = view.documentTop - scroller.getBoundingClientRect().top - scroller.clientTop + scroller.scrollTop;
+      const { doc } = view.state, offset = contentOffset(view);
       return places.map(({ line, column }) => {
         const at = doc.line(Math.max(1, Math.min(line, doc.lines)));
         return offset + view!.lineBlockAt(at.from + Math.max(0, Math.min(column, at.length))).top;
       });
+    },
+    extents(lines) {
+      if (!view) return lines.map(() => ({ top: 0, bottom: 0 }));
+      const { doc } = view.state, offset = contentOffset(view);
+      return lines.map(line => {
+        const block = view!.lineBlockAt(doc.line(Math.max(1, Math.min(line, doc.lines))).from);
+        return { top: offset + block.top, bottom: offset + block.bottom };
+      });
+    },
+    metrics() {
+      if (!view) return { lineHeight: 1, columns: 80 };
+      return { lineHeight: view.defaultLineHeight, columns: Math.max(20, Math.floor(view.contentDOM.clientWidth / Math.max(1, view.defaultCharacterWidth))) };
     },
     cursor() {
       if (!view) return null;
@@ -65,8 +85,10 @@ export function codeMirrorRail({ labels, bodyFrom = () => 0 }: CodeMirrorRailOpt
     jumpTo(line) {
       if (!view) return;
       const { doc } = view.state;
-      view.dispatch({ effects: EditorView.scrollIntoView(doc.line(Math.max(1, Math.min(line, doc.lines))).from, { y: 'start', yMargin: 20 }) });
+      // Held there while the heights around it settle: lines never drawn hold estimates, and images load after the jump.
+      holdTop(view, doc.line(Math.max(1, Math.min(line, doc.lines))).from, JUMP_MARGIN);
     },
+    releaseJump: () => view && releaseHold(view),
     remeasure: () => view?.requestMeasure(),
     subscribe(listener) {
       listeners.add(listener);

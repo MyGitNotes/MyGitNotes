@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { layoutRail, nearbyHeadings, nearestHeading, placePopover, RAIL_MIN_VISIBLE, type RailHeadingMark, railScrolls, railWidthMode, sectionLabelAt } from './layout.js';
+import { layoutRail, nearbyHeadings, nearestHeading, placePopover, RAIL_MIN_VISIBLE, railGrip, type RailHeadingMark, railScrolls, railThumbTop, railWidthMode, scrollTopForThumb, sectionLabelAt } from './layout.js';
 
 const marks = (...tops: number[]): RailHeadingMark[] => tops.map((top, index) => ({ index, line: index * 10 + 1, depth: 2, label: `H${index}`, top }));
 
@@ -41,6 +41,43 @@ describe('layoutRail', () => {
   });
 });
 
+describe('dragging the visible range like a scrollbar thumb', () => {
+  const scroll = { scrollHeight: 4000, clientHeight: 500, railHeight: 400 };
+  // The thumb is 50 px high and has 350 px of room for a scroll range of 3500 px: one rail pixel is ten content pixels.
+
+  it('scrolls the content one to one with the pointer, keeping where the thumb was grabbed', () => {
+    const visible = layoutRail({ ...scroll, scrollTop: 1000, headings: [], breaks: [], endLabel: null, matches: [], cursor: null }).visible;
+    const grip = railGrip(120, visible);
+    expect(grip).toBe(20);
+    // The pointer moves 30 px down: the thumb follows to 130, and the content scrolls 300 px.
+    expect(scrollTopForThumb(150 - grip, scroll)).toBe(1300);
+    expect(railThumbTop({ ...scroll, scrollTop: scrollTopForThumb(150 - grip, scroll) })).toBe(130);
+  });
+
+  it('brings the thumb’s middle to a press on the track at once, and drags on from there', () => {
+    const visible = { top: 100, height: 50 };
+    const grip = railGrip(300, visible);
+    expect(grip).toBe(25);
+    expect(scrollTopForThumb(300 - grip, scroll)).toBe(2750);
+    // Then centred on the pointer: the view's middle is the content at the press.
+    expect(scrollTopForThumb(300 - grip, scroll) + scroll.clientHeight / 2).toBe(300 / 400 * 4000);
+    expect(scrollTopForThumb(310 - grip, scroll)).toBe(2850);
+  });
+
+  it('stops at the scroll’s ends however far the pointer goes', () => {
+    expect(scrollTopForThumb(-80, scroll)).toBe(0);
+    expect(scrollTopForThumb(900, scroll)).toBe(3500);
+    expect(railThumbTop({ ...scroll, scrollTop: 9999 })).toBe(350);
+    expect(scrollTopForThumb(10, { scrollHeight: 400, clientHeight: 500, railHeight: 400 })).toBe(0);
+  });
+
+  it('maps a very long note with its least thumb so the thumb still reaches the rail’s ends', () => {
+    const long = { scrollHeight: 400000, clientHeight: 500, railHeight: 400 };
+    expect(scrollTopForThumb(400 - RAIL_MIN_VISIBLE, long)).toBe(399500);
+    expect(railThumbTop({ ...long, scrollTop: 199750 })).toBeCloseTo((400 - RAIL_MIN_VISIBLE) / 2);
+  });
+});
+
 describe('nearbyHeadings', () => {
   it('picks the nearest heading, the earlier one on a tie', () => {
     expect(nearestHeading(marks(10, 50, 90), 70)).toBe(1);
@@ -68,7 +105,7 @@ describe('nearbyHeadings', () => {
     expect(nearbyHeadings([], 10)).toBeNull();
   });
 
-  it('names a drag target that moves with the pointer', () => {
+  it('names the heading nearest a pointer as it moves', () => {
     const headings = marks(20, 60, 64, 120);
     const target = (top: number) => {
       const near = nearbyHeadings(headings, top);

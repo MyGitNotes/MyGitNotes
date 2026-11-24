@@ -7,16 +7,16 @@ export type RailWidthMode = 'wide' | 'narrow';
 
 /**
  * Below this editor width the rail is narrow. A Focus layout of three panes leaves its middle editor about 360 px, and two side by side
- * on a laptop about 560 px; there the page fills the editor and a 16 px rail would take its width from the text. From 600 px the
+ * on a laptop about 560 px; there the page fills the editor and a wide minimap would take its width from the text. From 600 px the
  * page keeps a margin wide enough for the wide rail beside it.
  */
 export const RAIL_NARROW_BELOW = 600;
-/** The width the rail draws in. */
-export const RAIL_WIDTH: Record<RailWidthMode, number> = { wide: 16, narrow: 7 };
-/** The width that takes the pointer, the rail at its right edge: a narrow rail reaches 24 px into the margin, so it needs no aim. */
-export const RAIL_HIT_WIDTH: Record<RailWidthMode, number> = { wide: 16, narrow: 24 };
-/** The rail's distance from the native scrollbar on its right. */
-export const RAIL_SCROLLBAR_GAP = 2;
+/** The width the rail draws in: a minimap of the note's blocks when wide, a barcode of its block rows when narrow. */
+export const RAIL_WIDTH: Record<RailWidthMode, number> = { wide: 56, narrow: 20 };
+/** The width that takes the pointer, the rail at its right edge: a narrow rail reaches a little further into the margin. */
+export const RAIL_HIT_WIDTH: Record<RailWidthMode, number> = { wide: 56, narrow: 24 };
+/** The room the rail asks of the text on the scroller's right, beyond the scroller's own 16 px padding, so no text lies under it. */
+export const RAIL_SPACE: Record<RailWidthMode, number> = { wide: 48, narrow: 12 };
 /** The visible range's least height, so a long note still shows where the reader is. */
 export const RAIL_MIN_VISIBLE = 6;
 
@@ -73,12 +73,31 @@ export const railScrolls = ({ scrollHeight, clientHeight, railHeight }: RailScro
 /** Scales a content height onto the rail. */
 export const railTop = (y: number, { scrollHeight, railHeight }: Pick<RailScroll, 'scrollHeight' | 'railHeight'>) => scrollHeight > 0 ? Math.max(0, Math.min(railHeight, y / scrollHeight * railHeight)) : 0;
 
-/** The rail's marks for a scroller, its content mapped onto the rail's height in proportion, as the native scrollbar maps it. */
+/** The visible range's height on the rail, the scrollbar thumb's: the view's share of the content, never below `RAIL_MIN_VISIBLE`. */
+export const railThumbHeight = ({ scrollHeight, clientHeight, railHeight }: Omit<RailScroll, 'scrollTop'>) => Math.max(RAIL_MIN_VISIBLE, Math.min(railHeight, clientHeight / Math.max(1, scrollHeight) * railHeight));
+
+/** The visible range's top on the rail, as a scrollbar places its thumb: the scroll's share of its range, over the track's free room. */
+export function railThumbTop(scroll: RailScroll): number {
+  const room = scroll.railHeight - railThumbHeight(scroll), range = scroll.scrollHeight - scroll.clientHeight;
+  return room > 0 && range > 0 ? Math.max(0, Math.min(room, scroll.scrollTop / range * room)) : 0;
+}
+
+/** The scroll that puts the visible range's top at `thumbTop` on the rail, the inverse of `railThumbTop`, within the scroll's range. */
+export function scrollTopForThumb(thumbTop: number, scroll: Omit<RailScroll, 'scrollTop'>): number {
+  const room = scroll.railHeight - railThumbHeight(scroll), range = Math.max(0, scroll.scrollHeight - scroll.clientHeight);
+  return room > 0 ? Math.max(0, Math.min(range, thumbTop / room * range)) : 0;
+}
+
+/**
+ * Where a press at `top` on the rail holds the visible range, from its top: a press on it keeps the pointer where it grabbed it; a press
+ * on the track brings its middle to the pointer at once, as a scrollbar's track does, and a drag from there goes on from that grip.
+ */
+export const railGrip = (top: number, visible: RailModel['visible']) => top >= visible.top && top <= visible.top + visible.height ? top - visible.top : visible.height / 2;
+
+/** The rail's marks for a scroller, its content mapped onto the rail's height in proportion, as a scrollbar maps it. */
 export function layoutRail(input: RailInput): RailModel {
   const at = (y: number) => railTop(y, input);
-  const height = Math.max(RAIL_MIN_VISIBLE, Math.min(input.railHeight, input.clientHeight / Math.max(1, input.scrollHeight) * input.railHeight));
-  const top = Math.min(at(input.scrollTop), input.railHeight - height);
-  return { headings: input.headings.map((heading, index) => ({ index, line: heading.line, depth: heading.depth, label: heading.label, top: at(heading.y) })), breaks: input.breaks.map(item => ({ top: at(item.y), label: item.label })), endLabel: input.endLabel, matches: [...new Set(input.matches.map(y => Math.round(at(y))))], cursor: input.cursor === null ? null : at(input.cursor), visible: { top: Math.max(0, top), height } };
+  return { headings: input.headings.map((heading, index) => ({ index, line: heading.line, depth: heading.depth, label: heading.label, top: at(heading.y) })), breaks: input.breaks.map(item => ({ top: at(item.y), label: item.label })), endLabel: input.endLabel, matches: [...new Set(input.matches.map(y => Math.round(at(y))))], cursor: input.cursor === null ? null : at(input.cursor), visible: { top: railThumbTop(input), height: railThumbHeight(input) } };
 }
 
 /** The heading whose mark lies nearest a pointer `top` on the rail, the earlier one on a tie; -1 without headings. */
@@ -101,7 +120,7 @@ export interface NearbyOptions {
 
 export interface NearbyHeadings {
   items: RailHeadingMark[];
-  /** The item the pointer is on: the nearest, which a click or a release goes to. */
+  /** The item the pointer is on: the nearest. */
   active: number;
 }
 
@@ -144,7 +163,7 @@ export interface PopoverPlacementInput {
   mode: RailWidthMode;
   /** The rail, in viewport coordinates. */
   rail: Box;
-  /** The editor's column: the scroller, its scrollbar included. */
+  /** The editor's column: the scroller. */
   column: Box;
   viewport: { width: number; height: number; };
   size: { width: number; height: number; };
@@ -158,14 +177,14 @@ export interface PopoverPlacementInput {
 export interface PopoverPlacement {
   left: number;
   top: number;
-  /** `inside` covers the column left of the rail; `outside` lies past the column's right edge, beyond its scrollbar. */
+  /** `inside` covers the column left of the rail; `outside` lies past the column's right edge. */
   side: 'inside' | 'outside';
 }
 
 /**
  * Where the popover goes. A wide rail has room in the page's margin, so the popover sits left of the rail. A narrow one lends the space
- * of the neighbour on the right, past the column and its scrollbar, so the text being read stays clear; it turns inward only when the
- * window has no room there. Either way it covers neither the rail nor the scrollbar, and its active row meets the pointer.
+ * of the neighbour on the right, past the column, so the text being read stays clear; it turns inward only when the window has no room
+ * there. Either way it never covers the rail, and its active row meets the pointer.
  */
 export function placePopover({ mode, rail, column, viewport, size, anchorY, anchorOffset, gap = 12, margin = 8 }: PopoverPlacementInput): PopoverPlacement {
   const inside = Math.max(margin, rail.left - gap - size.width);

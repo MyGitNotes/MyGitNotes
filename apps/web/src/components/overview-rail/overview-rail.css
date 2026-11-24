@@ -1,30 +1,42 @@
-/* The overview rail beside an editor's native scrollbar (OverviewRail.tsx), and its popover of nearby headings. */
-.overview-rail { position: absolute; z-index: 6; touch-action: none; cursor: pointer; user-select: none; }
-.overview-rail-marks { display: block; overflow: visible; }
-.overview-rail-track { fill: color-mix(in srgb, var(--color-text) 4%, var(--color-bg)); stroke: var(--color-line-strong); stroke-width: 1; }
-.overview-rail:hover .overview-rail-track, .overview-rail[data-dragging] .overview-rail-track { stroke: color-mix(in srgb, var(--color-text) 30%, transparent); }
-.overview-rail-break { stroke: color-mix(in srgb, var(--color-text) 38%, transparent); stroke-width: 1; }
-.overview-rail-heading { stroke: color-mix(in srgb, var(--color-text) 70%, transparent); stroke-width: 1; stroke-linecap: butt; }
-.overview-rail-heading[data-depth='1'] { stroke: var(--color-text); stroke-width: 2; }
+/* The overview rail at the note editor's right edge (OverviewRail.tsx), its minimap, and its popover of nearby headings. */
+.overview-rail { position: absolute; z-index: 6; touch-action: none; cursor: default; user-select: none; }
+/* The rail is the scroller's scrollbar while it shows: the scroller's own vertical one goes, a horizontal one stays. */
+[data-overview-rail-scroller]::-webkit-scrollbar:vertical { width: 0; }
+@supports not selector(::-webkit-scrollbar) { [data-overview-rail-scroller] { scrollbar-width: none; } }
+
+.overview-rail-minimap { position: absolute; top: 0; display: block; border-radius: 3px; background: color-mix(in srgb, var(--color-text) 3%, var(--color-bg)); box-shadow: inset 0 0 0 1px var(--color-line); }
+.overview-rail-marks { position: absolute; top: 0; left: 0; display: block; overflow: visible; }
+.overview-rail-marks > :not(.overview-rail-visible) { pointer-events: none; }
+/* The minimap's inks, read by its canvas: probes only, never shown. */
+.overview-rail-inks { display: none; }
+.overview-rail-inks [data-kind='text'] { color: color-mix(in srgb, var(--color-text) 26%, transparent); }
+.overview-rail-inks [data-kind='code'] { color: color-mix(in srgb, var(--color-primary) 18%, transparent); }
+.overview-rail-inks [data-kind='table'] { color: color-mix(in srgb, var(--color-muted) 30%, transparent); }
+.overview-rail-inks [data-kind='media'] { color: color-mix(in srgb, var(--color-text) 40%, transparent); }
+.overview-rail-inks [data-kind='quote'] { color: color-mix(in srgb, var(--color-primary) 55%, transparent); }
+
+.overview-rail-break { stroke: color-mix(in srgb, var(--color-text) 45%, transparent); stroke-width: 1; stroke-dasharray: 3 2; }
+.overview-rail-heading { stroke: color-mix(in srgb, var(--color-text) 75%, transparent); stroke-width: 1.5; stroke-linecap: butt; }
+.overview-rail-heading[data-depth='1'] { stroke: var(--color-text); stroke-width: 3; }
+.overview-rail-heading[data-depth='2'] { stroke-width: 2; }
 .overview-rail-heading[data-depth='3'] { stroke: var(--color-muted); }
-.overview-rail-heading[data-active] { stroke: var(--color-primary); stroke-width: 2; }
+.overview-rail[data-overview-rail='narrow'] .overview-rail-heading[data-depth='1'] { stroke-width: 2; }
+.overview-rail[data-overview-rail='narrow'] .overview-rail-heading[data-depth='2'] { stroke-width: 1.5; }
+.overview-rail-heading[data-active] { stroke: var(--color-primary); }
 .overview-rail-match { fill: var(--color-warning); }
-.overview-rail-visible { fill: color-mix(in srgb, var(--color-primary) 6%, transparent); stroke: var(--color-primary); stroke-width: 1.5; }
+/* The visible range is the scrollbar's thumb: darker under the pointer, darker still while dragged. */
+.overview-rail-visible { fill: color-mix(in srgb, var(--color-primary) 8%, transparent); stroke: color-mix(in srgb, var(--color-primary) 70%, transparent); stroke-width: 1.5; }
+.overview-rail-visible:hover { fill: color-mix(in srgb, var(--color-primary) 16%, transparent); stroke: var(--color-primary); }
+.overview-rail[data-dragging] .overview-rail-visible { fill: color-mix(in srgb, var(--color-primary) 24%, transparent); stroke: var(--color-primary); }
 .overview-rail-cursor { stroke: var(--color-primary); stroke-width: 2; }
-.overview-rail-target { fill: var(--color-primary); }
 
 .overview-rail-popover { position: fixed; z-index: 60; width: 228px; padding: 0 8px 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-text); font-family: var(--font-body); font-size: 13px; }
 .overview-rail-popover-head { display: flex; align-items: center; gap: 12px; margin: 0 4px 8px; padding: 12px 2px 8px; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: 11px; }
 .overview-rail-popover ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .overview-rail-popover button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0 8px; border-radius: var(--radius-control); color: var(--color-text); text-align: left; }
-.overview-rail-popover[data-dragging] ul { gap: 12px; }
 .overview-rail-popover button:hover, .overview-rail-popover button[data-active] { background: var(--color-primary-soft); }
 .overview-rail-popover button[data-active] .overview-rail-label { font-weight: 600; }
 .overview-rail-depth { display: inline-flex; flex: none; align-items: center; width: 20px; color: var(--color-muted); font-size: 11px; }
 .overview-rail-popover button[data-active] .overview-rail-depth { color: var(--color-primary); }
-.overview-rail-depth svg { width: 9px; height: 9px; fill: var(--color-primary); }
 .overview-rail-label { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
 .overview-rail-popover-foot { margin: 10px 4px 0; overflow: hidden; color: var(--color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.overview-rail-connectors { position: fixed; inset: 0; z-index: 59; width: 100vw; height: 100vh; overflow: visible; pointer-events: none; }
-.overview-rail-connectors line { stroke: color-mix(in srgb, var(--color-primary) 55%, transparent); stroke-width: 1; }
-.overview-rail-connectors line[data-active] { stroke: var(--color-primary); stroke-width: 1.5; }

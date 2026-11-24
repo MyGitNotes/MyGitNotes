@@ -56,7 +56,7 @@ export const gutterWidth = ViewPlugin.fromClass(
 export const theme = EditorView.theme({
   '&': { height: '100%', color: 'var(--color-text)', backgroundColor: 'var(--color-bg)' },
   '&.cm-focused': { outline: 'none' },
-  // The overview rail beside the scrollbar asks for room on the right (`--overview-rail-space`, set on the scroller while it shows).
+  // The overview rail in place of the scrollbar asks for room on the right (`--overview-rail-space`, set on the scroller while it shows).
   '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit', lineHeight: '1.8', backgroundColor: 'var(--color-bg)', padding: '24px 16px', paddingRight: 'calc(16px + var(--overview-rail-space, 0px))' },
   // The horizontal inset lives on .cm-line (not .cm-content) because CodeMirror's own
   // selection-rectangle geometry (rectanglesForRange) reads a line's computed padding to

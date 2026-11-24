@@ -83,7 +83,7 @@ interface Props {
   carry?: MutableRefObject<LiveEditorCarry | null>;
   /** Set for a `type: slide` note: the live editor draws its `---`, its headings and its slide directives as a deck reads them. */
   slides?: boolean;
-  /** Shows the scroll overview beside the scrollbar in live and source modes alike; left out, there is none. */
+  /** Shows the scroll overview in place of the scrollbar in live and source modes alike; left out, there is none. */
   overviewRail?: OverviewRailOptions;
 }
 

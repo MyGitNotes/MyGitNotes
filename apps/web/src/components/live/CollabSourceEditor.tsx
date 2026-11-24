@@ -22,7 +22,7 @@ interface CollabSourceEditorProps {
   ariaLabel: string;
   /** The editor's scrolling element, which a split view keeps in step with its preview. */
   scroller?: MutableRefObject<HTMLElement | null>;
-  /** Shows the scroll overview beside the scrollbar; left out, there is none. */
+  /** Shows the scroll overview in place of the scrollbar; left out, there is none. */
   overviewRail?: OverviewRailOptions;
 }
 
