@@ -92,7 +92,7 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 MyGitNotes 允許不認得的最外層欄位（例如部落格用的 `translationKey`）；合輯項目內仍只接受該種類定義的欄位。
 App 儲存合輯時先寫已知欄位，再依原順序寫回不認得的欄位，保留其 YAML 值。
 保留的是值，不是寫法：任何重寫（包括搬移與修改標籤、狀態）都會把不認得的欄位移到已知欄位之後，不保證保留註解、錨點與別名，也可能改變值的排版（例如 `[x]` 寫成 `[ x ]`）。
-複製合輯時，不認得的欄位照樣複製（例如 `translationKey`）；不該共用的值，複製後要自己改。
+複製合輯時不帶不認得的欄位：其中可能有識別原合輯的值（例如部落格的 `translationKey`，兩本書共用會讓部落格建置失敗），MyGitNotes 分辨不出來，所以複本從乾淨開始；`description` 照樣複製。
 `description:` 沒有值或是空字串，都當作沒有說明。
 
 舊版 `.github-notes-screen.yaml` 只由 `migrate-workspace`（schema 2 → 3）讀取：每條河道轉成 `<筆記本根目錄>/<slug(名稱)>.compilation.yml`，名稱衝突加 `-2`、`-3`，保留 `id`、排列、項目或來源、排序、學習設定與關聯圖，並和新建合輯一樣帶入所屬筆記本的第一個狀態；Focus 的 `lane` 分頁改為指向新檔的路徑分頁，河道已不存在的分頁刪除；每個儲存庫提交一個遷移 commit。

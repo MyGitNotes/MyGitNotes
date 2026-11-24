@@ -71,14 +71,11 @@ it('round-trips YAML directives and typed external values such as timestamps and
 it('preserves external values that share anchors with fields MGN changes', () => {
   const anchored = raw.replace('title: 因果模型講義', 'title: &title 因果模型講義').replace('status: draft', 'archiveStatus: &archive draft\nstatus: *archive').replace(translation, 'originalTitle: *title\n');
   const file = parseCompilation(anchored);
-  const copy = serializeCompilation(copyCompilation(file, []));
   const saved = serializeNoteFile(owner.path, { status: 'review' }, anchored, false, new Date(), anchored);
-  for (const text of [copy, saved]) {
-    const entries = [...YAML.parse(text, { mapAsMap: true }).entries()];
-    expect(entries.slice(-2)).toEqual([['archiveStatus', 'draft'], ['originalTitle', '因果模型講義']]);
-  }
-  expect(parseCompilation(copy).title).toBe('因果模型講義 copy');
+  const entries = [...YAML.parse(saved, { mapAsMap: true }).entries()];
+  expect(entries.slice(-2)).toEqual([['archiveStatus', 'draft'], ['originalTitle', '因果模型講義']]);
   expect(parseCompilation(saved).status).toBe('review');
+  expect(parseCompilation(saved).title).toBe('因果模型講義');
 });
 
 it('trims descriptions and omits blank ones, still requiring a bounded string', () => {
@@ -99,4 +96,12 @@ it('reads a description key left without a value as no description', () => {
   const blank = raw.replace(/^description: .*$/m, 'description:');
   expect(parseCompilation(blank).description).toBeUndefined();
   expect(compilationFields(blank, owner.path).invalid).toBeUndefined();
+});
+
+it('starts a copy without the unknown fields, which may identify the original (a shared translationKey breaks the blog build), keeping its description', () => {
+  const copy = serializeCompilation(copyCompilation(parseCompilation(raw.replace(translation, translation + extensions)), []));
+  const parsed = YAML.parse(copy, { mapAsMap: true });
+  expect(parsed.get('description')).toBe(description);
+  for (const key of ['translationKey', 'publisher', 'priority', 1, 2]) expect(parsed.has(key)).toBe(false);
+  expect(parseCompilation(copy).title).toBe('因果模型講義 copy');
 });

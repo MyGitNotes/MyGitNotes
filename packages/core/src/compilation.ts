@@ -350,13 +350,17 @@ export function uniqueCompilationPath(directory: string, stem: string, taken: (p
 
 const newItemId = () => globalThis.crypto.randomUUID();
 
-/** The copy of a compilation: title `<title> copy`, a fresh identity and fresh item ids. `usedIds` are the ids already in the repository. */
+/**
+ * The copy of a compilation: title `<title> copy`, a fresh identity and fresh item ids. `usedIds` are the ids already in the repository.
+ * Fields MGN does not know are left out: one may identify the original (the blog's `translationKey`), and nothing tells which.
+ */
 export function copyCompilation(file: CompilationFile, usedIds: Iterable<string>, makeId: () => string = newItemId): CompilationFile {
   const used = new Set(usedIds);
   let next = `${file.id}-copy`.slice(0, 64);
   for (let n = 2; used.has(next); n++) next = `${file.id.slice(0, 64 - String(n).length - 6)}-copy-${n}`;
   const title = `${file.title} copy`.length <= 100 ? `${file.title} copy` : `${file.title.slice(0, 95).trimEnd()} copy`;
-  return { ...file, id: next, title, ...(file.items ? { items: file.items.map(item => ({ ...item, id: makeId() })) } : {}) };
+  const { [compilationExtensions]: _extensions, ...known } = file;
+  return { ...known, id: next, title, ...(file.items ? { items: file.items.map(item => ({ ...item, id: makeId() })) } : {}) };
 }
 
 /** The file a copy of `path` is written to: `<name>-copy.compilation.yml` beside it. */
