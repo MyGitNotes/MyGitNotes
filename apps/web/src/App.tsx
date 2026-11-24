@@ -1,9 +1,5 @@
 import { useNoteSort } from './app/useNoteSort.js';
 import { useOutlineActions } from './app/useOutlineActions.js';
-import { OutlineActionsProvider } from './lib/outline-actions.js';
-import { PiAgentProvider } from './lib/pi-agent/session.js';
-import { TypstPreviewProvider } from './lib/typst-preview/preview-target.js';
-import { AgentFocusCommand } from './components/pi-agent/AgentFocusCommand.js';
 import { AssistantDock } from './components/assistant/AssistantDock.js';
 import { TypstPreviewDock } from './components/typst-preview/TypstPreviewDock.js';
 import { useWebAgentTools } from './app/useWebAgentTools.js';
@@ -21,8 +17,7 @@ import { useBrowseNotes } from './app/useBrowseNotes.js';
 import { useNoteActions } from './app/useNoteActions.js';
 import { useFocusNoteNavigation } from './app/useFocusNoteNavigation.js';
 import { useNoteLinkLoad, useOpenNoteLinkInFocus } from './app/useNoteLinkFocus.js';
-import { EditorModeRouteProvider } from './app/editor-mode-route.js';
-import { LiveEditLinkProvider, liveEditLinkTarget } from './app/live-edit-link.js';
+import { liveEditLinkTarget } from './app/live-edit-link.js';
 import { useNoteSaving } from './app/useNoteSaving.js';
 import { useDeletionUndo } from './app/useDeletionUndo.js';
 import { useNoteRestoration } from './app/useNoteRestoration.js';
@@ -35,8 +30,6 @@ import { useAppCommands } from './app/useAppCommands.js';
 import { useWorkspaceOverview } from './app/useWorkspaceOverview.js';
 import { type NoteListItem, sameNote } from '@mygitnotes/core/note-query';
 import { useWorkspaceSync } from './lib/use-workspace-sync.js';
-import { WorkspaceLinks } from './components/WorkspaceLinks.js';
-import { NoteLocationProvider } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
 import { useNavigate } from 'react-router-dom';
 import { hasStoredFocusView } from './lib/focus-view.js';
@@ -50,7 +43,7 @@ import { forgetNoteDrafts } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { builtinNoteTemplates } from './lib/builtin-templates.js';
-import type { NotebookConfig, NoteItem } from './lib/types.js';
+import type { NoteItem } from './lib/types.js';
 import { useTagWorkspaceOperations } from './app/useTagWorkspaceOperations.js';
 import { useNoteSelection } from './app/useNoteSelection.js';
 import { FolderPickerDialog } from './components/FolderPickerDialog.js';
@@ -69,6 +62,8 @@ import { WorkspaceBanners } from './app/WorkspaceBanners.js';
 import { WorkspaceToasts } from './app/WorkspaceToasts.js';
 import { WorkspaceCommitModal } from './app/WorkspaceCommitModal.js';
 import { useWorkspaceHandover } from './app/useWorkspaceHandover.js';
+import { WorkspaceProviders } from './app/WorkspaceProviders.js';
+import { WorkspaceRightPanel } from './app/WorkspaceRightPanel.js';
 import { GraphRoute, NotebookUnavailableRoute, StudyRoute } from './app/WorkspacePages.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
@@ -77,8 +72,7 @@ import { noteFolder } from './lib/note-move.js';
 import { RenameNoteDialog } from './components/RenameNoteDialog.js';
 import { AccountControls, AgentAccessSettings, ConnectionState } from './components/AuthControls.js';
 import { Header } from './components/Header.js';
-import { WorkspaceGitSyncProvider } from './lib/workspace-git-sync.js';
-import { PhoneNotesProvider, phoneNotesScreen } from './lib/phone-notes.js';
+import { phoneNotesScreen } from './lib/phone-notes.js';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts.js';
 import { KeyboardRoot } from './lib/keyboard/KeyboardDispatcher.js';
 import { SidebarProvider, WorkspaceSplitLayout } from './components/WorkspaceChrome.js';
@@ -89,18 +83,15 @@ import { browseColumnCommands, useBrowseColumns } from './app/useBrowseColumns.j
 import { NOTEBOOK_COLUMN_ID } from './components/BrowseColumns.js';
 import { useNotebookAppearance } from './components/NotebookAppearance.js';
 import { EditorModal } from './components/EditorModal.js';
-import { NoteEditingProvider, useNoteEditorRegistry } from './lib/note-editing.js';
+import { useNoteEditorRegistry } from './lib/note-editing.js';
 import { FocusArea } from './components/FocusArea.js';
 import { FocusControls } from './components/FocusControls.js';
 import { AddToFocusDialog } from './components/AddToFocusDialog.js';
 import { usePhone } from './lib/use-phone.js';
 import { useFocusSearch } from './lib/focus-search.js';
 import { LegacyScreenRedirect } from './components/LegacyScreenRedirect.js';
-import { CompilationActionsProvider } from './lib/compilation-actions.js';
-import { StatusColorProvider } from './lib/status-color.js';
 import { statusLabel } from '@mygitnotes/core/note-status';
-import { RightPanel } from './components/RightPanel.js';
-import { FileManager, FileManagerDialog, FileMetadata } from './components/files/index.js';
+import { FileManager, FileManagerDialog } from './components/files/index.js';
 import { AgentSystemView } from './components/AgentSystemView.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { useAgentEnabled } from './lib/web-features.js';
@@ -108,10 +99,7 @@ import { RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js'
 import { useLeaveWarning } from './lib/use-leave-warning.js';
 import { useGistConfirm } from './components/GistConfirmDialog.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
-import { liveActionLocked, liveDestinationFolder, LiveDraftsProvider } from './components/live/live-drafts.js';
-
-/** A stable empty list while the workspace config loads, so the agent provider's value does not churn. */
-const NO_NOTEBOOKS: NotebookConfig[] = [];
+import { liveActionLocked, liveDestinationFolder } from './components/live/live-drafts.js';
 
 /** The workspace itself, behind the sign-in gate; the entry loads it as its own chunk. */
 export const AppContent: React.FC = () => {
@@ -126,7 +114,8 @@ export const AppContent: React.FC = () => {
   const [editingNote, setEditingNote] = useState<NoteListItem | null>(null);
   const [fileEditorRevision, setFileEditorRevision] = useState(0);
 
-  const { fileDialog, setFileDialog, fileMetadataContainer, setFileMetadataContainer, fileMetadataOpen, setFileMetadataOpen, rightPanelWidth, setRightPanelWidth, selectedFileEntry, setSelectedFileEntry, fileManagerRef } = useFilePanel();
+  const filePanel = useFilePanel();
+  const { fileDialog, setFileDialog, fileMetadataContainer, setFileMetadataOpen, rightPanelWidth, setSelectedFileEntry, fileManagerRef } = filePanel;
 
   // The URL owns page, notebook, folder and filter selection.
   const navigate = useNavigate();
@@ -174,7 +163,7 @@ export const AppContent: React.FC = () => {
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder } = navigation;
 
   const changeDialog = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });
-  const { isCommitOpen, openCommitModal, panelRemoteChanges, panelGetPreview } = changeDialog;
+  const { isCommitOpen, openCommitModal, panelRemoteChanges } = changeDialog;
   // With every repository hidden or unavailable there is no notebook to show, and Settings is where the person
   // recovers: it opens there (decision C8).
   const nothingToShow = !loading && !loadError && !config?.notebooks.length;
@@ -301,158 +290,91 @@ export const AppContent: React.FC = () => {
   };
   const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} notebook={selectedNotebook} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
 
-  const content = (
-    <CompilationActionsProvider value={compilationActions}>
-      <LiveDraftsProvider value={liveDrafts}>
-        <WorkspaceLinks notebooks={config?.notebooks || []} folders={folders} onOpenNote={(note, anchor, source) => void openLink(note, anchor, source)}>
-          <NoteLocationProvider locate={locateNote}>
-            <NoteEditingProvider register={editorRegistry.register} editorProps={editorProps} flushEditors={editorRegistry.flushEditors} refreshNotes={refreshNotes} closeZoom={closeZoom} addToFocus={addToFocus} moveNote={noteMove.moveNote} renameNote={noteMove.renameNote} renameNoteTo={noteMove.renameNoteTo}>
-              <div className='app-shell h-dvh min-w-0 flex-1 overflow-hidden flex flex-col font-sans transition-colors duration-200' data-workspace-tab={activeTab} data-screen-focus={Boolean(route.study)} style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
-                <WorkspaceBanners coreBaseline={!remote && defaultRepositoryBranch === 'core'} legacyNotice={legacyImport.notice} defaultRepository={defaultRepository} manifestWritable={manifestWritable} onManifestCreated={() => refreshWorkspace(true)} />
-                {/* Top Header */}
-                <Header unavailableNotebooks={unavailableNotebooks} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} focusControls={focusControls} newNote={newNote} notebooksToggle={notesColumns ? { open: columns.layout.notebooks === 'open', controls: NOTEBOOK_COLUMN_ID, onToggle: columns.toggleNotebooks } : undefined} />
-                <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
-                {routeError && (
-                  <div role='alert' className='px-6 py-3 text-sm text-danger'>
-                    {routeError.startsWith('route.') ? t(routeError as any) : routeError} <button className='underline' onClick={() => navigate('/notes')}>{t('route.goToNotes')}</button>
-                  </div>
-                )}
-                {/* Main Workspace Layout */}
-                <SidebarProvider open={filtersOpen} onOpenChange={setFiltersOpen}>
-                  <div ref={sidebarGestureRef} className='workspace-body relative flex-1 min-h-0 min-w-0 flex overflow-hidden'>
-                    <WorkspaceSplitLayout
-                      hasSidebar={activeTab !== 'graph' && !route.study && !notesColumns}
-                      sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
-                      closeLabel={t('sidebar.closeFilters')}
-                      rightPanelWidth={rightPanelWidth}
-                      assistant={
-                        <>
-                          <TypstPreviewDock />
-                          <AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} swipe={(activeTab === 'notes' && !filtersOpen) || noteEditorOpen} />
-                        </>
-                      }
-                      rightPanel={
-                        <RightPanel
-                          phoneSheet={phoneNotes}
-                          documentPanel={activeTab === 'notes' && noteFocus.layout ? { enabled: activePaneNote, onContainer: setDocumentContainer } : undefined}
-                          fileMode={activeTab === 'assets'}
-                          metadataOpen={fileMetadataOpen}
-                          onMetadataOpenChange={setFileMetadataOpen}
-                          fileMetadata={selectedFileEntry
-                            ? (
-                              <FileMetadata
-                                entry={selectedFileEntry}
-                                onEdit={canWriteFiles && !resourceNavigationBusy
-                                  ? () => void fileManagerRef.current?.editMetadata()
-                                  : undefined}
-                              />
-                            )
-                            : undefined}
-                          onFileMetadataContainer={setFileMetadataContainer}
-                          notebooks={config?.notebooks || []}
-                          selectedNotebookId={selectedNotebookId}
-                          currentFolder={selectedFolder && notebookRoot ? `${notebookRoot}/${selectedFolder}` : undefined}
-                          onOpenNote={handleOpenNote}
-                          onSaveNote={handleSaveNote}
-                          onReadNote={readNoteForChange}
-                          gitStatus={gitStatus}
-                          changeCount={remote ? changeCount - remoteTrash.length : changeCount}
-                          deletedNotes={remote ? remoteTrash : deletedNotes}
-                          onRestoreNote={remote
-                            ? note => updateDraft(note.notebookId, note.path, null)
-                            : handleRestoreNote}
-                          onOpenCommitModal={openCommitModal}
-                          writable={canWrite}
-                          remoteChanges={panelRemoteChanges}
-                          getPreview={panelGetPreview}
-                          onSynced={remote ? undefined : refreshAfterSync}
-                          repositoryHeading={repositoryHeading}
-                          repoRoot={repoRoot}
-                          onWidthChange={setRightPanelWidth}
-                        />
-                      }
-                    >
-                      {notebookUnavailable && ['notes', 'assets', 'graph'].includes(activeTab) && <NotebookUnavailableRoute notebookTitle={selectedNotebook?.title ?? selectedNotebookId} unavailable={notebookUnavailable} />}
-                      {!notebookUnavailable && activeTab === 'notes' && !route.study && renderNotesPage(focusArea)}
-                      {activeTab === 'agent' && (
-                        <main className='workspace-route agent-main'>
-                          <AgentSystemView ref={agentSystemRef} notebooks={config?.notebooks || []} folders={folders} repositories={repositories} defaultRepository={sourceId} onBusyChange={setResourceNavigationBusy} remote={remote} onGitStatus={setGitStatus} />
-                        </main>
-                      )}
-                      {!notebookUnavailable && activeTab === 'assets' && (
-                        <main className='workspace-route assets-main has-sidebar-drawer'>
-                          <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWriteFiles} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={new URLSearchParams(location.search).get('asset') || (new URLSearchParams(location.search).has('directory') ? `${folderRoot}/${config?.notebooks.find(nb => nb.id === selectedNotebookId)?.assets || 'assets'}${new URLSearchParams(location.search).get('directory') ? '/' + new URLSearchParams(location.search).get('directory') : ''}` : undefined)} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
-                        </main>
-                      )}
-                      {!notebookUnavailable && activeTab === 'notes' && route.study && <StudyRoute notebooks={config?.notebooks || []} folders={folders} notebookId={selectedNotebookId} notebook={selectedNotebook} path={route.study} remote={remote} refreshWorkspace={refreshWorkspace} invalidateNotes={invalidateNotes} setGitStatus={setGitStatus} setActionError={setActionError} handleOpenNote={handleOpenNote} navigate={navigate} />}
-                      {!notebookUnavailable && activeTab === 'graph' && <GraphRoute graphKey={remote ? sourceId : repoRoot} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} filters={filterProps} folders={folders} />}
-                      {activeTab === 'settings' && (
-                        <main className='workspace-route settings-main has-sidebar-drawer'>
-                          <SettingsModal manifest={{ repositories, defaultRepository: sourceId, initialRepository: repositoryFor(selectedNotebookId)?.id ?? sourceId, onManifestRevision: setManifestRevision }} repositories={{ repositories, onMembershipChanged: membershipChanged, onOpenChanges: () => openCommitModal() }} recovery={nothingToShow} local={!remote} coreUpdates={coreUpdate} accountSettings={<AgentAccessSettings local={!remote} />} repositoryChoice={repositoryChoice && defaultRepository?.repository ? <RepositorySwitch repository={defaultRepository.repository} branch={defaultRepositoryBranch} /> : undefined} onRefreshWorkspace={refreshWorkspace} currentTheme={currentTheme} onSelectTheme={handleSelectTheme} />
-                        </main>
-                      )}
-                    </WorkspaceSplitLayout>
-                  </div>
-                </SidebarProvider>
-                <WorkspaceToasts undoToast={undoToast} setUndoToast={setUndoToast} handleRestoreNote={handleRestoreNote} tagOperations={tagOperations} handleUndoTagOperation={handleUndoTagOperation} />
-                {notebookAppearance.element}
-                {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
-                {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteMove.request.note.live?.pending ? liveDestinationFolder(noteMove.request.note.live) : noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)}>{noteMove.request.note.live?.pending && <p className='text-xs text-muted'>{t('live.collisionNote')}</p>}</FolderPickerDialog>}
-                {liveNewNoteDialog}
-                {templateManager.dialog}
-                {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} initial={noteMove.request.name} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
-                {bulkMoveDialog}
-                {/* Note Editor Modal */}
-                <EditorModal key={fileEditorRevision} note={routedNote} committed={routedCommitted && typeof routedCommitted.content === 'string' ? routedCommitted as NoteItem : undefined} loading={routedLoading} isOpen={noteEditorOpen} renderCompilation={renderCompilation} behind={compilationBehind} error={actionError} />
-                {phoneFilterSheet}
-                {addingToFocus && (
-                  <AddToFocusDialog
-                    focus={noteFocus}
-                    tab={addingToFocus.tab}
-                    label={addingToFocus.label}
-                    onClose={() => setAddingToFocus(null)}
-                    onPlaced={addingToFocus.tab.kind === 'note'
-                      ? target => {
-                        setEditingNote(null);
-                        setFocusNarrowView('focus');
-                        navigate(`${notebookRoute(selectedNotebookId)}?${new URLSearchParams({ focus: target })}`, { replace: true });
-                      }
-                      : undefined}
-                  />
-                )}
-                {/* Commit Modal */}
-                <WorkspaceCommitModal remote={remote} repositories={repositories} documents={documents} pendingDocuments={pendingDocuments} gitStatus={gitStatus} readDraft={readDraft} readDraftIn={readDraftIn} updateDraft={updateDraft} refreshWorkspace={refreshWorkspace} refreshDocuments={refreshDocuments} changeDialog={changeDialog} commitWorkingNotes={commitWorkingNotes} repositoryHeading={repositoryHeading} agentSystemRef={agentSystemRef} editingNote={editingNote} setEditingNote={setEditingNote} setDeletedNotes={setDeletedNotes} setUndoToast={setUndoToast} />
-                {/* Create New Note Modal */}
-              </div>
-              {gistConfirmDialog}
-              <ImageLightbox />
-              {outlineActions.dialog && <AddToOutlineDialog key={outlineActions.dialog.id} source={outlineActions.dialog.source} busy={outlineActions.busy} error={outlineActions.error} onChoose={outlineActions.choose} onClose={outlineActions.cancel} />}
-              {legacyImport.dialog}
-            </NoteEditingProvider>
-          </NoteLocationProvider>
-        </WorkspaceLinks>
-      </LiveDraftsProvider>
-    </CompilationActionsProvider>
-  );
-  // A local workspace starts its Pi agent in the background, so the agent tab opens onto a warm session.
   return (
-    <PiAgentProvider webTools={remote ? webAgentTools : undefined} enabled={agentEnabled} defaultRepository={sourceId} notebooks={config?.notebooks ?? NO_NOTEBOOKS} repositories={repositories}>
-      <AgentFocusCommand />
-      <OutlineActionsProvider value={outlineActions.value}>
-        <StatusColorProvider statuses={statusEntries}>
-          {/* The Typst preview and its citations run on this machine, so only a local workspace has them. */}
-          <TypstPreviewProvider enabled={!remote && !loading}>
-            <PhoneNotesProvider value={phoneNotesValue}>
-              <EditorModeRouteProvider>
-                <WorkspaceGitSyncProvider enabled={!remote} targets={syncTargets} onSynced={refreshAfterSync} flushEditors={editorRegistry.flushEditors} onRevealChanges={() => setFileMetadataOpen(false)}>
-                  <LiveEditLinkProvider target={liveEditTarget}>{content}</LiveEditLinkProvider>
-                </WorkspaceGitSyncProvider>
-              </EditorModeRouteProvider>
-            </PhoneNotesProvider>
-          </TypstPreviewProvider>
-        </StatusColorProvider>
-      </OutlineActionsProvider>
-    </PiAgentProvider>
+    <WorkspaceProviders remote={remote} loading={loading} sourceId={sourceId} notebooks={config?.notebooks} folders={folders} repositories={repositories} agentEnabled={agentEnabled} webAgentTools={webAgentTools} outlineActions={outlineActions.value} statusEntries={statusEntries} phoneNotes={phoneNotesValue} syncTargets={syncTargets} onSynced={refreshAfterSync} onRevealChanges={() => setFileMetadataOpen(false)} liveEditTarget={liveEditTarget} compilationActions={compilationActions} liveDrafts={liveDrafts} openLink={(note, anchor, source) => void openLink(note, anchor, source)} locateNote={locateNote} noteEditing={{ register: editorRegistry.register, editorProps, flushEditors: editorRegistry.flushEditors, refreshNotes, closeZoom, addToFocus, moveNote: noteMove.moveNote, renameNote: noteMove.renameNote, renameNoteTo: noteMove.renameNoteTo }}>
+      <div className='app-shell h-dvh min-w-0 flex-1 overflow-hidden flex flex-col font-sans transition-colors duration-200' data-workspace-tab={activeTab} data-screen-focus={Boolean(route.study)} style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
+        <WorkspaceBanners coreBaseline={!remote && defaultRepositoryBranch === 'core'} legacyNotice={legacyImport.notice} defaultRepository={defaultRepository} manifestWritable={manifestWritable} onManifestCreated={() => refreshWorkspace(true)} />
+        {/* Top Header */}
+        <Header unavailableNotebooks={unavailableNotebooks} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} focusControls={focusControls} newNote={newNote} notebooksToggle={notesColumns ? { open: columns.layout.notebooks === 'open', controls: NOTEBOOK_COLUMN_ID, onToggle: columns.toggleNotebooks } : undefined} />
+        <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
+        {routeError && (
+          <div role='alert' className='px-6 py-3 text-sm text-danger'>
+            {routeError.startsWith('route.') ? t(routeError as any) : routeError} <button className='underline' onClick={() => navigate('/notes')}>{t('route.goToNotes')}</button>
+          </div>
+        )}
+        {/* Main Workspace Layout */}
+        <SidebarProvider open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <div ref={sidebarGestureRef} className='workspace-body relative flex-1 min-h-0 min-w-0 flex overflow-hidden'>
+            <WorkspaceSplitLayout
+              hasSidebar={activeTab !== 'graph' && !route.study && !notesColumns}
+              sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
+              closeLabel={t('sidebar.closeFilters')}
+              rightPanelWidth={rightPanelWidth}
+              assistant={
+                <>
+                  <TypstPreviewDock />
+                  <AssistantDock onOpenAgents={() => setActiveTab('agent')} agentsDisabled={noteEditorOpen || isCommitOpen} swipe={(activeTab === 'notes' && !filtersOpen) || noteEditorOpen} />
+                </>
+              }
+              rightPanel={<WorkspaceRightPanel phoneNotes={phoneNotes} documentPanel={activeTab === 'notes' && noteFocus.layout ? { enabled: activePaneNote, onContainer: setDocumentContainer } : undefined} fileMode={activeTab === 'assets'} filePanel={filePanel} canEditFileMetadata={canWriteFiles && !resourceNavigationBusy} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} currentFolder={selectedFolder && notebookRoot ? `${notebookRoot}/${selectedFolder}` : undefined} remote={remote} gitStatus={gitStatus} repoRoot={repoRoot} updateDraft={updateDraft} changeCount={changeCount} remoteTrash={remoteTrash} repositoryHeading={repositoryHeading} deletedNotes={deletedNotes} handleRestoreNote={handleRestoreNote} changeDialog={changeDialog} canWrite={canWrite} handleOpenNote={handleOpenNote} handleSaveNote={handleSaveNote} readNoteForChange={readNoteForChange} refreshAfterSync={refreshAfterSync} />}
+            >
+              {notebookUnavailable && ['notes', 'assets', 'graph'].includes(activeTab) && <NotebookUnavailableRoute notebookTitle={selectedNotebook?.title ?? selectedNotebookId} unavailable={notebookUnavailable} />}
+              {!notebookUnavailable && activeTab === 'notes' && !route.study && renderNotesPage(focusArea)}
+              {activeTab === 'agent' && (
+                <main className='workspace-route agent-main'>
+                  <AgentSystemView ref={agentSystemRef} notebooks={config?.notebooks || []} folders={folders} repositories={repositories} defaultRepository={sourceId} onBusyChange={setResourceNavigationBusy} remote={remote} onGitStatus={setGitStatus} />
+                </main>
+              )}
+              {!notebookUnavailable && activeTab === 'assets' && (
+                <main className='workspace-route assets-main has-sidebar-drawer'>
+                  <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWriteFiles} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={new URLSearchParams(location.search).get('asset') || (new URLSearchParams(location.search).has('directory') ? `${folderRoot}/${config?.notebooks.find(nb => nb.id === selectedNotebookId)?.assets || 'assets'}${new URLSearchParams(location.search).get('directory') ? '/' + new URLSearchParams(location.search).get('directory') : ''}` : undefined)} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
+                </main>
+              )}
+              {!notebookUnavailable && activeTab === 'notes' && route.study && <StudyRoute notebooks={config?.notebooks || []} folders={folders} notebookId={selectedNotebookId} notebook={selectedNotebook} path={route.study} remote={remote} refreshWorkspace={refreshWorkspace} invalidateNotes={invalidateNotes} setGitStatus={setGitStatus} setActionError={setActionError} handleOpenNote={handleOpenNote} navigate={navigate} />}
+              {!notebookUnavailable && activeTab === 'graph' && <GraphRoute graphKey={remote ? sourceId : repoRoot} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} filters={filterProps} folders={folders} />}
+              {activeTab === 'settings' && (
+                <main className='workspace-route settings-main has-sidebar-drawer'>
+                  <SettingsModal manifest={{ repositories, defaultRepository: sourceId, initialRepository: repositoryFor(selectedNotebookId)?.id ?? sourceId, onManifestRevision: setManifestRevision }} repositories={{ repositories, onMembershipChanged: membershipChanged, onOpenChanges: () => openCommitModal() }} recovery={nothingToShow} local={!remote} coreUpdates={coreUpdate} accountSettings={<AgentAccessSettings local={!remote} />} repositoryChoice={repositoryChoice && defaultRepository?.repository ? <RepositorySwitch repository={defaultRepository.repository} branch={defaultRepositoryBranch} /> : undefined} onRefreshWorkspace={refreshWorkspace} currentTheme={currentTheme} onSelectTheme={handleSelectTheme} />
+                </main>
+              )}
+            </WorkspaceSplitLayout>
+          </div>
+        </SidebarProvider>
+        <WorkspaceToasts undoToast={undoToast} setUndoToast={setUndoToast} handleRestoreNote={handleRestoreNote} tagOperations={tagOperations} handleUndoTagOperation={handleUndoTagOperation} />
+        {notebookAppearance.element}
+        {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
+        {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteMove.request.note.live?.pending ? liveDestinationFolder(noteMove.request.note.live) : noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)}>{noteMove.request.note.live?.pending && <p className='text-xs text-muted'>{t('live.collisionNote')}</p>}</FolderPickerDialog>}
+        {liveNewNoteDialog}
+        {templateManager.dialog}
+        {noteMove.request?.mode === 'rename' && <RenameNoteDialog path={noteMove.request.note.path} title={noteMove.request.note.title} initial={noteMove.request.name} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={title => void noteMove.confirmRename(title)} />}
+        {bulkMoveDialog}
+        {/* Note Editor Modal */}
+        <EditorModal key={fileEditorRevision} note={routedNote} committed={routedCommitted && typeof routedCommitted.content === 'string' ? routedCommitted as NoteItem : undefined} loading={routedLoading} isOpen={noteEditorOpen} renderCompilation={renderCompilation} behind={compilationBehind} error={actionError} />
+        {phoneFilterSheet}
+        {addingToFocus && (
+          <AddToFocusDialog
+            focus={noteFocus}
+            tab={addingToFocus.tab}
+            label={addingToFocus.label}
+            onClose={() => setAddingToFocus(null)}
+            onPlaced={addingToFocus.tab.kind === 'note'
+              ? target => {
+                setEditingNote(null);
+                setFocusNarrowView('focus');
+                navigate(`${notebookRoute(selectedNotebookId)}?${new URLSearchParams({ focus: target })}`, { replace: true });
+              }
+              : undefined}
+          />
+        )}
+        {/* Commit Modal */}
+        <WorkspaceCommitModal remote={remote} repositories={repositories} documents={documents} pendingDocuments={pendingDocuments} gitStatus={gitStatus} readDraft={readDraft} readDraftIn={readDraftIn} updateDraft={updateDraft} refreshWorkspace={refreshWorkspace} refreshDocuments={refreshDocuments} changeDialog={changeDialog} commitWorkingNotes={commitWorkingNotes} repositoryHeading={repositoryHeading} agentSystemRef={agentSystemRef} editingNote={editingNote} setEditingNote={setEditingNote} setDeletedNotes={setDeletedNotes} setUndoToast={setUndoToast} />
+        {/* Create New Note Modal */}
+      </div>
+      {gistConfirmDialog}
+      <ImageLightbox />
+      {outlineActions.dialog && <AddToOutlineDialog key={outlineActions.dialog.id} source={outlineActions.dialog.source} busy={outlineActions.busy} error={outlineActions.error} onChoose={outlineActions.choose} onClose={outlineActions.cancel} />}
+      {legacyImport.dialog}
+    </WorkspaceProviders>
   );
 };
 
