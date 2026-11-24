@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { I18nProvider } from '../lib/i18n/index.js';
-import { FoldedNoteDots } from './FoldedNoteDots.js';
+import { DOTS_IDLE_MS, dotScrollTarget, FoldedNoteDots } from './FoldedNoteDots.js';
 
 const note = (path: string, title: string, status?: string): NoteListItem => ({ notebookId: 'life', path, title, status, tags: [] }) as unknown as NoteListItem;
 const notes = [note('a.md', 'Weekly meeting', 'todo'), note('b.md', 'Spec draft', 'done'), note('c.md', 'Loose idea')];
@@ -69,4 +69,27 @@ it.each([
 it('shows nothing for an empty list', () => {
   const { container } = render(<I18nProvider><FoldedNoteDots notes={[]} openPath={null} onOpenNote={() => {}} /></I18nProvider>);
   expect(container).toBeEmptyDOMElement();
+});
+
+it('scrolls the open dot to a quarter of the column only when it sits outside the upper band', () => {
+  const column = { top: 100, height: 400, scrollTop: 50 };
+  // Center at 140 px into the column, inside 40–180: left alone.
+  expect(dotScrollTarget({ top: 230, height: 20 }, column)).toBeNull();
+  // Center at 340 px, below the band: brought to 100 px.
+  expect(dotScrollTarget({ top: 430, height: 20 }, column)).toBe(50 + 340 - 100);
+  // Above the band near the top: never scrolls past the start.
+  expect(dotScrollTarget({ top: 90, height: 20 }, column)).toBe(0);
+});
+
+it('lets the dots dance after the page sits untouched, and stops them at the next touch', () => {
+  render(<I18nProvider><FoldedNoteDots notes={notes} openPath='b.md' onOpenNote={() => {}} /></I18nProvider>);
+  const list = screen.getByRole('list', { name: 'Notes in the list' });
+  expect(list).not.toHaveAttribute('data-idle');
+  act(() => { vi.advanceTimersByTime(DOTS_IDLE_MS - 1); });
+  expect(list).not.toHaveAttribute('data-idle');
+  act(() => { vi.advanceTimersByTime(1); });
+  expect(list).toHaveAttribute('data-idle');
+  fireEvent.pointerMove(window);
+  expect(list).not.toHaveAttribute('data-idle');
+  expect(within(list).getAllByRole('listitem').map(item => item.style.getPropertyValue('--dot-index'))).toEqual(['0', '1', '2']);
 });
