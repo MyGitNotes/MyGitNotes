@@ -1,7 +1,7 @@
 Status: proposed
 Proposed at: 2026-11-25
 Design: the approved frames `03-whiteboard.png` and `04-whiteboard-card-open.png` of the 2026-11-24 board-and-graph proposal (看板與關聯圖重新設計).
-Approved from: the owner's answers to that proposal's decision form, listed under [Owner decisions](#owner-decisions). The [open questions](#open-questions) still need the owner.
+Approved from: the owner's answers to that proposal's decision form, listed under [Owner decisions](#owner-decisions). The owner answered the [open questions](#open-questions) on 2026-11-25.
 
 # Whiteboard (白板) replaces the graph (關聯圖)
 
@@ -26,7 +26,7 @@ Given with the brief, and drawn in the approved frames: the whiteboard is a four
 ### The 白板 page
 
 - The top bar's page switch reads 筆記、白板、檔案、設定. 白板 (route `/boards`) lists the current notebook's whiteboards as tiles: title, description, card and section counts, last edit. 「新增白板」 creates an empty custom compilation `arrangement: board` named 未命名白板 at the notebook root (the path rule of 新增合輯) and opens it. A read-only notebook has no 新增白板.
-- Which compilations the list holds is [open question 2](#open-questions); this spec assumes the recommendation: every compilation of the notebook whose `arrangement` is `board` or whose file carries a `board` section.
+- Which compilations the list holds is [open question 2](#open-questions), answered: every compilation of the notebook whose `arrangement` is `board` or whose file carries a `board` section.
 - Opening a tile shows the board full-window (`/boards?notebook=<key>&board=<repository path>`): the 筆記庫 drawer on the left (collapsible to a strip), the board, and the side panel on the right when a card is open. The header row holds the breadcrumb 「白板 / <title>」, the arrangement switch (書本・河道・白板), the tools, 「顯示筆記內連結」 and the zoom control (`− 85% +`). The board page always draws the board arrangement.
 - Old addresses keep working: `/graph` and the Notes page's legacy `view=graph` redirect to `/boards?notebook=<key>` (replace); `/graph?lanes=<id>` opens that compilation's board when it is one, otherwise the compilation in zoom on the Notes page. The palette command 前往關聯圖 becomes 前往白板.
 
@@ -237,7 +237,7 @@ Kept and reused: the note graph (`buildNoteGraph`, `extractNoteLinks`, `/api/not
 
 ## Rollout
 
-The reader ships before anything writes a board, as the Focus split tree did (its D11): slice 1 makes every deployment able to read and relocate a board while nothing writes one; slice 2, the first that writes `arrangement: board`, ships only after the owner confirms that every deployment opening the same repositories runs slice 1 ([open question 1](#open-questions)). The demo and example files move to the board format in slice 7, after which the community demo shows boards.
+The reader ships before anything writes a board, as the Focus split tree did (its D11): slice 1 makes every deployment able to read and relocate a board while nothing writes one; slice 2, the first that writes `arrangement: board`, ships only after the owner confirms that every deployment opening the same repositories runs slice 1 ([open question 1](#open-questions), answered: wait). The demo and example files move to the board format in slice 7, after which the community demo shows boards.
 
 ## Build slices
 
@@ -267,7 +267,7 @@ Each slice is one change-set that ships alone, in this order. Each names its acc
 ### 5. The 白板 page and the side panel
 
 - **Area:** `lib/routes.ts` (`/boards`, the `graph` tab becoming `boards`, redirects of `/graph`, `/graph?lanes=` and `view=graph`), `Header.tsx`, palette commands, `app/WorkspacePages.tsx` (a `BoardsRoute` with list and board), the side panel (hosted editor, 開進 Focus, 全螢幕, ✕, 「在 N 塊白板上」 with jump, `note=` and `card=` in the address), the zoom compilation view's panel.
-- **Acceptance:** route tests for each redirect; list test (which compilations it holds, per open question 2); side panel tests: opens and edits a note, saves before switching cards, Back closes, jump centres and selects the card, another notebook's card has 開進 Focus disabled; a Focus-pane board opens cards in another pane.
+- **Acceptance:** route tests for each redirect; list test (which compilations it holds, per open question 2's answer); side panel tests: opens and edits a note, saves before switching cards, Back closes, jump centres and selects the card, another notebook's card has 開進 Focus disabled; a Focus-pane board opens cards in another pane.
 
 ### 6. The 筆記庫 drawer and linked notes
 
@@ -281,11 +281,11 @@ Each slice is one change-set that ships alone, in this order. Each names its acc
 
 ## Open questions
 
-These belong to the owner. Each has a recommendation.
+The owner answered all three on 2026-11-25, each with the recommendation:
 
-1. **Rollout gate.** Should the first board-writing slice wait until you confirm that every deployment opening these repositories (mygitnotes.com, notes.wayneh.tw, docs.moldplan.app and any self-host you run) runs slice 1? Recommendation: yes. Otherwise a board written locally shows as an invalid file on a deployment still on 0.40.x, and its note moves there leave a dynamic board's card paths behind. The cost is one release cycle between slices 1 and 2.
-2. **What the 白板 page lists, and what its arrangement switch does.** Recommendation: it lists every compilation whose arrangement is 白板 or whose file has board data, and the board page always draws the board; choosing 書本 or 河道 there writes that arrangement and opens the compilation in zoom on the Notes page, while the board stays in the list. Alternative: it lists only compilations arranged as 白板, and the switch changes the arrangement in place, so a board switched to 書本 leaves the list (its board data is kept for switching back). The recommendation keeps "my boards" stable when someone reads a board as a book; the alternative is simpler to explain.
-3. **Card limit.** A custom compilation holds at most 100 content items (`COMPILATION_MAX_ITEMS`), so a hand-arranged board holds at most 100 cards. Recommendation: keep 100 for the first release and raise it only when a real board reaches it; raising it also raises what the lane and book load. Dynamic boards are not affected (up to 2,000 members are placed).
+1. **Rollout gate**: wait. Slice 2 ships only after the owner confirms every deployment opening these repositories runs slice 1.
+2. **What the 白板 page lists**: every compilation arranged as 白板 or holding board data; on the board page the board always draws, and choosing 書本 or 河道 there writes that arrangement and opens the compilation in zoom on the Notes page while it stays in the list.
+3. **Card limit**: keep the custom compilation limit of 100 items for the first release.
 
 ## Out of scope
 
