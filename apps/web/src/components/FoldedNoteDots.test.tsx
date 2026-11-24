@@ -50,6 +50,22 @@ it('names a dot\'s note and its status in a tooltip on hover', () => {
   expect(screen.getByRole('tooltip')).toHaveTextContent('No status');
 });
 
+it.each([
+  ['editing', { activeEditors: 2, changed: true }, 'Editing · 2'],
+  ['changed', { activeEditors: 0, changed: true }, 'Editing'],
+  ['pending', { activeEditors: 1, pending: true }, 'Not filed'],
+  [null, { activeEditors: 0 }, null],
+  [null, undefined, null],
+] as const)('marks %s and describes the live state on hover', (state, props, label) => {
+  const item = { ...notes[0], live: props && { since: '', editorUrl: '', ...props } };
+  render(<I18nProvider><FoldedNoteDots notes={[item]} openPath={null} onOpenNote={() => {}} /></I18nProvider>);
+  const button = screen.getByRole('button');
+  expect(button.getAttribute('data-live')).toBe(state);
+  fireEvent.pointerEnter(button, { pointerType: 'mouse' });
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(screen.getByRole('tooltip')).toHaveTextContent(label ? `todo · ${label}` : 'todo');
+});
+
 it('shows nothing for an empty list', () => {
   const { container } = render(<I18nProvider><FoldedNoteDots notes={[]} openPath={null} onOpenNote={() => {}} /></I18nProvider>);
   expect(container).toBeEmptyDOMElement();
