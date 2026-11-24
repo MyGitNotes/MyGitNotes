@@ -26,10 +26,14 @@ export function FoldedNoteDots({ notes, openPath, onOpenNote }: FoldedNoteDotsPr
       {notes.map(note => {
         const status = note.status ?? '';
         const title = note.title || note.path;
+        const { live } = note;
+        const state = live?.pending ? 'pending' : live && live.activeEditors > 0 ? 'editing' : live?.changed ? 'changed' : undefined;
+        const liveLabel = state === 'pending' ? t('live.pending') : state === 'editing' ? t('live.badge', { count: live!.activeEditors }) : state === 'changed' ? t('live.badgeQuiet') : undefined;
+        const statusLabel = status ? labelOf(status) : t('notes.noStatus');
         return (
           <li key={noteRefKey(note)}>
-            <Tooltip label={title} detail={status ? labelOf(status) : t('notes.noStatus')} side='right'>
-              <button type='button' className='browse-folded-note' aria-label={title} aria-current={openPath === note.path ? 'true' : undefined} onClick={() => onOpenNote(note)}>
+            <Tooltip label={title} detail={liveLabel ? `${statusLabel} · ${liveLabel}` : statusLabel} side='right'>
+              <button type='button' className='browse-folded-note' data-live={state} aria-label={title} aria-current={openPath === note.path ? 'true' : undefined} onClick={() => onOpenNote(note)}>
                 <span className={status ? `status-dot ${dotClass(status)}` : 'status-dot status-dot-empty'} aria-hidden='true' />
               </button>
             </Tooltip>
