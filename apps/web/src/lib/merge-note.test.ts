@@ -84,12 +84,23 @@ describe('compilation reconciliation', () => {
     const merged = mergeCompilation(path, file(compilation), file(reordered), file(added));
     expect(merged).toEqual({ conflict: false, draft: file(replace(reordered, ['    path: notes/thesis/a.md\n', '    path: notes/thesis/a.md\n  - id: n3\n    kind: note\n    path: notes/thesis/c.md\n'])) });
   });
+  it('leaves the draft as it is when the remote has not changed since its base', () => {
+    const local = file(replace(compilation, moveN1), { title: 'Chapter 3', tags: ['thesis'], note: 'kept' });
+    expect(mergeCompilation(path, file(compilation), local, file(compilation))).toEqual({ conflict: false, draft: local });
+  });
   it('falls back to the line merge when a side is not a valid compilation', () => {
     // The local draft names a card for no item, so it cannot be read; its edit is far from the remote's and merges by line.
     const invalid = replace(compilation, ['  arrows:\n', '    - { item: gone, x: 0, y: 0 }\n  arrows:\n']);
     const remote = replace(compilation, ['title: Chapter 3', 'title: Virtue']);
     expect(mergeCompilation(path, file(compilation), file(invalid), file(remote))).toEqual({ conflict: false, draft: file(replace(invalid, ['title: Chapter 3', 'title: Virtue'])) });
     expect(mergeCompilation(path, file(compilation), file(replace(invalid, ['title: Chapter 3', 'title: Other'])), file(remote))).toEqual({ conflict: true });
+    // Valid sides whose external fields cannot be combined safely conflict rather than merge by line, which would leave
+    // the remote's new arrow naming the item the draft removed.
+    const linked = replace(compilation, ['    - { id: a3f9q, from: { item: n1 }, to: { item: n2 } }\n', ''], ['  arrows:\n', '  texts:\n    - { id: t1, x: 0, y: 600, text: A }\n  arrows: []\n'], ['translationKey: ch3\n', 'shared: &v 1\nother: old\nanother: old\n']);
+    const removedN2 = replace(linked, ['  - id: n2\n    kind: note\n    path: notes/thesis/b.md\n', ''], ['    - { item: n2, x: 24, y: 216 }\n', ''], ['another: old', 'another: new']);
+    const arrowAdded = replace(linked, ['  arrows: []\n', '  arrows:\n    - { id: c4, from: { item: n2 }, to: { item: n1 } }\n'], ['&v 1', '&v 2']);
+    expect(mergeNote(file(linked), file(removedN2), file(arrowAdded))).toMatchObject({ conflict: false });
+    expect(mergeCompilation(path, file(linked), file(removedN2), file(arrowAdded))).toEqual({ conflict: true });
     // YAML whose alias names no anchor cannot take its metadata; it merges by line too.
     const unresolved = `${compilation}blog: *nowhere\n`;
     expect(mergeCompilation(path, file(compilation), file(unresolved), file(remote))).toEqual({ conflict: false, draft: file(replace(unresolved, ['title: Chapter 3', 'title: Virtue'])) });

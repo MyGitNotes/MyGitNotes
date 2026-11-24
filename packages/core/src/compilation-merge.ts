@@ -89,8 +89,8 @@ function mergeList<T>(base: readonly T[], local: readonly T[], remote: readonly 
   };
   const chapterOf = (keys: readonly string[], key: string) => chapterAt(keys, keys.indexOf(key));
   const [baseKeys, localKeys, remoteKeys] = [[...b.keys()], [...l.keys()], [...r.keys()]];
-  // An entry one side removed while the other moved it past another entry is a conflict: the removal would drop the
-  // move, and which entry moved cannot be told from the order alone.
+  // An entry one side removed while the other moved it, past another entry or into another chapter, is a conflict: the
+  // removal would drop the move, and which entry moved cannot be told from the order alone.
   const before = (keys: readonly string[], key: string, within: ReadonlySet<string>) => keys.slice(0, keys.indexOf(key)).filter(candidate => within.has(candidate));
   for (const key of baseKeys) {
     for (const [keys, kept, removed] of [[localKeys, l, r], [remoteKeys, r, l]] as const) {
@@ -98,6 +98,8 @@ function mergeList<T>(base: readonly T[], local: readonly T[], remote: readonly 
       const shared = new Set(keys.filter(candidate => b.has(candidate)));
       const was = new Set(before(baseKeys, key, shared)), now = before(keys, key, shared);
       if (was.size !== now.length || now.some(candidate => !was.has(candidate))) return CONFLICT;
+      // A new heading put before it moves it to another chapter without passing any entry the base had.
+      if (!heading(key) && chapterOf(keys, key) !== chapterOf(baseKeys, key)) return CONFLICT;
     }
   }
   const localKept = keepsOrder(baseKeys, localKeys), remoteKept = keepsOrder(baseKeys, remoteKeys);

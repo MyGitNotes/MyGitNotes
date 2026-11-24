@@ -136,6 +136,9 @@ describe('compilation merge by entry', () => {
     const base = items('h1', 'a', 'h2', 'b');
     expect(mergeCompilationText(base, items('h1', 'h2', 'b'), items('h1', 'h2', 'b', 'a'))).toEqual({ conflict: true });
     expect(mergeCompilationText(base, items('h1', 'h2', 'b', 'a'), items('h1', 'h2', 'b'))).toEqual({ conflict: true });
+    // So does a move into a chapter a new heading starts, which passes no entry the base had.
+    const sectioned = 'version: 1\nid: c\ntitle: C\narrangement: board\nitems:\n' + item('b', 'notes/b.md') + '  - id: h1\n    kind: heading\n    title: h1\n' + item('a', 'notes/a.md') + 'board:\n  sections:\n    - { item: h1, x: 0, y: 0, w: 288, h: 176 }\n';
+    for (const [local, remote] of [[items('b'), sectioned], [sectioned, items('b')]]) expect(mergeCompilationText(items('b', 'a'), local, remote)).toEqual({ conflict: true });
     // So does a move within a chapter, or in a book without chapters: which entry moved cannot be told.
     const within = items('h1', 'a', 'x', 'h2', 'b');
     expect(mergeCompilationText(within, items('h1', 'x', 'h2', 'b'), items('h1', 'x', 'a', 'h2', 'b'))).toEqual({ conflict: true });

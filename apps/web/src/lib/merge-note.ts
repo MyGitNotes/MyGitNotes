@@ -45,9 +45,11 @@ export function mergeNote(base: NoteDraft, local: NoteDraft, remote: NoteDraft):
  * Merges two drafts of a compilation file by entry rather than by line, so two people moving cards on neighbouring
  * lines both keep their move (`mergeCompilationText`). Each side is the file its commit would store, its YAML carrying
  * the tags and status of its metadata. The draft's metadata takes the merged file's title, tags and status. A side that
- * is not a valid compilation falls back to the line merge.
+ * is not a valid compilation falls back to the line merge; a remote unchanged since the base leaves the draft as it is.
  */
 export function mergeCompilation(path: string, base: NoteDraft, local: NoteDraft, remote: NoteDraft): { conflict: true; } | { conflict: false; draft: NoteDraft; } {
+  // Unchanged on the remote, the draft stands as it is, as the line merge would leave it.
+  if (sameValue({ content: base.content, metadata: base.metadata }, { content: remote.content, metadata: remote.metadata })) return { conflict: false, draft: { content: local.content, metadata: local.metadata } };
   const stored = (draft: NoteDraft) => serializeNoteFile(path, draft.metadata, draft.content, false, new Date());
   let sides: string[];
   try {
