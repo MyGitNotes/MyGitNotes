@@ -6,6 +6,7 @@ import { stashText } from './history-stash.js';
 import { updateWorkingNote } from './working-notes.js';
 import { saveLocalDraft } from './storage.js';
 import { focusViewStorageKey } from './focus-view.js';
+import { rememberListFilters, restoreListFilters } from './list-filter-memory.js';
 import { readLastFolder, rememberLastFolder } from './last-folder.js';
 import { appendLocalCommit, localCommitsKey, readLocalCommits } from './local-commits.js';
 import { draftScope } from './workspace-repositories.js';
@@ -60,6 +61,14 @@ describe('view state without a change', () => {
     expect(expireDemoData(1000 + DEMO_TTL_MS - 1)).toEqual([]);
     expect(expireDemoData(1000 + DEMO_TTL_MS)).toEqual([SCOPE]);
     expect(keysOf()).toEqual([]);
+  });
+
+  it('expires only the demo repository’s remembered list filters', () => {
+    for (const repo of [REPO, 'other']) rememberListFilters(repo, NOTEBOOK, new URLSearchParams('groupByFolder=true'));
+    expect(readDemoRecord(SCOPE)).toBeUndefined();
+    expect(expireDemoData(1000 + DEMO_TTL_MS)).toEqual([SCOPE]);
+    expect(restoreListFilters(REPO, NOTEBOOK, '', undefined, [])).toBeNull();
+    expect(restoreListFilters('other', NOTEBOOK, '', undefined, [])).toBe('groupByFolder=true');
   });
 
   it('expires the last folder as view state without touching another repository’s folder', () => {

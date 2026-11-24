@@ -13,6 +13,7 @@ const CONFLICT_DISMISS_PREFIX = 'gh_notes_conflict_dismissed:';
 const COMMITS_PREFIX = 'gh_notes_local_commits:';
 const DOCUMENT_PREFIX = 'github-notes:';
 const FOCUS_VIEW_PREFIX = 'github-notes:focus-view:';
+export const LIST_FILTER_PREFIX = 'github-notes:list-filters:';
 const LAST_FOLDER_PREFIX = 'github-notes:last-folder:';
 const STASH_PREFIX = 'github-notes:history-stash:';
 
@@ -101,6 +102,7 @@ export function clearDemoScope(record: DemoRecord, scope: string): void {
       // A view kept before the repository was known has no owner (`focus-view::<notebook key>`): it is the demo's when the notebook is, and without an alias to tell by, any such view is.
       return key.startsWith(`${FOCUS_VIEW_PREFIX}:`) && (alias === undefined || key.startsWith(`${FOCUS_VIEW_PREFIX}:${alias}~`));
     }
+    if (key.startsWith(LIST_FILTER_PREFIX)) return key.startsWith(`${LIST_FILTER_PREFIX}${repository}:`);
     if (key.startsWith(LAST_FOLDER_PREFIX)) return key.startsWith(`${LAST_FOLDER_PREFIX}${repository}:`);
     if (key.startsWith(STASH_PREFIX)) {
       try {

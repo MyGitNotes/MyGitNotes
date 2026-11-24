@@ -44,5 +44,5 @@ export function useBrowseFacets({ showHidden, config, scopeNotebookId, selectedF
   // Flat and Kanban list the whole notebook, without folder navigation.
   const folderless = viewMode === 'flat' || viewMode === 'kanban' || kindList;
 
-  return { facetsQuery, notebookFacets, compilationFacets: merged.compilations, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, searchQuery, viewMode, folderless };
+  return { filterVocabulary: tagFacets.facets?.[selectedNotebookId], facetsQuery, notebookFacets, compilationFacets: merged.compilations, notebookStatuses, statusEntries, newNoteStatuses, selectedTags, workspaceTagNames, searchQuery, viewMode, folderless };
 }
