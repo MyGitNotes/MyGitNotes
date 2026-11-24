@@ -257,17 +257,10 @@ export abstract class RemoteSource extends NoteSource {
       if (updated !== original) changes.set(entry.path, { path: entry.path, content: updated });
     }
     if (changes.size > 200) throw new SourceError('Skill rename affects more than 200 files.', 413);
-    const author = this.checkedAuthor();
-    let revision: string;
-    try {
-      revision = await this.publishChanges([...changes.values()], snapshot, `docs(agents): rename ${location.slug} to ${nextLocation.slug}`, author);
-      this.announceCommit([...changes.keys()]);
-    } finally {
-      this.invalidate();
-      this.snapshot = undefined;
-      this.fresh = false;
-    }
-    return { success: true, committed: true, pushed: true, repository: this.repository, branch: this.branch, revision, changedPaths: [...changes.keys()].sort(), path: nextPath, commit: { commitHash: revision, message: `docs(agents): rename ${location.slug} to ${nextLocation.slug}` } };
+    // Opaque companions (e.g. images) may move by blob id with this directory, but cannot be edited as agent files.
+    const companions = new Set([...changes.values()].filter(change => change.sha !== undefined).map(change => change.path));
+    const receipt = await this.commitMutation([...changes.values()], expected, 'rename', 'agents', `docs(agents): rename ${location.slug} to ${nextLocation.slug}`, snapshot, [], companions);
+    return { ...receipt, path: nextPath };
   }
 
   async saveStudyTransition(content: string, note: { path: string; content: string; }, expected: string) {
@@ -321,10 +314,15 @@ export abstract class RemoteSource extends NoteSource {
    * `requestedMessage`, or one made from the operation; `coAuthors` are named after it in `Co-authored-by` trailers.
    */
   async commitChanges(changes: { path: string; content?: string; base64?: string; sha?: string | null; }[], expected: string, operation: string, scope: CommitScope = 'notes', requestedMessage?: string, knownSnapshot?: RemoteSnapshot, coAuthors: readonly CommitAuthor[] = []) {
+    return this.commitMutation(changes, expected, operation, scope, requestedMessage, knownSnapshot, coAuthors);
+  }
+
+  private async commitMutation(changes: RemoteChange[], expected: string, operation: string, scope: CommitScope, requestedMessage: string | undefined, knownSnapshot: RemoteSnapshot | undefined, coAuthors: readonly CommitAuthor[], companions?: ReadonlySet<string>) {
+    if (!Array.isArray(changes)) throw new SourceError('A mutation requires an array of changed files.', 400);
     const snapshot = knownSnapshot || await this.getSnapshot(true);
     // One note's new text refused because it is checked out tells the writer to read it again; any other change names every checked-out path.
     const single = changes.length === 1 && changes[0]?.content !== undefined ? changes[0].path : undefined;
-    await this.assertMutable(snapshot, expected, Array.isArray(changes) ? changes.map(change => change?.path).filter((file): file is string => typeof file === 'string') : [], single ? () => editedLiveError(single) : undefined);
+    await this.assertMutable(snapshot, expected, changes.map(change => change?.path).filter((file): file is string => typeof file === 'string'), single ? () => editedLiveError(single) : undefined);
     if (!changes.length || changes.length > 200) throw new SourceError('A mutation requires between 1 and 200 changed files.');
     if (new Set(changes.map(c => c.path)).size !== changes.length) throw new SourceError('Each file may appear only once in a mutation.');
     const config = await this.config();
@@ -343,7 +341,7 @@ export abstract class RemoteSource extends NoteSource {
       const versionFile = Boolean(versioned) && (scope === 'versions' || scope === 'notes' && changed.has(versioned!) || ['files', 'folders', 'skills', 'agents'].includes(scope) && change.content === undefined && change.base64 === undefined);
       // A `.templates/` template file is written and removed like a note, the only dot path a note commit reaches.
       const templateFile = Boolean(nb) && ['notes', 'folders'].includes(scope) && templateFileId(file.slice(nb!.root.length + 1)) !== undefined;
-      const allowed = documentFile || versionFile || scope !== 'versions' && (scope === 'config' ? MANIFEST_FILES.includes(file) : !['study', 'focus', 'config'].includes(scope) && (scope === 'files' ? Boolean(managedNotebook(file, config.notebooks)) : scope === 'study-transition' ? nb && isNotebookContent(file.slice(nb.root.length + 1), nb) && NOTE_EXTENSIONS.test(file) : scope === 'skills' ? Boolean(skillFile(file, config.notebooks)) : scope === 'agents' ? agentFileAllowed(file, config.notebooks) : nb && (scope === 'assets' ? isAssetPath(file, nb) : isNotebookContent(file.slice(nb.root.length + 1), nb) && (isNoteFile(file) || path.posix.basename(file) === '_dir.yml') || templateFile)));
+      const allowed = companions?.has(file) || documentFile || versionFile || scope !== 'versions' && (scope === 'config' ? MANIFEST_FILES.includes(file) : !['study', 'focus', 'config'].includes(scope) && (scope === 'files' ? Boolean(managedNotebook(file, config.notebooks)) : scope === 'study-transition' ? nb && isNotebookContent(file.slice(nb.root.length + 1), nb) && NOTE_EXTENSIONS.test(file) : scope === 'skills' ? Boolean(skillFile(file, config.notebooks)) : scope === 'agents' ? agentFileAllowed(file, config.notebooks) : nb && (scope === 'assets' ? isAssetPath(file, nb) : isNotebookContent(file.slice(nb.root.length + 1), nb) && (isNoteFile(file) || path.posix.basename(file) === '_dir.yml') || templateFile)));
       if (!allowed || file.includes('\\') || file.includes('\0') || file.split('/').some(p => !p || p === '.' || p === '..')) throw new SourceError('Path is not an allowed workspace resource.', 403);
       if (documentFile) {
         validateWorkspaceDocument(document!, change.content);
