@@ -18,6 +18,7 @@ export function SourceOverviewRail({ area, slides, content, matches }: SourceOve
   const [adapter, setAdapter] = useState<RailAdapter | null>(null);
   useEffect(() => {
     const element = area.current;
+    // eslint-disable-next-line react/set-state-in-effect -- The textarea exists only after mount; its adapter follows that element.
     setAdapter(element ? textareaRailAdapter(element, slides, { page, block: (key, params) => t(key, params) }) : null);
   }, [area, slides, page, t]);
   return adapter && <OverviewRail adapter={adapter} matches={matches} revision={content} />;

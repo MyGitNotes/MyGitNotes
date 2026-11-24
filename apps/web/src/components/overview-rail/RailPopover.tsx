@@ -9,10 +9,10 @@ interface RailPopoverProps {
   /** The page or block the active heading lies in, or null in a note without pages. */
   section: string | null;
   dragging: boolean;
-  /** The rail as drawn and the editor's column, in viewport coordinates, and the pointer's height. */
-  rail: Box;
-  column: Box;
-  pointerY: number;
+  /** Reads the rail as drawn and the editor's column, in viewport coordinates, after each render; null while either is gone. */
+  measure: () => { rail: Box; column: Box; } | null;
+  /** The pointer's height on the rail. */
+  pointerTop: number;
   onChoose: (line: number) => void;
   onPointerEnter: () => void;
   onPointerLeave: () => void;
@@ -35,16 +35,18 @@ const samePlace = (a: Placed | null, b: Placed) => Boolean(a) && a!.left === b.l
  * The headings near the pointer on the rail. Hovering previews them and a click on one goes there; while the rail is dragged they are
  * spread out with a line from each mark to its row, the target marked, and nothing moves until the release.
  */
-export function RailPopover({ mode, nearby, section, dragging, rail, column, pointerY, onChoose, onPointerEnter, onPointerLeave }: RailPopoverProps) {
+export function RailPopover({ mode, nearby, section, dragging, measure, pointerTop, onChoose, onPointerEnter, onPointerLeave }: RailPopoverProps) {
   const { t } = useTranslation();
   const box = useRef<HTMLDivElement>(null);
   const [placed, setPlaced] = useState<Placed | null>(null);
   const active = nearby.items[nearby.active];
   const shallowest = Math.min(...nearby.items.map(item => item.depth));
   // Measured after each render: the popover's size and its active row decide where it goes, and a drag's lines end at its rows.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Runs after every render on purpose; the state only changes when the place does.
   useLayoutEffect(() => {
-    const element = box.current;
-    if (!element) return;
+    const element = box.current, boxes = measure();
+    if (!element || !boxes) return;
+    const { rail, column } = boxes, pointerY = rail.top + pointerTop;
     const rows = [...element.querySelectorAll<HTMLElement>('[data-rail-row]')];
     const row = rows[nearby.active];
     const place = placePopover({ mode, rail, column, viewport: { width: window.innerWidth, height: window.innerHeight }, size: { width: element.offsetWidth, height: element.offsetHeight }, anchorY: pointerY, anchorOffset: row ? row.offsetTop + row.offsetHeight / 2 : element.offsetHeight / 2 });

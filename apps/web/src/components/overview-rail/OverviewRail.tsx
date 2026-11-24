@@ -223,7 +223,10 @@ export function OverviewRail({ adapter, matches = NO_MATCHES, revision }: Overvi
     const box = adapter.scroller()?.getBoundingClientRect();
     return box ? { left: box.left, right: box.right, top: box.top, bottom: box.bottom } : null;
   };
-  const rail = nearby && railBox(), column = nearby && columnBox();
+  const measure = () => {
+    const rail = railBox(), column = columnBox();
+    return rail && column ? { rail, column } : null;
+  };
   return (
     <>
       <div
@@ -244,7 +247,7 @@ export function OverviewRail({ adapter, matches = NO_MATCHES, revision }: Overvi
         {frame && <RailMarks mode={frame.mode} height={frame.height} model={frame.model} active={activeIndex} dragging={Boolean(pointer?.dragging)} />}
       </div>
       {/* A sibling, not a child: events from the portal bubble through React's tree, and the rail's own press must not hear them. */}
-      {frame && pointer && nearby && rail && column && <RailPopover mode={frame.mode} nearby={nearby} section={sectionLabelAt(frame.model, nearby.items[nearby.active].top)} dragging={pointer.dragging} rail={rail} column={column} pointerY={rail.top + pointer.top} onChoose={go} onPointerEnter={stay} onPointerLeave={leave} />}
+      {frame && pointer && nearby && <RailPopover mode={frame.mode} nearby={nearby} section={sectionLabelAt(frame.model, nearby.items[nearby.active].top)} dragging={pointer.dragging} measure={measure} pointerTop={pointer.top} onChoose={go} onPointerEnter={stay} onPointerLeave={leave} />}
     </>
   );
 }
