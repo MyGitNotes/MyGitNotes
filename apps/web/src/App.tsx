@@ -35,8 +35,6 @@ import { useAppCommands } from './app/useAppCommands.js';
 import { useWorkspaceOverview } from './app/useWorkspaceOverview.js';
 import { type NoteListItem, sameNote } from '@mygitnotes/core/note-query';
 import { useWorkspaceSync } from './lib/use-workspace-sync.js';
-import { discardDocumentDraft } from './lib/use-workspace-document.js';
-import { documentClientOf } from './lib/workspace-document-clients.js';
 import { WorkspaceLinks } from './components/WorkspaceLinks.js';
 import { NoteLocationProvider } from './lib/note-location.js';
 import { ImageLightbox } from './components/ImageLightbox.js';
@@ -46,13 +44,12 @@ import { noteLookupOptions, useNotebookTemplates } from './lib/use-note-queries.
 import { isTemplatePath } from './lib/note-templates.js';
 import { useTemplateActions } from './app/useTemplateActions.js';
 import { FOCUS_NOTE_STATE, notebookRoute, noteRoute, parseWorkspaceRoute } from './lib/routes.js';
-import { draftScope, editable, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
-import { DemoBanner } from './components/DemoBanner.js';
+import { draftScope, legacyImportOffered, pageRepository } from './lib/workspace-repositories.js';
 import { demoFocusesOf, useDemoScenario } from './app/useDemoScenario.js';
 import { forgetNoteDrafts } from './lib/storage.js';
 import { sameValue } from './lib/merge-note.js';
 import React, { useEffect, useMemo, useState } from 'react';
-import { fetchGitStatus, readNote } from './lib/api.js';
+import { fetchGitStatus } from './lib/api.js';
 import { builtinNoteTemplates } from './lib/builtin-templates.js';
 import type { NotebookConfig, NoteItem } from './lib/types.js';
 import { useTagWorkspaceOperations } from './app/useTagWorkspaceOperations.js';
@@ -69,6 +66,9 @@ import { useNotesPage } from './app/useNotesPage.js';
 import { useLiveNoteCreation } from './app/useLiveNoteCreation.js';
 import { useLegacyImport } from './app/useLegacyImport.js';
 import { useTemplateManager } from './app/useTemplateManager.js';
+import { WorkspaceBanners } from './app/WorkspaceBanners.js';
+import { WorkspaceToasts } from './app/WorkspaceToasts.js';
+import { WorkspaceCommitModal } from './app/WorkspaceCommitModal.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
@@ -103,12 +103,11 @@ import { FileManager, FileManagerDialog, FileMetadata } from './components/files
 import { AgentSystemView } from './components/AgentSystemView.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { useAgentEnabled } from './lib/web-features.js';
-import { DerivedManifestNotice, RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js';
+import { RepositorySwitch, WorkspaceGate } from './components/WorkspaceSetup.js';
 import { useLeaveWarning } from './lib/use-leave-warning.js';
-import { CommitModal } from './components/CommitModal.js';
 import { useGistConfirm } from './components/GistConfirmDialog.js';
 import { I18nProvider, useTranslation } from './lib/i18n/index.js';
-import { AlertCircle, AlertTriangle, X } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { LoadingStatus } from './components/LoadingStatus.js';
 import { liveEditableKind } from './lib/live-api.js';
 import { useLiveHandover } from './app/useLiveHandover.js';
@@ -180,7 +179,8 @@ export const AppContent: React.FC = () => {
   const navigation = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder } = navigation;
 
-  const { commitRequest, isCommitOpen, setIsCommitOpen, openCommitModal, panelRemoteChanges, panelGetPreview, panelDescribeChanges } = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });
+  const changeDialog = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });
+  const { isCommitOpen, openCommitModal, panelRemoteChanges, panelGetPreview } = changeDialog;
   // With every repository hidden or unavailable there is no notebook to show, and Settings is where the person
   // recovers: it opens there (decision C8).
   const nothingToShow = !loading && !loadError && !config?.notebooks.length;
@@ -338,19 +338,7 @@ export const AppContent: React.FC = () => {
           <NoteLocationProvider locate={locateNote}>
             <NoteEditingProvider register={editorRegistry.register} editorProps={editorProps} flushEditors={editorRegistry.flushEditors} refreshNotes={refreshNotes} closeZoom={closeZoom} addToFocus={addToFocus} moveNote={noteMove.moveNote} renameNote={noteMove.renameNote} renameNoteTo={noteMove.renameNoteTo}>
               <div className='app-shell h-dvh min-w-0 flex-1 overflow-hidden flex flex-col font-sans transition-colors duration-200' data-workspace-tab={activeTab} data-screen-focus={Boolean(route.study)} style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
-                {/* Core Branch User Guidance Banner (Theme-aware, harmonized with active palette) */}
-                {!remote && defaultRepositoryBranch === 'core' && (
-                  <div className='shrink-0 flex-none px-4 py-2 text-xs flex items-center justify-between font-medium border-b transition-colors' style={{ backgroundColor: 'var(--color-sidebar)', borderColor: 'var(--color-line)', color: 'var(--color-text)' }}>
-                    <div className='flex items-center gap-2.5'>
-                      <AlertTriangle className='w-4 h-4 text-warning shrink-0' />
-                      <span className='px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider text-on-primary shrink-0 shadow-xs' style={{ backgroundColor: 'var(--color-primary)', color: 'var(--color-on-primary)' }}>{t('nav.coreBaseline')}</span>
-                      <span className='text-muted'>{t('nav.coreBanner')}</span>
-                    </div>
-                  </div>
-                )}
-                {legacyImport.notice}
-                <DemoBanner />
-                {defaultRepository?.manifest === 'derived' && defaultRepository.config && <DerivedManifestNotice repository={defaultRepository.id} config={defaultRepository.config} configRevision={defaultRepository.configRevision} canWrite={manifestWritable} onCreated={() => refreshWorkspace(true)} />}
+                <WorkspaceBanners coreBaseline={!remote && defaultRepositoryBranch === 'core'} legacyNotice={legacyImport.notice} defaultRepository={defaultRepository} manifestWritable={manifestWritable} onManifestCreated={() => refreshWorkspace(true)} />
                 {/* Top Header */}
                 <Header unavailableNotebooks={unavailableNotebooks} workspaceTitle={currentRepository?.title || 'MyGitNotes'} notebookGroups={notebookGroups} accountControls={<AccountControls local={!remote} />} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} activeTab={activeTab} setActiveTab={setActiveTab} onCreateNote={canWrite ? () => void createNote() : undefined} onOpenCommands={() => setShortcutMode('palette')} navigationDisabled={noteEditorOpen || isCommitOpen} navOnly={phoneNotes} focusControls={focusControls} newNote={newNote} notebooksToggle={notesColumns ? { open: columns.layout.notebooks === 'open', controls: NOTEBOOK_COLUMN_ID, onToggle: columns.toggleNotebooks } : undefined} />
                 <KeyboardShortcuts mode={shortcutMode} onModeChange={setShortcutMode} suspended={isCommitOpen} selectedNotebookId={selectedNotebookId} onOpenNote={note => void handleOpenNote(note)} />
@@ -473,47 +461,7 @@ export const AppContent: React.FC = () => {
                     </WorkspaceSplitLayout>
                   </div>
                 </SidebarProvider>
-                {/* Undo Toast Notification */}
-                {undoToast && (
-                  <div className='fixed top-20 right-6 z-50 animate-in fade-in slide-in-from-top-3 duration-200'>
-                    <div className='ui-glass text-fg px-4 py-3 rounded-xl shadow-xl border border-line/80 flex items-center gap-3 text-xs'>
-                      <span>{t('toast.noteMovedToTrash', { title: undoToast.note.title })}</span>
-                      <button onClick={() => handleRestoreNote(undoToast.note)} className='px-2.5 py-1 bg-warning hover:bg-warning/90 active:scale-95 text-on-warning font-semibold rounded-md transition'>{t('common.undo')}</button>
-                      <button onClick={() => setUndoToast(null)} className='text-muted hover:text-fg p-1 rounded hover:bg-fg/10 transition ml-1'>
-                        <X className='w-3.5 h-3.5' />
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {
-                  /* Recent tag operations: session-lifetime, each independently undoable (the list itself
-          is not cleared by navigation or further mutations, only by page reload). Undoing a
-          record unconditionally restores its recorded prior tags on every note it touched; it
-          does not detect or warn about a later edit to the same note's tags in the meantime. */
-                }
-                {tagOperations.history.length > 0 && (
-                  <section className='fixed top-28 sm:top-auto sm:bottom-6 right-4 sm:right-16 left-4 sm:left-auto z-50 flex flex-col gap-2 items-end' aria-label={t('sidebar.recentTagChanges')}>
-                    {tagOperations.history.map(record => (
-                      <div key={record.id} className='ui-glass text-fg px-4 py-3 rounded-xl shadow-xl border border-line/80 flex items-center gap-3 text-xs max-w-sm'>
-                        <span>{t(record.label.key, record.label.params)}</span>
-                        <button
-                          autoFocus
-                          onClick={() => void handleUndoTagOperation(record.id)}
-                          className='px-2.5 py-1 bg-warning hover:bg-warning/90 active:scale-95 text-on-warning font-semibold rounded-md transition shrink-0'
-                        >
-                          {t('common.undo')}
-                        </button>
-                        <button
-                          aria-label={t('sidebar.dismissTagOperation')}
-                          onClick={() => tagOperations.dismiss(record.id)}
-                          className='text-muted hover:text-fg p-1 rounded hover:bg-fg/10 transition ml-1 shrink-0'
-                        >
-                          <X className='w-3.5 h-3.5' />
-                        </button>
-                      </div>
-                    ))}
-                  </section>
-                )}
+                <WorkspaceToasts undoToast={undoToast} setUndoToast={setUndoToast} handleRestoreNote={handleRestoreNote} tagOperations={tagOperations} handleUndoTagOperation={handleUndoTagOperation} />
                 {notebookAppearance.element}
                 {fileDialog && <FileManagerDialog notebookId={fileDialog.notebookId} notebooks={config?.notebooks || []} writable={canWriteFiles} initialPath={fileDialog.path} movePath={fileDialog.movePath} initialOperation={fileDialog.initialOperation} showDocuments={fileDialog.showDocuments} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} onClose={() => setFileDialog(undefined)} />}
                 {noteMove.request?.mode === 'move' && movingNotebook && <FolderPickerDialog notebooks={[movingNotebook]} folders={folders} title={t('files.moveNoteTitle', { title: noteMove.request.note.title || noteMove.request.note.path.split('/').pop() || '' })} initial={{ notebookId: movingNotebook.id, folder: noteMove.request.note.live?.pending ? liveDestinationFolder(noteMove.request.note.live) : noteFolder(noteMove.request.note.path, movingNotebook.root) }} confirmLabel={t('bulk.moveConfirm')} busy={noteMove.busy} onClose={noteMove.cancel} onConfirm={({ folder }) => void noteMove.confirmMove(folder)}>{noteMove.request.note.live?.pending && <p className='text-xs text-muted'>{t('live.collisionNote')}</p>}</FolderPickerDialog>}
@@ -540,56 +488,7 @@ export const AppContent: React.FC = () => {
                   />
                 )}
                 {/* Commit Modal */}
-                <CommitModal
-                  writable={repositories.some(editable)}
-                  remoteChanges={panelRemoteChanges}
-                  getPreview={panelGetPreview}
-                  describeChanges={panelDescribeChanges}
-                  request={commitRequest}
-                  restoreFile={remote
-                    ? async file => {
-                      const pendingDocument = pendingDocuments.find(document => document.repository === file.repository && document.file === file.path);
-                      if (pendingDocument) {
-                        if (file.revision !== pendingDocument.diff) throw new Error('Draft changed. Review it again.');
-                        discardDocumentDraft(documentClientOf(file.path)!, pendingDocument.repository);
-                        const live = documents.find(document => document.file === file.path && document.repository === pendingDocument.repository);
-                        if (live) await live.reload();
-                        return;
-                      }
-                      const entry = file.repository ? readDraftIn(file.repository, file.path) : undefined;
-                      if (!entry || JSON.stringify(entry) !== file.revision) throw new Error('Draft changed. Review it again.');
-                      // The draft lives in this browser, so discarding it is a local delete. Reading the remote
-                      // only refreshes an open editor, and a draft is often blocked precisely because that read
-                      // fails, which used to leave the draft undiscardable.
-                      const latest = entry.base ? await readNote(file.path).catch(() => null) : null;
-                      if (JSON.stringify(readDraft(entry.note.notebookId, file.path)) !== file.revision) throw new Error('Draft changed. Review it again.');
-                      updateDraft(entry.note.notebookId, file.path, null);
-                      if (latest && editingNote && sameNote(editingNote, entry.note)) setEditingNote(latest);
-                    }
-                    : undefined}
-                  commitFiles={remote ? commitWorkingNotes : undefined}
-                  repositoryHeading={repositoryHeading}
-                  isOpen={isCommitOpen}
-                  onClose={() => setIsCommitOpen(false)}
-                  gitStatus={gitStatus}
-                  onChanged={async () => {
-                    await refreshWorkspace();
-                    if (!remote) {
-                      await refreshDocuments();
-                      await agentSystemRef.current?.refresh();
-                    }
-                  }}
-                  onCommitted={async () => {
-                    // Another server instance may still cache the head from before this commit.
-                    await refreshWorkspace(true);
-                    if (!remote) {
-                      await refreshDocuments();
-                      await agentSystemRef.current?.refresh();
-                    }
-                    setDeletedNotes([]);
-                    setUndoToast(null);
-                  }}
-                />
+                <WorkspaceCommitModal remote={remote} repositories={repositories} documents={documents} pendingDocuments={pendingDocuments} gitStatus={gitStatus} readDraft={readDraft} readDraftIn={readDraftIn} updateDraft={updateDraft} refreshWorkspace={refreshWorkspace} refreshDocuments={refreshDocuments} changeDialog={changeDialog} commitWorkingNotes={commitWorkingNotes} repositoryHeading={repositoryHeading} agentSystemRef={agentSystemRef} editingNote={editingNote} setEditingNote={setEditingNote} setDeletedNotes={setDeletedNotes} setUndoToast={setUndoToast} />
                 {/* Create New Note Modal */}
               </div>
               {gistConfirmDialog}
