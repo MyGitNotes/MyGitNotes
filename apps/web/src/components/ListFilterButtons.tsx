@@ -46,7 +46,10 @@ function FilterPopover({ label, title, active = false, face, children }: { label
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!anchor.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      // A select inside the panel (the tag sort) lists its options in a portal outside it: a press there is not a press outside.
+      const inPopup = target instanceof Element && Boolean(target.closest('.select-popup'));
+      if (!anchor.current?.contains(target) && !inPopup) setOpen(false);
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);
