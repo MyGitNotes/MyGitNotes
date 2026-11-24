@@ -7,6 +7,7 @@ import { AddToOutlineDialog } from './components/AddToOutlineDialog.js';
 import { useFilterSidebar } from './app/useFilterSidebar.js';
 import { useTheme } from './app/useTheme.js';
 import { filesInitialPath } from './app/files-initial-path.js';
+import { usePhoneNotesValue } from './app/usePhoneNotesValue.js';
 import { useFilePanel } from './app/useFilePanel.js';
 import { useWorkspaceNotes } from './app/useWorkspaceNotes.js';
 import { useBrowseRoute } from './app/useBrowseRoute.js';
@@ -262,7 +263,7 @@ export const AppContent: React.FC = () => {
   const phoneNoteScreen = phoneNotes && phoneNotesScreen({ hasFocus: Boolean(noteFocus.layout), hasActiveTab, view: focusNarrowView }) === 'note';
   // What the Changes tool counts: pending changes, and for a local workspace the deletions awaiting commit.
   const phoneChangesCount = remote ? changeCount : changeCount + deletedNotes.length;
-  const phoneNotesValue = useMemo(() => ({ back: () => setFocusNarrowView('browse'), changesCount: phoneChangesCount, deleteNote: canWrite ? (note: NoteItem) => void handleDeleteNote(note as NoteListItem) : undefined }), [setFocusNarrowView, phoneChangesCount, canWrite, handleDeleteNote]);
+  const phoneNotesValue = usePhoneNotesValue(setFocusNarrowView, phoneChangesCount, canWrite ? note => void handleDeleteNote(note as NoteListItem) : undefined);
   // Wider than a phone, the Notes page keeps three columns (notebooks, list, note) whatever opens or closes; the person folds the first two
   // away, and a cramped page, or a Focus whose panes need the room, folds the notebooks column to its rail.
   const notesColumns = !phone && activeTab === 'notes' && !route.study && !notebookUnavailable;
