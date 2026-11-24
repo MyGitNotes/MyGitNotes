@@ -28,6 +28,7 @@ import { Button } from './Button.js';
 import type { CompilationContentProps } from './CompilationCard.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
 import { CompilationLane } from './CompilationLane.js';
+import { shownView } from './CompilationHeader.js';
 import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 import { CompilationBook } from './CompilationBook.js';
 import { LoadingStatus } from './LoadingStatus.js';
@@ -275,7 +276,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
           if (slots.editing?.slot === id) void slots.finish().then(saved => saved && change(next));
           else change(next);
         }}
-        graph={current.view === 'graph'
+        graph={shownView(current.view) === 'graph'
           ? (
             <Suspense fallback={<p role='status'>{t('graph.title')}</p>}>
               <GraphPage notebooks={notebooks} lane={current} screen={compilation} />
@@ -288,7 +289,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
 
   return (
     <CompilationEditingProvider value={slots}>
-      <div className='compilation-view' data-frame={frame} data-arrangement={row?.view}>
+      <div className='compilation-view' data-frame={frame} data-arrangement={row && shownView(row.view)}>
         {frame === 'zoom' && onClose && (
           <div className='compilation-frame-bar'>
             <Tooltip label={t('common.close')}>

@@ -11,6 +11,9 @@ import { Button } from './Button.js';
 import { Select } from './Select.js';
 import './study.css';
 
+/** Until the board is drawn, a board-arranged compilation shows as the graph lane, and the switch marks the graph. */
+export const shownView = (view: CompilationRow['view']) => view === 'board' ? 'graph' : view;
+
 /** The arrangement switch: the three lane sizes, book and graph. */
 export const compilationViewTabs = [{ value: 'thumbnail', icon: LayoutGrid }, { value: 'small', icon: Columns3 }, { value: 'medium', icon: Columns2 }, { value: 'book', icon: BookOpen }, { value: 'graph', icon: Network }] as const;
 
@@ -125,7 +128,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
             )}
           </div>
         )}
-        {!readOnly && <Select className='screen-view-select' aria-label={`${t('screen.view')}: ${row.name}`} value={row.view} disabled={disabled} onValueChange={value => onView?.(value as CompilationRow['view'])} options={(['thumbnail', 'small', 'medium', 'book', 'graph'] as const).map(value => ({ value, label: t(`screen.${value}`) }))} />}
+        {!readOnly && <Select className='screen-view-select' aria-label={`${t('screen.view')}: ${row.name}`} value={shownView(row.view)} disabled={disabled} onValueChange={value => onView?.(value as CompilationRow['view'])} options={(['thumbnail', 'small', 'medium', 'book', 'graph'] as const).map(value => ({ value, label: t(`screen.${value}`) }))} />}
         {!readOnly && (
           <div className='screen-view-tabs' role='group' aria-label={`${t('screen.view')}: ${row.name}`}>
             {compilationViewTabs.map(({ value, icon: Icon }) => (
@@ -135,7 +138,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
                   disabled={disabled}
                   size='icon'
                   aria-label={t(`screen.${value}`)}
-                  aria-pressed={row.view === value}
+                  aria-pressed={shownView(row.view) === value}
                   onClick={() => onView?.(value)}
                 >
                   <Icon size={16} />

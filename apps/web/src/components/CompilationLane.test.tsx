@@ -162,6 +162,19 @@ it('switches layout when the compilation is resized across 560px without writing
   expect(vi.mocked(fetch).mock.calls.slice(requests).filter(([, init]) => init?.method && init.method !== 'GET')).toEqual([]);
 });
 
+it('draws a board-arranged compilation as the graph lane until the board is drawn, and its switch marks the graph', () => {
+  const onView = vi.fn();
+  render(lane({ row: { ...row, view: 'board' }, onView, graph: createElement('div', { 'data-testid': 'graph-lane' }) }), { wrapper });
+  expect(screen.getByTestId('graph-lane')).toBeInTheDocument();
+  expect(document.querySelector('.screen-lane-strip')).toBeNull();
+  expect(document.querySelector('.screen-lane')).toHaveClass('screen-view-graph');
+  const tabs = within(screen.getByRole('group', { name: 'View size: Pinned' }));
+  expect(tabs.getByRole('button', { name: 'Graph' })).toHaveAttribute('aria-pressed', 'true');
+  expect(tabs.getAllByRole('button').map(button => button.getAttribute('aria-label'))).not.toContain('Board');
+  fireEvent.click(tabs.getByRole('button', { name: 'Book' }));
+  expect(onView).toHaveBeenCalledWith('book');
+});
+
 it('takes Alt+wheel again after the arrangement returns from graph to cards', async () => {
   const { rerender } = render(compilationView('900px', { row: { ...row, view: 'graph' } }), { wrapper });
   expect(document.querySelector('.screen-lane-strip')).toBeNull();

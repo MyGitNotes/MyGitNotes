@@ -5,6 +5,7 @@ import { defaultStudyProgression, studyLaneStatuses, type StudyProgression, Stud
 import { StudyLaneSettings } from './StudyLane.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { Select } from './Select.js';
+import { shownView } from './CompilationHeader.js';
 import type { CompilationContentProps } from './CompilationCard.js';
 import type { FolderItem } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -58,7 +59,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
             setAdvancedOpen(true);
             return;
           }
-          const base = { ...compilationExtraFields(row), id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
+          const base = { ...compilationExtraFields(row), id: row?.id || crypto.randomUUID(), notebookId, path: row?.path ?? '', ...(row?.tags ? { tags: row.tags } : {}), ...(row?.status ? { status: row.status } : {}), name: name.trim() || t(kind === 'custom' ? 'screen.custom' : 'screen.dynamic'), view, ...(row?.graph ? { graph: row.graph } : {}), ...(row?.board ? { board: row.board } : {}), ...(studyChanged ? { study: { ...row?.study, filter: studyFilter, dueFirst: true } } : row?.study ? { study: row.study } : {}), ...(studyChanged && result.success ? { progression: result.data } : row?.progression ? { progression: row.progression } : {}) };
           const sort = row?.kind === 'dynamic' ? { ...(row.sort ? { sort: row.sort } : {}), ...(row.manualOrder ? { manualOrder: row.manualOrder } : {}) } : {};
           onApply(kind === 'custom' ? { ...base, kind: 'custom', items: row?.kind === 'custom' ? row.items : [] } : { ...base, kind: 'dynamic', ...sort, ...(group === 'folder' ? { group: 'folder' as const } : {}), source: kind === 'tag' ? { kind: 'tag', tag: tag.trim(), notebookId } : { kind: 'folder', notebookId: folderNotebookId, path: folder || nb!.root, recursive } });
           onClose();
@@ -103,7 +104,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
         )}
         <label>
           {t('screen.view')}
-          <Select aria-label={t('screen.view')} value={view} disabled={disabled} onValueChange={value => setView(value as CompilationRow['view'])} options={(['thumbnail', 'small', 'medium', 'book', 'graph'] as const).map(value => ({ value, label: t(`screen.${value}`) }))} />
+          <Select aria-label={t('screen.view')} value={shownView(view)} disabled={disabled} onValueChange={value => setView(value as CompilationRow['view'])} options={(['thumbnail', 'small', 'medium', 'book', 'graph'] as const).map(value => ({ value, label: t(`screen.${value}`) }))} />
         </label>
         <details className='study-advanced' open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}>
           <summary>{t('study.advanced')}</summary>
