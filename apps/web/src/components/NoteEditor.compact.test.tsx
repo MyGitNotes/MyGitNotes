@@ -70,6 +70,23 @@ it('refuses handle inserts while read-only', () => {
   expect(screen.getByLabelText('Note content')).toHaveValue('# Alpha\n');
 });
 
+it('takes Ctrl+F from the browser to open find in note in zoom and in a Focus pane, since the browser cannot find text the editor has not drawn', () => {
+  for (const frame of ['pane', 'zoom', 'compact'] as const) {
+    // A Focus pane shows its note's panel in the rail it is given, so the pane reports the section it opens.
+    const onChange = vi.fn();
+    const documentPanel = frame === 'pane' ? { target: null, mode: null, onChange } : undefined;
+    render(createElement(PanelProvider, null, createElement(NoteEditor, { note, frame, active: true, documentPanel, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' })));
+    const event = new KeyboardEvent('keydown', { key: 'f', code: 'KeyF', ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      document.dispatchEvent(event);
+    });
+    if (frame === 'zoom') expect(document.querySelector('aside.note-document-panel')?.getAttribute('data-panel')).toBe('find');
+    if (frame === 'pane') expect(onChange).toHaveBeenCalledWith('find');
+    expect(event.defaultPrevented).toBe(frame !== 'compact');
+    cleanup();
+  }
+});
+
 it('opens the note commands leader on Ctrl+Shift+E in zoom and in a Focus pane, not in a graph card', () => {
   for (const frame of ['pane', 'zoom', 'compact'] as const) {
     render(createElement(PanelProvider, null, createElement(NoteEditor, { note, frame, active: true, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' })));

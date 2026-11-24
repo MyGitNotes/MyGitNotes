@@ -159,6 +159,12 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
       setIsEditorLeaderOpen(open => !open);
       return true;
     }
+    // Mod+F opens find in the note in zoom and in a Focus pane; the browser's find misses text the editor has not drawn.
+    if (matchesCommand(event, 'editor.leaderFind')) {
+      if (frame !== 'zoom' && frame !== 'pane') return false;
+      openFind();
+      return true;
+    }
     if (isEditorLeaderOpen && !event.ctrlKey && !event.metaKey && !event.altKey) {
       if (event.key.toLowerCase() === 'f') {
         openFind();

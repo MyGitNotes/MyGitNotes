@@ -113,7 +113,8 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('directive.save', 'editor', ['directive'], 'widget', ['Mod+Enter']),
   entry('directive.cancel', 'editor', ['directive'], 'widget', ['Escape']),
   // Find
-  entry('editor.leaderFind', 'find', ['note'], 'widget', ['Mod+Shift+E F']),
+  // Mod+F is taken from the browser in an open note: its find misses text the editor has not drawn yet.
+  entry('editor.leaderFind', 'find', ['note'], 'widget', ['Mod+F', 'Mod+Shift+E F']),
   entry('find.next', 'find', ['find-panel'], 'widget', ['Enter']),
   entry('find.previous', 'find', ['find-panel'], 'widget', ['Shift+Enter']),
   // Panes and panels
