@@ -61,6 +61,7 @@ interface Props {
   path: string;
   /** The note's notebook, so rendered assets reach its repository. */
   notebookId?: string;
+  noteLang?: string;
   mode: MarkdownEditorMode;
   readOnly: boolean;
   onChange: (content: string) => void;
@@ -106,7 +107,7 @@ export function MarkdownEditorModeSwitch({ mode, onChange }: { mode: MarkdownEdi
   );
 }
 
-export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides }, ref) => {
+export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content, path, notebookId, noteLang, mode, readOnly, onChange, onCaret, compact = false, continuous = false, toolbarSlot, ariaLabel = 'Document content', showLineNumbers = true, lineNumberOffset = 0, onInsertImage, carry, slides }, ref) => {
   const { t } = useTranslation();
   const [caret, setCaret] = useState<number | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -818,11 +819,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       {mode === 'live' && isMarkdown
         ? (
           <React.Suspense fallback={<LoadingStatus className='p-6 text-sm text-muted'>{t('editor.loadingEditor')}</LoadingStatus>}>
-            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} slides={slides} />
+            <LiveMarkdownEditor key={path} ref={live} content={content} notePath={path} notebookId={notebookId} readOnly={readOnly} onChange={onChange} onCaret={onCaret} ariaLabel={ariaLabel} showLineNumbers={showLineNumbers} lineNumberOffset={lineNumberOffset} onCopyLines={copyLines} continuous={continuous} carry={carry} slides={slides} noteLang={noteLang} />
           </React.Suspense>
         )
         : mode === 'split' && isMarkdown
-        ? <SplitView source={rawEditor} sourceScroller={source} content={content} path={path} notebookId={notebookId} slides={slides} />
+        ? <SplitView source={rawEditor} sourceScroller={source} content={content} path={path} notebookId={notebookId} slides={slides} noteLang={noteLang} />
         : rawEditor}
       {formatRefused && <div role='status' data-format-refused className='pointer-events-none absolute bottom-4 left-1/2 z-20 max-w-[90%] -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm' style={{ backgroundColor: 'var(--color-text)', color: 'var(--color-bg)' }}>{t('editor.qrcodeRefused')}</div>}
       {lineCopyFeedback && <div role='status' data-line-copy-feedback data-state={lineCopyFeedback.ok ? 'copied' : 'error'} className='pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm' style={{ backgroundColor: 'var(--color-text)', color: 'var(--color-bg)' }}>{lineCopyFeedback.ok ? t(lineCopyFeedback.start === lineCopyFeedback.end ? 'editor.lineCopied' : 'editor.linesCopied', { start: lineCopyFeedback.start, end: lineCopyFeedback.end }) : t('editor.lineCopyFailed')}</div>}

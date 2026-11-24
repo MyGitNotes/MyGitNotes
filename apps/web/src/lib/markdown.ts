@@ -173,6 +173,8 @@ export interface NoteRendererOptions {
 
 /** What a note is, beyond its text, that changes how it is drawn. */
 export interface NoteRenderOptions {
+  /** The note's frontmatter `lang` tag, for language-specific figure labels. */
+  noteLang?: string;
   /**
    * Set for a `type: slide` note, which contour-deck reads by its headings: a `---` is a block, a `##` a slide and a `###` a page.
    * `preview` draws its slide directives as a reader sees them (labelled notes, numbered steps, an error box for a directive contour-deck
@@ -256,7 +258,7 @@ export function renderNote(content: string, notePath: string, tableLabel?: strin
   return renderNoteIn({ marked: md, parser: new DOMParser(), purify: DOMPurify, origin: typeof window !== 'undefined' ? window.location.origin : undefined }, content, notePath, tableLabel, youtubeLabels, notebookId, options);
 }
 
-function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides, sourceLines }: NoteRenderOptions = {}): string {
+function renderNoteIn({ marked, parser, purify, origin, language }: RenderContext, content: string, notePath: string, tableLabel = 'Horizontally scrollable table (Alt + wheel)', youtubeLabels: YouTubeLabels = DEFAULT_YOUTUBE_LABELS, notebookId?: string, { slides, sourceLines, noteLang }: NoteRenderOptions = {}): string {
   const isMdx = /\.mdx$/i.test(notePath);
   let preprocessed = content;
   let lineOf = (index: number) => index + 1;
@@ -266,7 +268,7 @@ function renderNoteIn({ marked, parser, purify, origin, language }: RenderContex
     preprocessed = stripMdxImports(preprocessed);
   }
 
-  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf });
+  preprocessed = transformDirectives(preprocessed, source => marked.parse(source, { gfm: true, breaks: true }) as string, source => marked.parseInline(source, { gfm: true, breaks: true }) as string, language, html => parser.parseFromString(html, 'text/html').body.innerHTML, slides && { rendering: slides, lineOf }, noteLang);
 
   if (isMdx || /<(?:YouTubeEmbed|YouTube|ProtectedContent|Card|Tag|Badge|[A-Z][a-zA-Z0-9_-]*)\b/.test(preprocessed)) {
     preprocessed = transformMdxComponents(preprocessed, language);

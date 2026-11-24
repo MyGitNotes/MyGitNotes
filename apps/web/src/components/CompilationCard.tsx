@@ -7,6 +7,7 @@ import type { AssetItem, NotebookConfig } from '../lib/types.js';
 import { itemSection, noteSummary, wholeNoteItem } from '../lib/compilation-content.js';
 import { outsideNotebook } from '../lib/compilation-rows.js';
 import { renderNote } from '../lib/markdown.js';
+import { noteLanguageTag } from '../lib/note-language.js';
 import { isSlideNote } from '../lib/slides/note.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useNoteEditing } from '../lib/note-editing.js';
@@ -50,7 +51,7 @@ export function CompilationCard({ item, view, controls, writable = false, ...con
   const anchored = item.kind === 'note' && Boolean(item.anchor);
   const section = itemSection(item, note);
   const source = anchored ? section?.body : note?.content;
-  const html = useMemo(() => source && note && view !== 'thumbnail' ? renderNote(source, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined) : '', [source, note, view, tableLabel, t, slides]);
+  const html = useMemo(() => source && note && view !== 'thumbnail' ? renderNote(source, note.path, tableLabel, youtubeLabels(t), note.notebookId, { slides: slides ? 'preview' : undefined, noteLang: noteLanguageTag(note.metadata) }) : '', [source, note, view, tableLabel, t, slides]);
   /* eslint-enable react/preserve-manual-memoization */
   const icon = item.kind === 'note' ? <FileText /> : item.kind === 'folder' ? <Folder /> : item.kind === 'asset' ? <ImageIcon /> : <Youtube />;
   // A folder outside its notebook's root is missing, not queried: it would list nothing, or the whole notebook.

@@ -13,6 +13,7 @@ import { Button } from './Button.js';
 import { NoteHtml } from './NoteHtml.js';
 import { wholeNoteItem } from '../lib/compilation-content.js';
 import { renderNote } from '../lib/markdown.js';
+import { noteLanguageTag } from '../lib/note-language.js';
 import { youtubeLabels } from '../lib/youtube-embed.js';
 import { useNoteEditing } from '../lib/note-editing.js';
 
@@ -77,7 +78,7 @@ function AnchoredChapter({ chapter, depth, writable, onOpen }: Pick<BookChapterP
   const { editorProps } = useNoteEditing();
   const { item, note, section, title, anchor } = chapter;
   const tableLabel = t('preview.scrollableTable');
-  const html = useMemo(() => section && note ? renderNote(section.body, note.path, tableLabel, youtubeLabels(t), note.notebookId) : '', [section, note, tableLabel, t]);
+  const html = useMemo(() => section && note ? renderNote(section.body, note.path, tableLabel, youtubeLabels(t), note.notebookId, { noteLang: noteLanguageTag(note.metadata) }) : '', [section, note, tableLabel, t]);
   if (item.kind !== 'note' || !note) return null;
   const Heading = depth ? 'h3' : 'h2';
   const label = t('compilation.editNote', { title });

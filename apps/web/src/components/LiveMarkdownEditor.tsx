@@ -1,5 +1,5 @@
 import { forwardRef, type MutableRefObject, useEffect, useImperativeHandle, useRef } from 'react';
-import { Compartment, EditorState, type Extension, Prec, StateEffect, StateField, Transaction } from '@codemirror/state';
+import { Compartment, EditorState, type Extension, Facet, Prec, StateEffect, StateField, Transaction } from '@codemirror/state';
 import { type DecorationSet, drawSelection, EditorView, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view';
 import { yUndoManagerKeymap } from 'y-codemirror.next';
 import { autocompletion } from '@codemirror/autocomplete';
@@ -88,6 +88,7 @@ interface Props {
   notePath: string;
   /** The note's notebook, so rendered assets reach its repository. */
   notebookId?: string;
+  noteLang?: string;
   readOnly: boolean;
   ariaLabel?: string;
   onChange: (content: string) => void;
@@ -113,11 +114,12 @@ interface Props {
   collab?: { extension: Extension; text: string; };
 }
 const focusChanged = StateEffect.define<boolean>();
+const languageTag = Facet.define<string | undefined, string | undefined>({ combine: values => values[0] });
 let youtubeEditorSequence = 0;
 /** An outline note's keys and drag handles; nothing for any other note. */
 const outlineExtensions = (path: string, t: ReturnType<typeof useTranslation>['t']): Extension => isOutlinePath(path) ? [outlineKeymap, outlineDrag({ move: t('outline.move'), before: t('outline.dropBefore'), after: t('outline.dropAfter'), child: t('outline.dropChild') })] : [];
 
-export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry: givenCarry, slides, collab }, ref) => {
+export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ content, notePath, notebookId, noteLang, readOnly, onChange, onCaret, ariaLabel = 'Note content', showLineNumbers = true, lineNumberOffset = 0, onCopyLines, continuous = false, carry: givenCarry, slides, collab }, ref) => {
   // The shared text is the binding's: a carried state would hold another text and another history.
   const carry = collab ? undefined : givenCarry;
   const { t } = useTranslation();
@@ -154,6 +156,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   currentLibrary.current = library;
   /* eslint-enable react/refs */
   const slideMode = useRef(new Compartment());
+  const figureLanguage = useRef(new Compartment());
   const currentSlides = useRef(slides);
   /* eslint-disable react/refs -- The persistent CodeMirror view reads current callbacks and options through refs. */
   currentSlides.current = slides;
@@ -249,7 +252,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     // The collab editor holds the whole file: its leading frontmatter is drawn as frontmatter, not as Markdown.
     const decorate = (state: EditorState, focused: boolean) => {
-      const decorations = liveDecorations(state, focused, currentPath.current, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous, collab ? frontmatterEnd(state) : 0);
+      const decorations = liveDecorations(state, focused, currentPath.current, linkLabel, tableLabel, pageLabel, youtubeOwner.current, t, notebookId, continuous, collab ? frontmatterEnd(state) : 0, state.facet(languageTag));
       return collab ? withFrontmatter(state, decorations) : decorations;
     };
     const field = StateField.define<{ decorations: DecorationSet; focused: boolean; }>({
@@ -334,6 +337,7 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
           permission.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
           citations.current.of(citationLibrary.of(currentLibrary.current)),
           slideMode.current.of(slideNote.of(Boolean(currentSlides.current))),
+          figureLanguage.current.of(languageTag.of(noteLang)),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel, 'role': 'textbox', 'aria-multiline': 'true', 'data-key-scope': 'markdown-editor' }),
           EditorView.domEventHandlers({
             focus: (_event, view) => {
@@ -383,6 +387,10 @@ export const LiveMarkdownEditor = forwardRef<LiveMarkdownHandle, Props>(({ conte
   useEffect(() => {
     editor.current?.dispatch({ effects: slideMode.current.reconfigure(slideNote.of(Boolean(slides))) });
   }, [slides]);
+  useEffect(() => {
+    const view = editor.current;
+    if (view && view.state.facet(languageTag) !== noteLang) view.dispatch({ effects: figureLanguage.current.reconfigure(languageTag.of(noteLang)) });
+  }, [noteLang]);
   // The host editor applies the view preferences as CSS variables; CodeMirror caches line heights and the
   // content box, so it re-measures once the new size and width are in the DOM.
   const viewPreferences = useNoteViewPreferences();

@@ -37,7 +37,7 @@ function decodeDestinationEntities(href: string): string {
   });
 }
 
-export function liveDecorations(state: EditorState, focused: boolean, notePath: string, linkLabel: string, tableLabel: string, pageLabel: string, youtubeOwner: string, t: I18nContextValue['t'], notebookId?: string, continuous = false, bodyFrom = 0): DecorationSet {
+export function liveDecorations(state: EditorState, focused: boolean, notePath: string, linkLabel: string, tableLabel: string, pageLabel: string, youtubeOwner: string, t: I18nContextValue['t'], notebookId?: string, continuous = false, bodyFrom = 0, noteLang?: string): DecorationSet {
   const marks: Range<Decoration>[] = [];
   const mermaidRanges: { from: number; to: number; }[] = [];
   // Source the math scan must not read: code keeps its dollars, and tables and directives render their own math.
@@ -291,7 +291,7 @@ export function liveDecorations(state: EditorState, focused: boolean, notePath: 
 
   for (const block of collapsedDirectives) {
     // The infographic kinds, the argument map and the image annotation are classes of their own, with their own widgets.
-    const widget = isAnnotateName(block.type) ? new LiveMarkdownAnnotate(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isArgumentMapName(block.type) ? new LiveMarkdownArgumentMap(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isInfographicKind(block.type) ? new LiveMarkdownInfographic(block.rawText, notePath, block.from, state.readOnly, block.type, t, notebookId) : new LiveMarkdownDirective(block.rawText, notePath, block.from, state.readOnly, block.type, block.attrs.variant, t, notebookId, slides);
+    const widget = isAnnotateName(block.type) ? new LiveMarkdownAnnotate(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isArgumentMapName(block.type) ? new LiveMarkdownArgumentMap(block.rawText, notePath, block.from, state.readOnly, t, notebookId) : isInfographicKind(block.type) ? new LiveMarkdownInfographic(block.rawText, notePath, block.from, state.readOnly, block.type, t, notebookId, noteLang) : new LiveMarkdownDirective(block.rawText, notePath, block.from, state.readOnly, block.type, block.attrs.variant, t, notebookId, slides, noteLang);
     marks.push(Decoration.replace({ widget, block: true }).range(block.from, block.to));
   }
 

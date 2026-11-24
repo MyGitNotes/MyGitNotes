@@ -14,6 +14,7 @@ export interface LiveDraftActions {
 interface NoteActionsMenuProps {
   path: string;
   notebookId?: string;
+  noteLang?: string;
   title: string;
   content: string;
   copyState: 'idle' | 'copied' | 'error';
@@ -34,7 +35,7 @@ interface NoteActionsMenuProps {
 }
 
 /** The note editor's "⋯" button: the actions that file the note or take it out of the editor — add it to an outline, move it, export or copy it. */
-export function NoteActionsMenu({ path, notebookId, title, content, copyState, onCopy, locked, onAddToOutline, onMove, onSaveAsTemplate, liveDraft, className }: NoteActionsMenuProps) {
+export function NoteActionsMenu({ path, notebookId, noteLang, title, content, copyState, onCopy, locked, onAddToOutline, onMove, onSaveAsTemplate, liveDraft, className }: NoteActionsMenuProps) {
   const { t } = useTranslation();
   const label = t(copyState === 'copied' ? 'editor.noteCopied' : copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.moreActions');
   const Icon = copyState === 'copied' ? Check : copyState === 'error' ? AlertTriangle : MoreHorizontal;
@@ -72,7 +73,7 @@ export function NoteActionsMenu({ path, notebookId, title, content, copyState, o
             </DropdownMenu.Item>
           )}
           {(onAddToOutline || onMove || onSaveAsTemplate || liveDraft?.onRename) && <DropdownMenu.Separator />}
-          <NoteExportItems path={path} notebookId={notebookId} title={title} content={content} onCopy={onCopy} />
+          <NoteExportItems path={path} notebookId={notebookId} noteLang={noteLang} title={title} content={content} onCopy={onCopy} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

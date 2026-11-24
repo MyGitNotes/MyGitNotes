@@ -4,8 +4,8 @@
 .ig-figure .ig-question-step { margin-bottom: 0.25rem; font-size: 0.8rem; color: var(--color-muted); }
 .ig-question-text { display: flex; gap: 0.6rem; align-items: baseline; font-weight: 700; }
 .ig-question-num { flex: none; font-size: 0.75rem; letter-spacing: 0.04em; color: var(--ig-hl); }
-.ig-question-num::before { content: '問 '; }
-:lang(en) .ig-question-num::before { content: 'Q'; }
+.ig-question-num::before { content: 'Q'; }
+.ig-figure.ig-decision:lang(zh) .ig-question-num::before { content: '問 '; }
 .ig-question-body { min-width: 0; }
 .ig-figure .ig-branches { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.45rem; margin-left: var(--ig-trunk-x); border-left: var(--ig-trunk-w) solid var(--ig-trunk); padding: 0.55rem 0 0 var(--ig-trunk-gap); }
 .ig-figure .ig-branch { display: flex; flex-wrap: wrap; gap: 0.2rem 0.5rem; align-items: baseline; }

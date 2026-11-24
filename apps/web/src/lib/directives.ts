@@ -638,8 +638,8 @@ function renderFigureBlock(blockLines: readonly string[], draw: (source: string)
 }
 
 /** The figure for an infographic block's lines, or the error box in its place. */
-function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>, language: NoteLanguage | undefined): string {
-  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline, language }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, strings['infographic.render.error']));
+function renderInfographicBlock(blockLines: readonly string[], renderInline: (md: string) => string, strings: Record<TranslationKey, string>, language: NoteLanguage | undefined, noteLang?: string): string {
+  return renderFigureBlock(blockLines, source => renderInfographic(source, { renderInline, language, noteLang }), (error, source) => renderInfographicError(error instanceof InfographicError ? error : new InfographicError(error.message), source, strings['infographic.render.error']));
 }
 
 /** The figure for an annotate block's lines, or the error box in its place. */
@@ -656,7 +656,7 @@ function renderArgumentMapBlock(blockLines: readonly string[], renderInline: (md
  * Main parser that scans for container directives, leaf directives, inline directives,
  * and recursively converts them to HTML before main markdown processing.
  */
-export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage, balance: (html: string) => string = html => html, slides?: SlideDirectiveOptions): string {
+export function transformDirectives(content: string, renderMarkdown: (md: string) => string, renderInline: (md: string) => string = md => renderMarkdown(md).trim().replace(/^<p>([\s\S]*)<\/p>$/, '$1'), language?: NoteLanguage, balance: (html: string) => string = html => html, slides?: SlideDirectiveOptions, noteLang?: string): string {
   const strings = stringsFor(language);
   const lines = content.split('\n');
   const output: string[] = [];
@@ -689,7 +689,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
       const end = infographicEnd(lines, i, open.fenceLength);
       if (end !== undefined) {
         const block = lines.slice(i, end + 1);
-        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, md => balance(renderMarkdown(md)), strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings, language) : renderInfographicBlock(block, renderInline, strings, language);
+        const figure = isAnnotateName(open.name) ? renderAnnotateBlock(block, md => balance(renderMarkdown(md)), strings) : isArgumentMapName(open.name) ? renderArgumentMapBlock(block, renderInline, strings, language) : renderInfographicBlock(block, renderInline, strings, language, noteLang);
         // Blank lines keep the figure's HTML block apart from the Markdown around it.
         if (stack.length > 0) stack[stack.length - 1].lines.push(figure);
         else output.push(figure);
@@ -717,7 +717,7 @@ export function transformDirectives(content: string, renderMarkdown: (md: string
         const innerBody = item.lines.join('\n');
         // Recursively transform directives within this container; what they report is on the container's opening line.
         const within = slides && { rendering: slides.rendering, lineOf: () => slides.lineOf(item.index) };
-        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language, balance, within);
+        const transformedInner = transformDirectives(innerBody, renderMarkdown, renderInline, language, balance, within, noteLang);
         // A label (`:::summary[…]`) is the container's first paragraph, as remark-directive reads it.
         const renderedHtml = slides && isSlideContainer(item.name) ? slideDirective(slides, item.name, 'container', item.rawAttrs, lines.slice(item.index, i + 1).join('\n'), item.index, renderMarkdown(item.label ? `${item.label}\n\n${transformedInner}` : transformedInner)) : renderContainerDirective(item.name, item.label, item.attrs, transformedInner, renderMarkdown, strings);
 

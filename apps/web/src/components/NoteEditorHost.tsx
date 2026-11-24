@@ -7,6 +7,7 @@ import { useNoteEditing } from '../lib/note-editing.js';
 import { followsNote, useFollowedKey } from '../lib/note-follows.js';
 import { useNoteLookup } from '../lib/use-note-queries.js';
 import { renderNote } from '../lib/markdown.js';
+import { noteLanguageTag } from '../lib/note-language.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { NoteEditor, type NoteEditorHandle, type NoteEditorProps } from './NoteEditor.js';
 import { youtubeLabels } from '../lib/youtube-embed.js';
@@ -160,7 +161,8 @@ const NotePreview: React.FC<{ note: NoteItem; onClaim: () => void; }> = ({ note,
   const { t } = useTranslation();
   const tableLabel = t('preview.scrollableTable');
   const slides = isSlideNote(note.metadata);
-  const html = useMemo(() => renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, slides ? { slides: 'preview' } : undefined), [note.content, note.path, note.notebookId, tableLabel, t, slides]);
+  const noteLang = noteLanguageTag(note.metadata);
+  const html = useMemo(() => renderNote(note.content, note.path, tableLabel, youtubeLabels(t), note.notebookId, { slides: slides ? 'preview' : undefined, noteLang }), [note.content, note.path, note.notebookId, tableLabel, t, slides, noteLang]);
   return (
     <div className='note-preview'>
       <div className='note-preview-bar'>

@@ -17,6 +17,7 @@ export interface SlideDeckProps {
   content: string;
   path: string;
   notebookId?: string;
+  noteLang?: string;
   /** The note's title, shown over the outline. */
   title: string;
   /** The lines the frontmatter takes above the text, so a failure names the line the editor shows. */
@@ -38,13 +39,13 @@ type Status = { state: 'loading'; } | { state: 'open'; } | { state: 'failed'; me
  * The deck is a modal dialog: the app behind it is inert, Tab stays in it, and the note's own key handlers, which stand aside for an open
  * dialog, leave its keys to contour-deck.
  */
-export function SlideDeck({ content, path, notebookId, title, lineNumberOffset = 0, view, opener, onClose }: SlideDeckProps) {
+export function SlideDeck({ content, path, notebookId, noteLang, title, lineNumberOffset = 0, view, opener, onClose }: SlideDeckProps) {
   const { t, language } = useTranslation();
   const dialog = useRef<HTMLDialogElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<Status>({ state: 'loading' });
   // The deck plays the note as it was when it opened, and leaves through the latest handler.
-  const opened = useRef({ content, path, notebookId, title, lineNumberOffset, view, opener, t, language });
+  const opened = useRef({ content, path, notebookId, noteLang, title, lineNumberOffset, view, opener, t, language });
   const close = useRef(onClose);
   useEffect(() => {
     close.current = onClose;
@@ -66,7 +67,7 @@ export function SlideDeck({ content, path, notebookId, title, lineNumberOffset =
     let closeDeck: (() => void) | undefined;
     void import('../../lib/slides/deck-runtime.js').then(runtime => {
       if (left || !host.current) return;
-      const html = renderNote(source.content, source.path, source.t('preview.scrollableTable'), youtubeLabels(source.t), source.notebookId, { slides: 'deck' });
+      const html = renderNote(source.content, source.path, source.t('preview.scrollableTable'), youtubeLabels(source.t), source.notebookId, { slides: 'deck', noteLang: source.noteLang });
       closeDeck = runtime.openDeck(host.current, { html, title: source.title, view: source.view, language: source.language, t: source.t, onExit: () => close.current() });
       setStatus({ state: 'open' });
     }).catch((error: unknown) => {

@@ -10,6 +10,7 @@ import { EditorModeGroup } from './EditorModeGroup.js';
 import { AssistantDockToggle } from '../assistant/AssistantDockToggle.js';
 import { TypstPreviewToggle } from '../typst-preview/TypstPreviewToggle.js';
 import { type LiveDraftActions, NoteActionsMenu } from './NoteActionsMenu.js';
+import { noteLanguageTag } from '../../lib/note-language.js';
 import { NoteRefreshAction } from './NoteQuickActions.js';
 import { NoteRow } from './NoteRow.js';
 import { PhoneNoteChrome, type PhoneNoteChromeProps } from './PhoneNoteChrome.js';
@@ -129,7 +130,7 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
           </Tooltip>
         )}
         {isMarkdown && <TypstPreviewToggle note={note} className='toolbar-icon-button editor-typst-preview-action' />}
-        <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} liveDraft={liveDraft} />
+        <NoteActionsMenu className='ui-icon-button toolbar-icon-button editor-more-action' path={note.path} notebookId={note.notebookId} noteLang={noteLanguageTag(session.metadata)} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} locked={session.locked} onAddToOutline={onAddToOutline} onMove={onMove} onSaveAsTemplate={onSaveAsTemplate} liveDraft={liveDraft} />
       </div>
       {/* A Focus pane leaves the document panel to its rail and the assistant to the window's own toggle, so several panes do not repeat them. */}
       {zoom && (

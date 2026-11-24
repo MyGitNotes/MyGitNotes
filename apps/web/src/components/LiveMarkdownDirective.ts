@@ -13,16 +13,16 @@ type Translate = (key: TranslationKey, params?: Record<string, string | number>)
 
 export class LiveMarkdownDirective extends WidgetType {
   /** `slides`: the block is in a `type: slide` note, whose slide directives draw as a deck reads them. */
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly currentType: string, readonly currentVariant?: string, readonly t?: Translate, readonly notebookId?: string, readonly slides = false) {
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly currentType: string, readonly currentVariant?: string, readonly t?: Translate, readonly notebookId?: string, readonly slides = false, readonly noteLang?: string) {
     super();
   }
 
   eq(other: LiveMarkdownDirective) {
-    return (this.text === other.text && this.path === other.path && this.from === other.from && this.readOnly === other.readOnly && this.currentType === other.currentType && this.currentVariant === other.currentVariant && this.notebookId === other.notebookId && this.slides === other.slides);
+    return (this.text === other.text && this.path === other.path && this.from === other.from && this.readOnly === other.readOnly && this.currentType === other.currentType && this.currentVariant === other.currentVariant && this.notebookId === other.notebookId && this.slides === other.slides && this.noteLang === other.noteLang);
   }
 
   private get renderOptions(): NoteRenderOptions | undefined {
-    return this.slides ? { slides: 'preview' } : undefined;
+    return { slides: this.slides ? 'preview' : undefined, noteLang: this.noteLang };
   }
 
   /** The block formats a select offers: the templates, and the block's own type when it is none of them, so choosing nothing never changes it. */

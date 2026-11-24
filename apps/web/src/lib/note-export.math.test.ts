@@ -16,15 +16,16 @@ describe('math in the print document', () => {
 
   it('prints infographic structure, formulas, and the CSS-generated question and fall-back labels', async () => {
     const source = ['::::process', ':::stage{title="Draft"}', ':::', ':::stage{title="Review"}', '- ↺ Draft｜Check $x$', ':::', '::::', '', ':::decision', '- Ready?', '  - Yes｜Ship', '  - No｜Recheck?', '    - Yes｜Ready', '    - No｜↺ Retry', ':::', '', ':::nested', '- All', '- Some', ':::'].join('\n');
-    const body = await renderPrintableNote(source, 'notes/n.md');
+    const body = await renderPrintableNote(source, 'notes/n.md', undefined, undefined, undefined, 'zh-Hant-TW');
     const doc = new DOMParser().parseFromString(printDocument('Title', body), 'text/html');
-    expect(doc.querySelectorAll('figure.ig-figure')).toHaveLength(3);
+    expect([...doc.querySelectorAll('figure.ig-figure')].map(figure => figure.getAttribute('lang'))).toEqual(['zh-Hant-TW', 'zh-Hant-TW', 'zh-Hant-TW']);
     expect(doc.querySelector('.ig-back-when .katex')).not.toBeNull();
     expect(doc.querySelectorAll('.ig-question-num')).toHaveLength(2);
     expect(doc.querySelector('.ig-ring .ig-ring')).not.toBeNull();
     const style = [...doc.querySelectorAll('style')].map(node => node.textContent).join('\n');
     expect(style).toContain('.ig-back-target::before');
-    expect(style).toContain('.ig-question-num::before');
+    expect(style).toContain('.ig-decision:lang(zh) .ig-question-num::before');
+    expect(style).toContain('.ig-process:lang(zh) .ig-back-target::before');
     expect(style).toContain('.ig-ring.is-highlight');
   });
 

@@ -19,6 +19,8 @@ function isMarkdownBodyKind(name: string): name is keyof typeof MARKDOWN_BODIES 
   return Object.hasOwn(MARKDOWN_BODIES, name);
 }
 
+const CJK_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
 export { InfographicError } from './figure-html.js';
 
 export interface InfographicContext {
@@ -26,6 +28,8 @@ export interface InfographicContext {
   renderInline: (markdown: string) => string;
   /** The note's language, for the figure's own words; without one, the page's. */
   language?: NoteLanguage;
+  /** The note's frontmatter tag, independent of the interface language. */
+  noteLang?: string;
 }
 
 /** More ticks than a figure can show come from a range far wider than its data; drawing them would hang the page. */
@@ -620,7 +624,11 @@ export function renderInfographic(source: string, context: InfographicContext): 
     if (!close || close.trailing) fail(`unclosed ${open.name} block`);
     // A directive label becomes a paragraph before the list, as in remark.
     const body = `${open.label ? `${open.label}\n\n` : ''}${lines.slice(1, -1).join('\n')}`;
-    return frame(open.name, open.attrs, MARKDOWN_BODIES[open.name](body, r), dataPalette, r, context.language);
+    const rendered = MARKDOWN_BODIES[open.name](body, r);
+    // Check the figure's displayed words, not the rest of the note, link URLs or directive attributes like palette.
+    const figureText = [rendered.replace(/<(?:[^"'<>]|"[^"]*"|'[^']*')*>/g, ''), ...['title', 'subtitle', 'note', 'source'].map(key => attrOf(open.attrs, key))].join(' ');
+    const lang = context.noteLang?.trim() || (CJK_TEXT.test(figureText) ? 'zh-Hant' : 'en');
+    return frame(open.name, open.attrs, rendered, dataPalette, { ...r, strings: stringsFor(/^zh(?:-|$)/i.test(lang) ? 'zh-TW' : 'en') }, lang);
   }
 
   const block = parseInfographic(source);

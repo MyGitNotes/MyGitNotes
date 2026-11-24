@@ -78,11 +78,11 @@ export function downloadTextFile(filename: string, text: string, type: string): 
 }
 
 /** The note's printable body: `renderNote` HTML with its diagrams drawn, on the light variant since paper is white. */
-export async function renderPrintableNote(content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate): Promise<string> {
+export async function renderPrintableNote(content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate, noteLang?: string): Promise<string> {
   // `renderNote` draws an icon only once the set is loaded, and the print frame runs no script to fill it in later;
   // offline the chunk may not load, and the print still works with placeholders.
   if (content.includes(':icon')) await loadLucideIcons().catch(() => undefined);
-  const printable = new DOMParser().parseFromString(renderNote(content, notePath, undefined, undefined, notebookId), 'text/html');
+  const printable = new DOMParser().parseFromString(renderNote(content, notePath, undefined, undefined, notebookId, { noteLang }), 'text/html');
   // The print frame has no viewport, so lazy images never approach an intersection threshold.
   for (const image of printable.images) image.removeAttribute('loading');
   // Paper cannot click a group open: it shows every annotation.
@@ -101,11 +101,11 @@ export function printDocument(title: string, body: string): string {
 }
 
 /** Opens the browser's print dialog on the rendered note, where "Save as PDF" produces the file. */
-export async function printNoteAsPdf(title: string, content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate): Promise<void> {
+export async function printNoteAsPdf(title: string, content: string, notePath: string, errorLabel?: string, notebookId?: string, t?: Translate, noteLang?: string): Promise<void> {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
-  frame.srcdoc = printDocument(title, await renderPrintableNote(content, notePath, errorLabel, notebookId, t));
+  frame.srcdoc = printDocument(title, await renderPrintableNote(content, notePath, errorLabel, notebookId, t, noteLang));
   const remove = () => frame.remove();
   frame.addEventListener('load', async () => {
     const view = frame.contentWindow;

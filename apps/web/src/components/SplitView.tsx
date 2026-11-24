@@ -49,6 +49,7 @@ interface SplitViewProps {
   path: string;
   notebookId?: string;
   slides?: boolean;
+  noteLang?: string;
 }
 
 /**
@@ -56,12 +57,12 @@ interface SplitViewProps {
  * once the typing pauses. The divider holds the scroll sync switch; while it is on, a scroll of either pane brings the
  * other to the same place, by the source line each rendered block starts on.
  */
-export function SplitView({ source, sourceScroller, content, path, notebookId, slides = false }: SplitViewProps) {
+export function SplitView({ source, sourceScroller, content, path, notebookId, slides = false, noteLang }: SplitViewProps) {
   const { t } = useTranslation();
   const [sync, setSync] = useState(readSync);
   const settled = useSettled(content, RENDER_DELAY_MS);
   const tableLabel = t('preview.scrollableTable');
-  const html = useMemo(() => renderNote(settled, path, tableLabel, youtubeLabels(t), notebookId, { sourceLines: true, ...slides ? { slides: 'preview' as const } : {} }), [settled, path, tableLabel, t, notebookId, slides]);
+  const html = useMemo(() => renderNote(settled, path, tableLabel, youtubeLabels(t), notebookId, { sourceLines: true, slides: slides ? 'preview' : undefined, noteLang }), [settled, path, tableLabel, t, notebookId, slides, noteLang]);
   const preview = useRef<HTMLDivElement>(null);
   const syncRef = useRef(sync);
   useLayoutEffect(() => {

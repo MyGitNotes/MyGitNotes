@@ -12,6 +12,7 @@ import type { NoteItem } from '../lib/types.js';
 import type { StudyController } from '../lib/use-study-workspace.js';
 import { useNoteLookup } from '../lib/use-note-queries.js';
 import { renderNote } from '../lib/markdown.js';
+import { noteLanguageTag } from '../lib/note-language.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { useStatusLabel } from '../lib/status-color.js';
 import { Select } from './Select.js';
@@ -265,7 +266,7 @@ function StudyLaneCard({ note: listed, row, controller, disabled, onDone, onOpen
             if (Math.abs(dx) >= 75 && Math.abs(dx) >= Math.abs(dy) * 1.5) turnPage(index + (dx < 0 ? 1 : -1));
           }}
         >
-          <NoteHtml className='prose-custom' html={renderNote(pages[index], note.path, t('preview.scrollableTable'), youtubeLabels(t), note.notebookId)} notebookId={note.notebookId} />
+          <NoteHtml className='prose-custom' html={renderNote(pages[index], note.path, t('preview.scrollableTable'), youtubeLabels(t), note.notebookId, { noteLang: noteLanguageTag(note.metadata) })} notebookId={note.notebookId} />
         </div>
       </article>
       <StudyFooter progression={row.progression!} status={note.status} pageCount={pages.length} page={index} revealed={revealed} canRate={canRate} disabled={disabled} previous={previous} next={next} onMove={onMove} onPage={turnPage} onRate={rate} onDone={onDone} more={more} remaining={remaining} />

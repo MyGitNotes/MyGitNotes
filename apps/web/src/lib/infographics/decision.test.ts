@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
+import { parseNoteFile } from '@mygitnotes/core/note-file';
+import { noteLanguageTag } from '../note-language.js';
 import { draw } from './note-test-helpers.js';
 
 const decision = (body: string) => `:::decision{title="這組變數能用來調整嗎？" subtitle="後門準則：兩題都過關才行"}\n${body}\n:::`;
@@ -14,13 +16,25 @@ const deep = (n: number) =>
   ].join('\n');
 
 describe('decision', () => {
+  it('uses the figure text rather than the rest of the note or the page to choose the badge language', () => {
+    const english = ':::decision\n- Ready?\n  - Yes｜[Ship](./出貨.md)\n  - No｜Wait\n:::';
+    const doc = draw(`中文筆記\n\n${english}\n\n${decision(shallow)}`);
+    expect([...doc.querySelectorAll('figure.ig-decision')].map(node => node.getAttribute('lang'))).toEqual(['en', 'zh-Hant']);
+  });
+
+  it('honors the note frontmatter language even when the figure text is Chinese', () => {
+    const note = parseNoteFile(`---\nlang: en-GB\n---\n\n${decision(shallow)}`, 'n.md');
+    const doc = draw(note.content, noteLanguageTag(note.metadata));
+    expect(doc.querySelector('.ig-decision')?.getAttribute('lang')).toBe('en-GB');
+  });
+
   it('draws one numbered trunk, ending branches first, with steps, highlighted and loop results, and math', () => {
     const doc = draw(decision(`- 候選的一組變數 $Z$ 裡，有 $X$ 的後代嗎？｜先列出 $Z$
   - 沒有 $C$｜$Z$ 堵住 $X$ 與 $Y$ 之間的所有路徑嗎？｜拿掉 $X$ 指出去的箭頭
     - 是｜**可以：按 $Z$ 分組平均，就得到干預的值**
     - 否｜**↺ 換一組 $Z$，回到第一題**
   - 有｜不符合後門準則，例如含復健班名冊 $C$`));
-    expect(doc.querySelector('figure.ig-decision')?.getAttribute('lang')).toBe('en');
+    expect(doc.querySelector('figure.ig-decision')?.getAttribute('lang')).toBe('zh-Hant');
     expect([...doc.querySelectorAll('.ig-question-num')].map(node => node.textContent)).toEqual(['1', '2']);
     expect(doc.querySelector('.ig-question[style="--ig-i:0"] > .ig-question-step + .ig-question-text .ig-question-body')?.querySelectorAll('.note-math')).toHaveLength(2);
     expect(doc.querySelector('.ig-decision-tree > .ig-branches > .ig-branch:first-child > .ig-branch-result .note-math')).not.toBeNull();

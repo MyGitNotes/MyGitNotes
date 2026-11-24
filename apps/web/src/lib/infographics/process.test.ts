@@ -21,7 +21,7 @@ describe('process', () => {
 
   it('draws fall-backs below the stage without counting them towards its item grid', () => {
     const doc = draw(process([stage('穩定'), stage('裂縫', '- ↺ 穩定｜休息 · 陪伴 $X$'), stage('崩解', '- 症狀｜失控\n- 二\n- 三\n- 四\n- ↺ 穩定｜療程 · 休整\n- ↺ 裂縫'), ':::stage{title="平衡" highlight}\n- 帶副作用的新穩定｜成為下一段旅程的穩定\n:::'].join('\n')));
-    expect(doc.querySelector('figure.ig-process')?.getAttribute('lang')).toBe('en');
+    expect(doc.querySelector('figure.ig-process')?.getAttribute('lang')).toBe('zh-Hant');
     const stages = doc.querySelectorAll('ol.ig-process > .ig-stage');
     expect(stages[0].querySelector('ul')).toBeNull();
     expect(stages[1].querySelector('.ig-stage-back > .ig-back-target')?.textContent).toBe('穩定');

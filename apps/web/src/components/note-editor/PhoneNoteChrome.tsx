@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Code2, Copy, Eye, FileText, FolderInput, LayoutTempla
 import { withNoteStatus } from '@mygitnotes/core/note-status';
 import '../phone-notes.css';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { noteLanguageTag } from '../../lib/note-language.js';
 import { downloadTextFile, printNoteAsPdf } from '../../lib/note-export.js';
 import { noteStem } from '../../lib/note-move.js';
 import { type PanelToolId, usePanelContext } from '../../lib/panel-context.js';
@@ -258,7 +259,7 @@ function PhoneNoteSheet({ frame, note, session, docPanel, isMarkdown, readOnly, 
         {onSaveAsTemplate && <SheetItem icon={<LayoutTemplate aria-hidden='true' />} label={t('templates.saveAs')} onClick={act(onSaveAsTemplate)} />}
         <SheetItem icon={<Copy aria-hidden='true' />} label={t(session.copyState === 'copied' ? 'editor.noteCopied' : session.copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.exportCopy')} onClick={() => void session.copyNote()} />
         <SheetItem icon={<FileText aria-hidden='true' />} label={t('editor.exportMarkdown')} onClick={act(() => downloadTextFile(filename, session.content, 'text/markdown;charset=utf-8'))} />
-        <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t))} />
+        <SheetItem icon={<Printer aria-hidden='true' />} label={t('editor.exportPdf')} onClick={act(() => void printNoteAsPdf(session.title || filename, session.content, note.path, t('mermaid.error'), note.notebookId, t, noteLanguageTag(session.metadata)))} />
         {deleteNote && (!readOnly || discardable || liveDraft?.onDelete) && (
           <SheetItem
             icon={<Trash2 aria-hidden='true' />}

@@ -5,6 +5,7 @@ import { useTranslation } from '../../lib/i18n/index.js';
 import type { NoteItem } from '../../lib/types.js';
 import type { LiveEditorCarry } from '../LiveMarkdownEditor.js';
 import { MarkdownEditor, type MarkdownEditorHandle, type MarkdownEditorMode } from '../MarkdownEditor.js';
+import { noteLanguageTag } from '../../lib/note-language.js';
 import { NoteExportMenu } from '../NoteExportMenu.js';
 import { EditorModeToggle } from './EditorModeToggle.js';
 import type { NoteEditorSessionState } from './useNoteEditorSession.js';
@@ -29,7 +30,7 @@ export function NoteCompactFrame({ note, session, editorRef, isMarkdown, editorM
   return (
     <>
       <div className='note-editor-body'>
-        <MarkdownEditor ref={editorRef} compact content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} carry={carry} slides={isSlideNote(session.metadata)} />
+        <MarkdownEditor ref={editorRef} compact content={session.content} path={note.path} notebookId={note.notebookId} mode={editorMode} readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={showLineNumbers} lineNumberOffset={session.baseNote.lineNumberOffset} carry={carry} slides={isSlideNote(session.metadata)} noteLang={noteLanguageTag(session.metadata)} />
       </div>
       <div className='note-compact-bar'>
         {isMarkdown && <EditorModeToggle mode={editorMode} onChange={setEditorMode} className='ui-icon-button' iconSize={14} />}
@@ -38,7 +39,7 @@ export function NoteCompactFrame({ note, session, editorRef, isMarkdown, editorM
             <ListOrdered size={14} aria-hidden='true' />
           </button>
         </Tooltip>
-        <NoteExportMenu className='ui-icon-button' iconSize={14} path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} copyState={session.copyState} onCopy={session.copyNote} />
+        <NoteExportMenu className='ui-icon-button' iconSize={14} path={note.path} notebookId={note.notebookId} title={session.title} content={session.content} noteLang={noteLanguageTag(session.metadata)} copyState={session.copyState} onCopy={session.copyNote} />
         <Tooltip label={note.path}>
           <span className='note-compact-path'>{note.notebookId}{' · '}{note.path.split('/').pop()}</span>
         </Tooltip>

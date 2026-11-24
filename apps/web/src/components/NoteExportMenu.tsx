@@ -9,6 +9,7 @@ import { downloadBlob, downloadTextFile, printNoteAsPdf } from '../lib/note-expo
 interface Props {
   path: string;
   notebookId?: string;
+  noteLang?: string;
   title: string;
   content: string;
   copyState: 'idle' | 'copied' | 'error';
@@ -18,7 +19,7 @@ interface Props {
   className: string;
 }
 
-type ExportNote = Pick<Props, 'path' | 'notebookId' | 'title' | 'content' | 'onCopy'>;
+type ExportNote = Pick<Props, 'path' | 'notebookId' | 'noteLang' | 'title' | 'content' | 'onCopy'>;
 
 /** Saves the note and the private R2 objects it references as one ZIP; an object that cannot be fetched is listed inside it. */
 async function downloadWithAssets(path: string, content: string): Promise<void> {
@@ -30,7 +31,7 @@ async function downloadWithAssets(path: string, content: string): Promise<void> 
  * The ways to take a note's content out of the editor, as menu items: copy it, download it as Markdown, download it with
  * the private R2 objects it references (offered only when it references any), print it as PDF.
  */
-export function NoteExportItems({ path, notebookId, title, content, onCopy }: ExportNote) {
+export function NoteExportItems({ path, notebookId, noteLang, title, content, onCopy }: ExportNote) {
   const { t } = useTranslation();
   const filename = path.split('/').pop() || 'note.md';
   return (
@@ -49,7 +50,7 @@ export function NoteExportItems({ path, notebookId, title, content, onCopy }: Ex
           <span>{t('editor.exportWithAssets')}</span>
         </DropdownMenu.Item>
       )}
-      <DropdownMenu.Item onSelect={() => void printNoteAsPdf(title || filename, content, path, t('mermaid.error'), notebookId, t)}>
+      <DropdownMenu.Item onSelect={() => void printNoteAsPdf(title || filename, content, path, t('mermaid.error'), notebookId, t, noteLang)}>
         <Printer size={14} aria-hidden='true' />
         <span>{t('editor.exportPdf')}</span>
       </DropdownMenu.Item>
@@ -58,7 +59,7 @@ export function NoteExportItems({ path, notebookId, title, content, onCopy }: Ex
 }
 
 /** The note editor's Export button: a menu of ways to take the note's content out of the editor. */
-export function NoteExportMenu({ path, notebookId, title, content, copyState, onCopy, iconSize, className }: Props) {
+export function NoteExportMenu({ path, notebookId, noteLang, title, content, copyState, onCopy, iconSize, className }: Props) {
   const { t } = useTranslation();
   const label = t(copyState === 'copied' ? 'editor.noteCopied' : copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.export');
   const Icon = copyState === 'copied' ? Check : copyState === 'error' ? AlertTriangle : Download;
@@ -71,7 +72,7 @@ export function NoteExportMenu({ path, notebookId, title, content, copyState, on
       </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('editor.export')} onEscapeKeyDown={event => event.stopPropagation()}>
-          <NoteExportItems path={path} notebookId={notebookId} title={title} content={content} onCopy={onCopy} />
+          <NoteExportItems path={path} notebookId={notebookId} noteLang={noteLang} title={title} content={content} onCopy={onCopy} />
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

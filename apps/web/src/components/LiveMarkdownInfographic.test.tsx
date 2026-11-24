@@ -36,6 +36,20 @@ const dataEditor = () => screen.getByRole('group', { name: 'Infographic data edi
 const gridInput = (root: HTMLElement) => root.querySelector<HTMLInputElement>('.ig-cell-input')!;
 
 describe('an infographic block in the live editor', () => {
+  it('redraws an existing figure when the note language changes without rebuilding the editor', async () => {
+    const source = ':::decision\n- 準備好了嗎？\n  - 是｜出發\n  - 否｜等一等\n:::';
+    const client = new QueryClient();
+    const tree = (noteLang?: string) => createElement(I18nProvider, null, createElement(QueryClientProvider, { client }, createElement(MemoryRouter, {}, createElement(MarkdownEditor, { content: source, path: 'notes/a.md', mode: 'live', readOnly: true, onChange: vi.fn(), ariaLabel: 'Note content', noteLang }))));
+    const view = render(tree());
+    const textbox = await screen.findByRole('textbox', { name: 'Note content' }, { timeout: 5000 });
+    const figure = () => view.container.querySelector('figure.ig-decision');
+    expect(figure()?.getAttribute('lang')).toBe('zh-Hant');
+    view.rerender(tree('en-GB'));
+    expect(figure()?.getAttribute('lang')).toBe('en-GB');
+    expect(screen.getByRole('textbox', { name: 'Note content' })).toBe(textbox);
+    view.rerender(tree());
+    expect(figure()?.getAttribute('lang')).toBe('zh-Hant');
+  });
   it('shows the figure with a toolbar: kind, title, palette, Edit data and Markdown', async () => {
     const { widget } = await mount(DOC);
     const root = widget()!;

@@ -23,8 +23,10 @@ class InfographicController {
   constructor(private view: EditorView, private widget: LiveMarkdownInfographic, readonly dom: HTMLElement) {}
 
   retarget(widget: LiveMarkdownInfographic) {
+    if (this.widget.noteLang !== widget.noteLang) return false;
     this.widget = widget;
     this.dom.dataset.directiveFrom = String(widget.from);
+    return true;
   }
 
   private get t(): Translate {
@@ -32,7 +34,7 @@ class InfographicController {
   }
 
   private figureHtml(source: string): string {
-    return renderNote(source, this.widget.path, undefined, youtubeLabels(this.t), this.widget.notebookId);
+    return renderNote(source, this.widget.path, undefined, youtubeLabels(this.t), this.widget.notebookId, { noteLang: this.widget.noteLang });
   }
 
   /** Writes `next` over the block as one history entry. A source equal to the block's changes nothing. */
@@ -229,12 +231,12 @@ const controllers = new WeakMap<HTMLElement, InfographicController>();
 
 /** One infographic block in the live editor: its figure with a toolbar, and the data editor in the figure's place. */
 export class LiveMarkdownInfographic extends WidgetType {
-  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly kind: InfographicKind, readonly t: Translate, readonly notebookId?: string) {
+  constructor(readonly text: string, readonly path: string, readonly from: number, readonly readOnly: boolean, readonly kind: InfographicKind, readonly t: Translate, readonly notebookId?: string, readonly noteLang?: string) {
     super();
   }
 
   eq(other: LiveMarkdownInfographic) {
-    return this.text === other.text && this.path === other.path && this.from === other.from && this.readOnly === other.readOnly && this.kind === other.kind && this.notebookId === other.notebookId;
+    return this.text === other.text && this.path === other.path && this.from === other.from && this.readOnly === other.readOnly && this.kind === other.kind && this.notebookId === other.notebookId && this.noteLang === other.noteLang;
   }
 
   // Everything inside the widget handles its own events; CodeMirror must not treat a click or key in it as an edit.
@@ -247,8 +249,7 @@ export class LiveMarkdownInfographic extends WidgetType {
     if (!controller) return false;
     // Only a block that moved keeps its DOM, and with it an open editor; a changed block is drawn afresh.
     if (dom.dataset.infographicText !== this.text || dom.dataset.infographicPath !== this.path || dom.dataset.infographicReadOnly !== String(this.readOnly)) return false;
-    controller.retarget(this);
-    return true;
+    return controller.retarget(this);
   }
 
   destroy(dom: HTMLElement) {

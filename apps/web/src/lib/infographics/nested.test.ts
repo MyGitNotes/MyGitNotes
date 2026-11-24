@@ -9,6 +9,7 @@ describe('nested', () => {
     const doc = draw(nested(String.raw`- 概念上可能｜不自相矛盾
 - **真正可能 $GP$**｜形上學上可能
 - 自然律可能｜符合實際的自然律；$NP \subseteq GP$`));
+    expect(doc.querySelector('figure.ig-nested')?.getAttribute('lang')).toBe('zh-Hant');
     const outer = doc.querySelector('figure.ig-nested > .ig-body > ul.ig-nest > li.ig-ring');
     const middle = outer?.querySelector(':scope > ul.ig-nest > li.ig-ring.is-highlight');
     const inner = middle?.querySelector(':scope > ul.ig-nest > li.ig-ring');
