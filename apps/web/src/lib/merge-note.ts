@@ -1,4 +1,7 @@
 import { diff3Merge } from 'node-diff3';
+import { mergeCompilationText } from '@mygitnotes/core/compilation-merge';
+import { compilationFields } from '@mygitnotes/core/compilation';
+import { serializeNoteFile } from '@mygitnotes/core/note-file';
 
 export interface NoteDraft {
   content: string;
@@ -36,4 +39,20 @@ export function mergeNote(base: NoteDraft, local: NoteDraft, remote: NoteDraft):
   const blocks = diff3Merge(lines(local.content), lines(base.content), lines(remote.content), { excludeFalseConflicts: true });
   if (blocks.some(block => block.conflict)) return { conflict: true };
   return { conflict: false, draft: { content: blocks.flatMap(block => block.ok || []).join(''), metadata: metadata.value as Record<string, unknown> } };
+}
+
+/**
+ * Merges two drafts of a compilation file by entry rather than by line, so two people moving cards on neighbouring
+ * lines both keep their move (`mergeCompilationText`). Each side is the file its commit would store, its YAML carrying
+ * the tags and status of its metadata. The draft's metadata takes the merged file's title, tags and status. A side that
+ * is not a valid compilation falls back to the line merge.
+ */
+export function mergeCompilation(path: string, base: NoteDraft, local: NoteDraft, remote: NoteDraft): { conflict: true; } | { conflict: false; draft: NoteDraft; } {
+  const stored = (draft: NoteDraft) => serializeNoteFile(path, draft.metadata, draft.content, false, new Date());
+  const merged = mergeCompilationText(stored(base), stored(local), stored(remote));
+  if (!merged) return mergeNote(base, local, remote);
+  if (merged.conflict) return merged;
+  const { title, tags, status } = compilationFields(merged.text, path);
+  const { status: _status, ...metadata } = local.metadata;
+  return { conflict: false, draft: { content: merged.text, metadata: { ...metadata, title, tags, ...(status ? { status } : {}) } } };
 }

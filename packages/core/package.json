@@ -67,6 +67,10 @@
       "types": "./dist/compilation.d.ts",
       "import": "./dist/compilation.js"
     },
+    "./compilation-merge": {
+      "types": "./dist/compilation-merge.d.ts",
+      "import": "./dist/compilation-merge.js"
+    },
     "./screen-page": {
       "types": "./dist/screen-page.d.ts",
       "import": "./dist/screen-page.js"

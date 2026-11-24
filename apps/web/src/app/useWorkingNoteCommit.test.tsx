@@ -324,3 +324,20 @@ it('names a conflict draft of a live note in the app’s words when it is in a c
   expect((error as Error).message).toBe(`${base.path}: live.mergeConflict {}`);
   expect(commits).toEqual([]);
 });
+
+// Whiteboard slice 4: a compilation draft merges with the remote by entry, so cards moved on neighbouring lines both stand.
+it('merges a compilation draft with the remote by entry, staging the merge for review and committing it', async () => {
+  stubServer();
+  const path = 'notes/life/board.compilation.yml';
+  const yaml = (n1: string, n2: string) => `version: 1\nid: board\ntitle: Board\narrangement: board\nitems:\n  - id: n1\n    kind: note\n    path: notes/life/a.md\n  - id: n2\n    kind: note\n    path: notes/life/b.md\nboard:\n  cards:\n    - { item: n1, ${n1} }\n    - { item: n2, ${n2} }\n`;
+  const listing = { id: 'board', title: 'Board', arrangement: 'board', itemCount: 2, board: { cards: 2, sections: 0, texts: 0, arrows: 0 } };
+  const stored = { ...note(path, 'notes~life', yaml('x: 0, y: 0', 'x: 0, y: 160'), home.revision), metadata: listing };
+  served.set(path, { ...stored, content: yaml('x: 0, y: 0', 'x: 0, y: 400') });
+  updateWorkingNote(draftStore(home), path, { note: { ...stored, content: yaml('x: 48, y: 80', 'x: 0, y: 160'), metadata: { title: 'Board', tags: [] } }, base: stored });
+  const { commitWorkingNotes } = commitHook();
+  await expect(commitWorkingNotes([change(path, home)], 'board: move')).rejects.toThrow(/changes\.reviewRequired/);
+  expect(commits).toEqual([]);
+  expect(readWorkingNotes(draftStore(home))[path]).toMatchObject({ note: { content: yaml('x: 48, y: 80', 'x: 0, y: 400') }, base: { content: yaml('x: 0, y: 0', 'x: 0, y: 400') } });
+  await commitWorkingNotes([change(path, home)], 'board: move');
+  expect(commits.map(commit => commit.notes.map((item: any) => [item.path, item.content]))).toEqual([[[path, yaml('x: 48, y: 80', 'x: 0, y: 400')]]]);
+});

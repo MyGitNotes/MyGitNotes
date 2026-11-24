@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { NOTEBOOK_KEY_MAX_LENGTH, parseNotebookKey } from './notebook-key.js';
 import { type StudyProgression, StudyProgressionSchema } from './study-stages.js';
 import { isNoteHidden } from './note-status.js';
-import { type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
+import { compilationExtensions, type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
 import { boardCounts, BoardSchema, checkBoard, type CompilationBoard, fitBoard, orderedBoard, relocateBoard, remapBoardItems } from './compilation-board.js';
 import { COMPILATION_MAX_HEADINGS, COMPILATION_MAX_ORDER, compilationId as id, compilationRepoPath as repoPath } from './compilation-primitives.js';
 
@@ -77,8 +77,6 @@ export const CompilationFileSchema = knownCompilationFields.superRefine((file, c
   }
   if (file.board) checkBoard(file.board, { items: file.items, group: file.group }, (message, path) => context.addIssue({ code: 'custom', message, path }));
 });
-// Opaque to MGN and not part of any listing/API metadata. Enumerable so row and file spreads carry it through edits.
-const compilationExtensions = Symbol('compilation extensions');
 interface CompilationExtraFields {
   description?: string;
   [compilationExtensions]?: CompilationYamlExtensions;

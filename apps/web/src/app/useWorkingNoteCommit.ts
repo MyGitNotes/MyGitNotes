@@ -4,7 +4,8 @@ import { liveEditableKind } from '../lib/live-api.js';
 import { serializeNoteFile } from '@mygitnotes/core/note-file';
 import { addVersion } from '@mygitnotes/core/note-versions';
 import { noteRefKey } from '@mygitnotes/core/note-query';
-import { mergeNote, sameValue } from '../lib/merge-note.js';
+import { mergeCompilation, mergeNote, sameValue } from '../lib/merge-note.js';
+import { isCompilationPath } from '@mygitnotes/core/compilation';
 import { ApiError, commitRemoteNotes, fetchWorkspace, type GistConfirmation, type GistSync, type PublishSync, readNotes, syncConfirmedGists } from '../lib/api.js';
 import { createdGistConfirmations, forgetCreatedGist } from '../lib/created-gists.js';
 import { draftScope, draftStore, type WorkspaceRepository } from '../lib/workspace-repositories.js';
@@ -165,7 +166,8 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
           sent[entry.note.path] = entry;
           continue;
         }
-        const merged = mergeNote(entry.base, entry.note, latest);
+        // A compilation merges by entry, so moves of cards on neighbouring lines do not conflict.
+        const merged = isCompilationPath(entry.note.path) ? mergeCompilation(entry.note.path, entry.base, entry.note, latest) : mergeNote(entry.base, entry.note, latest);
         if (merged.conflict) {
           const blocked = 'Remote changes conflict with this draft. Open the note and Refresh remote version.';
           stageWorkingNote(entry.note, entry.base, blocked);

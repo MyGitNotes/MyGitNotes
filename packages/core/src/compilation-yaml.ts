@@ -7,6 +7,30 @@ export interface CompilationYamlExtensions {
   directives: Document['directives'];
 }
 
+/** Where a parsed compilation keeps its extensions: opaque to MGN and not part of any listing/API metadata; enumerable so row and file spreads carry it through edits. */
+export const compilationExtensions = Symbol('compilation extensions');
+
+/** The JS values of extension entries, by key; undefined when a key is not a scalar, which cannot be matched across files. */
+export function extensionValues(extensions: CompilationYamlExtensions | undefined): Map<unknown, unknown> | undefined {
+  const values = new Map<unknown, unknown>();
+  if (!extensions) return values;
+  const document = new YAML.Document(new YAML.YAMLMap(), { schema: extensions.schema });
+  (document.contents as YAMLMap).items = [...extensions.entries];
+  for (const pair of extensions.entries) {
+    if (!YAML.isScalar(pair.key) || values.has(pair.key.value)) return undefined;
+    values.set(pair.key.value, YAML.isNode(pair.value) ? pair.value.toJS(document, { maxAliasCount: 20 }) : pair.value);
+  }
+  return values;
+}
+
+/** Extension entries built from values, in the schema and directives of `like`; aliases inside them become plain copies. */
+export function extensionsFromValues(values: ReadonlyMap<unknown, unknown>, like: CompilationYamlExtensions | undefined): CompilationYamlExtensions | undefined {
+  if (!values.size) return;
+  const document = new YAML.Document(null, { schema: like?.schema });
+  if (like?.directives) document.directives = like.directives.clone();
+  return { schema: document.schema, directives: document.directives, entries: (document.createNode(new Map(values), { aliasDuplicateObjects: false }) as YAMLMap).items as Pair[] };
+}
+
 /** Separates the extensions from a valid document so edits to known fields cannot affect them. */
 export function takeCompilationExtensions(document: Document, knownKeys: ReadonlySet<string>): CompilationYamlExtensions | undefined {
   const map = document.contents;

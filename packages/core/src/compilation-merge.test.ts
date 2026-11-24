@@ -1,0 +1,133 @@
+import { describe, expect, it } from 'vitest';
+import YAML from 'yaml';
+import { compilationFile, compilationRow, parseCompilation, serializeCompilation } from './compilation.js';
+import { mergeCompilationText } from './compilation-merge.js';
+
+// The example of the whiteboard spec's file format.
+const example = `version: 1
+id: chapter-3
+title: 第三章：德性與依據
+arrangement: board
+items:
+  - id: h1
+    kind: heading
+    title: 一、問題
+  - id: n1
+    kind: note
+    path: notes/thesis/第三章導論.md
+  - id: n2
+    kind: note
+    path: notes/thesis/依據關係的因果條件.md
+  - id: h2
+    kind: heading
+    title: 二、德性知識論
+  - id: n3
+    kind: note
+    path: notes/thesis/德性與能力的區分.md
+board:
+  sections:
+    - { item: h1, x: 0, y: 0, w: 288, h: 384 }
+    - { item: h2, x: 336, y: 0, w: 560, h: 384 }
+  cards:
+    - { item: n1, x: 24, y: 56 }
+    - { item: n2, x: 24, y: 216 }
+    - { item: n3, x: 360, y: 56 }
+  texts:
+    - { id: t8k2m, x: 960, y: 240, w: 200, text: "口試前要定案：\\n德性是否必要？", color: teal }
+  arrows:
+    - { id: a3f9q, from: { item: n1 }, to: { item: n2 }, label: 提出 }
+    - { id: b7c1z, from: { item: n2 }, to: { item: n3 }, label: 需要 }
+`;
+const n1 = '    - { item: n1, x: 24, y: 56 }\n', n2 = '    - { item: n2, x: 24, y: 216 }\n';
+/** `text` with each `[from, to]` replaced once, checking that `from` is there. */
+const edit = (text: string, ...changes: [string, string][]) =>
+  changes.reduce((current, [from, to]) => {
+    expect(current).toContain(from);
+    return current.replace(from, to);
+  }, text);
+const item = (id: string, path: string) => `  - id: ${id}\n    kind: note\n    path: ${path}\n`;
+const itemsOf = (text: string) => parseCompilation(text).items!.map(entry => entry.id);
+
+describe('compilation merge by entry', () => {
+  it('merges two drafts that move cards on adjacent lines', () => {
+    const local = edit(example, [n1, '    - { item: n1, x: 48, y: 80 }\n']);
+    const remote = edit(example, [n2, '    - { item: n2, x: 24, y: 400 }\n']);
+    expect(mergeCompilationText(example, local, remote)).toEqual({ conflict: false, text: edit(example, [n1, '    - { item: n1, x: 48, y: 80 }\n'], [n2, '    - { item: n2, x: 24, y: 400 }\n']) });
+  });
+  it('conflicts when both move one card differently, and agrees when they move it alike', () => {
+    const local = edit(example, [n1, '    - { item: n1, x: 48, y: 56 }\n']);
+    expect(mergeCompilationText(example, local, edit(example, [n1, '    - { item: n1, x: 24, y: 80 }\n']))).toEqual({ conflict: true });
+    expect(mergeCompilationText(example, local, local)).toEqual({ conflict: false, text: local });
+  });
+  it('merges an arrow added on one side with a rename on the other', () => {
+    const arrow = '    - { id: c9d2e1x0, from: { item: n3 }, to: { text: t8k2m } }\n';
+    const local = example + arrow;
+    const remote = edit(example, ['title: 第三章：德性與依據\n', 'title: 第三章：德性\n']);
+    expect(mergeCompilationText(example, local, remote)).toEqual({ conflict: false, text: edit(local, ['title: 第三章：德性與依據\n', 'title: 第三章：德性\n']) });
+    // Texts added on both sides are both kept.
+    const text = (id: string) => `    - { id: ${id}, x: 0, y: 600, text: A }\n`;
+    const texts = (id: string) => edit(example, ['  arrows:\n', `${text(id)}  arrows:\n`]);
+    expect(mergeCompilationText(example, texts('ta'), texts('tb'))).toEqual({ conflict: false, text: edit(example, ['  arrows:\n', `${text('ta')}${text('tb')}  arrows:\n`]) });
+  });
+  it('keeps external fields, merging them as values', () => {
+    const base = `${example}translationKey: ch3 # the blog's key\nblog: { slug: chapter-3 }\n`;
+    const local = edit(base, [n1, '    - { item: n1, x: 48, y: 80 }\n']);
+    const remote = edit(base, ['translationKey: ch3', 'translationKey: ch3b']);
+    // The side whose external fields stand keeps their text, comments included.
+    expect(mergeCompilationText(base, local, remote)).toEqual({ conflict: false, text: edit(remote, [n1, '    - { item: n1, x: 48, y: 80 }\n']) });
+    expect(mergeCompilationText(base, remote, local)).toEqual({ conflict: false, text: edit(remote, [n1, '    - { item: n1, x: 48, y: 80 }\n']) });
+    // External fields changed on both sides merge field by field, and one field changed differently conflicts.
+    const both = mergeCompilationText(base, edit(local, ['slug: chapter-3', 'slug: c3']), remote);
+    expect(both).toMatchObject({ conflict: false });
+    expect(externalFields(both)).toEqual({ translationKey: 'ch3b', blog: { slug: 'c3' } });
+    expect(mergeCompilationText(base, edit(base, ['translationKey: ch3', 'translationKey: other']), remote)).toEqual({ conflict: true });
+  });
+  it('answers undefined, for the line merge, when a side is not a valid compilation', () => {
+    const invalid = edit(example, [n1, '    - { item: gone, x: 24, y: 56 }\n']);
+    expect(mergeCompilationText(example, invalid, example)).toBeUndefined();
+    expect(mergeCompilationText(example, example, 'items: [')).toBeUndefined();
+    expect(mergeCompilationText(invalid, example, example)).toBeUndefined();
+  });
+  it('merges items reordered on one side and added on the other, and conflicts on two different orders', () => {
+    const reordered = edit(example, [item('n1', 'notes/thesis/第三章導論.md') + item('n2', 'notes/thesis/依據關係的因果條件.md'), item('n2', 'notes/thesis/依據關係的因果條件.md') + item('n1', 'notes/thesis/第三章導論.md')]);
+    const added = edit(example, [item('n1', 'notes/thesis/第三章導論.md'), item('n1', 'notes/thesis/第三章導論.md') + item('n4', 'notes/thesis/new.md')]);
+    for (const [local, remote] of [[reordered, added], [added, reordered]]) {
+      const merged = mergeCompilationText(example, local, remote);
+      expect(merged).toMatchObject({ conflict: false });
+      expect(itemsOf((merged as { text: string; }).text)).toEqual(['h1', 'n2', 'n1', 'n4', 'h2', 'n3']);
+    }
+    // An item added to the end of a chapter stays at its end.
+    const appended = edit(example, ['  - id: h2\n', `${item('n4', 'notes/thesis/new.md')}  - id: h2\n`]);
+    const swapped = edit(reordered, ['  - id: h1\n    kind: heading\n    title: 一、問題\n' + item('n2', 'notes/thesis/依據關係的因果條件.md'), item('n2', 'notes/thesis/依據關係的因果條件.md') + '  - id: h1\n    kind: heading\n    title: 一、問題\n']);
+    expect(itemsOf((mergeCompilationText(example, swapped, appended) as { text: string; }).text)).toEqual(['n2', 'h1', 'n1', 'n4', 'h2', 'n3']);
+    const other = edit(example, [item('n3', 'notes/thesis/德性與能力的區分.md'), ''], ['  - id: h2\n', `${item('n3', 'notes/thesis/德性與能力的區分.md')}  - id: h2\n`]);
+    expect(mergeCompilationText(example, reordered, other)).toEqual({ conflict: true });
+    expect(mergeCompilationText(example, reordered, reordered)).toEqual({ conflict: false, text: reordered });
+  });
+  it('conflicts when one side removes what the other changed or newly names', () => {
+    const file = parseCompilation(example);
+    const row = compilationRow(file, { notebookId: 'thesis', path: 'notes/thesis/chapter-3.compilation.yml' });
+    if (row.kind !== 'custom') throw new Error('expected a custom row');
+    // Removing an item removes its card and arrows, through compilationFile.
+    const removed = serializeCompilation(compilationFile({ ...row, items: row.items.filter(entry => entry.id !== 'n2') }));
+    expect(mergeCompilationText(example, removed, edit(example, [n2, '    - { item: n2, x: 24, y: 400 }\n']))).toEqual({ conflict: true });
+    // An arrow added to the removed item would name nothing: the merged file is invalid, so the drafts conflict.
+    const arrowed = `${example}    - { id: d4, from: { item: n1 }, to: { item: n2 } }\n`;
+    expect(mergeCompilationText(example, removed, arrowed)).toEqual({ conflict: true });
+    // Untouched elsewhere, the removal merges with a move of another card.
+    const moved = edit(example, ['    - { item: n3, x: 360, y: 56 }\n', '    - { item: n3, x: 360, y: 90 }\n']);
+    expect(mergeCompilationText(example, removed, moved)).toEqual({ conflict: false, text: edit(removed, ['    - { item: n3, x: 360, y: 56 }\n', '    - { item: n3, x: 360, y: 90 }\n']) });
+  });
+  it('merges a dynamic board by path and folder', () => {
+    const dynamic = `version: 1\nid: clues\ntitle: Clues\narrangement: board\nsource:\n  kind: folder\n  path: notes/one/cases\n  recursive: true\ngroup: folder\nboard:\n  sections:\n    - { folder: notes/one/cases/a, x: 0, y: 0 }\n  cards:\n    - { path: notes/one/cases/a/x.md, x: 24, y: 56 }\n    - { path: notes/one/cases/b/y.md, x: 400, y: 56 }\n`;
+    const local = edit(dynamic, ['a/x.md, x: 24', 'a/x.md, x: 30']);
+    const remote = edit(dynamic, ['b/y.md, x: 400', 'b/y.md, x: 420'], ['cases/a, x: 0', 'cases/a, x: 8']);
+    expect(mergeCompilationText(dynamic, local, remote)).toEqual({ conflict: false, text: edit(remote, ['a/x.md, x: 24', 'a/x.md, x: 30']) });
+  });
+});
+
+/** The external fields of a merged file. */
+function externalFields(merged: ReturnType<typeof mergeCompilationText>) {
+  const { translationKey, blog } = YAML.parse((merged as { text: string; }).text) as Record<string, unknown>;
+  return { translationKey, blog };
+}
