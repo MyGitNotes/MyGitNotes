@@ -15,6 +15,17 @@ ol.ig-process { display: grid; gap: 2.25rem; }
 .ig-figure .ig-stage-items.is-many .ig-stage-item { border: 1px solid var(--ig-line); padding: 0.25rem 0.5rem; background: var(--color-surface); }
 .ig-stage-item-detail { font-size: 0.8rem; font-weight: 400; color: var(--color-muted); }
 
+/* Fall-backs stay below the step, outside its item grid. */
+.ig-figure .ig-stage-backs { display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; margin-top: 0.5rem; }
+.ig-figure .ig-stage-back { min-width: 0; border: 1px dashed var(--ig-neutral); border-radius: var(--radius-control, 6px); padding: 0.1rem 0.5rem; font-size: 0.8rem; color: var(--color-muted); }
+.ig-back-target { color: var(--color-text); }
+.ig-back-target::before { content: '↺ 回到「'; }
+.ig-back-target::after { content: '」'; }
+.ig-back-when::before { content: '：'; }
+:lang(en) .ig-back-target::before { content: '↺ back to “'; }
+:lang(en) .ig-back-target::after { content: '”'; }
+:lang(en) .ig-back-when::before { content: ': '; }
+
 @media (prefers-reduced-motion: no-preference) {
   @keyframes ig-stage-travel { from { transform: translateY(-2.25rem); } to { transform: translateY(-0.5rem); } }
   .ig-figure .ig-stage + .ig-stage > .ig-stage-head::before { position: absolute; top: 0; left: 1.5rem; width: 0.6rem; height: 0.6rem; margin-left: -0.25rem; border-radius: 50%; background: var(--ig-hl); content: ''; animation: ig-stage-travel 1.2s ease-in-out infinite both; animation-delay: calc(var(--ig-i) * 0.4s); }

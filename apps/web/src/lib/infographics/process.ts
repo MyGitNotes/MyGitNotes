@@ -1,6 +1,9 @@
 import { escapeHtml, fencedCodeLines, infographicEnd, parseDirectiveOpen } from '../directives.js';
 import { attrOf, fail, highlightClass, type InlineRenderer, tag } from './figure-html.js';
-import { fieldSource, fieldStrong, isList, type ListField, listBlocks, listFields, paragraphInlines } from './markdown-list.js';
+import { fieldPlain, fieldSource, fieldStrong, isList, type ListField, listBlocks, listFields, paragraphInlines } from './markdown-list.js';
+
+const BACK = '↺';
+const MAX_BACKS = 2;
 
 interface Stage {
   attrs: Record<string, string>;
@@ -36,9 +39,23 @@ function stageItems(items: ListField[][], r: InlineRenderer): string {
   }));
 }
 
+function backMarkers(items: ListField[][], earlier: Set<string>, r: InlineRenderer): string {
+  if (items.length > MAX_BACKS) fail(`a process stage takes at most ${MAX_BACKS} ↺ markers`);
+  return tag('ul', { class: 'ig-stage-backs' }, items.map(fields => {
+    const [marker, when] = fields;
+    const target = fieldPlain(marker).replaceAll('*', '').trim().slice(BACK.length).trim();
+    if (!target || fields.length > 2) fail('a process back marker takes ↺ 目標步驟｜條件');
+    if (!earlier.has(target)) fail(`${BACK} ${target} must name an earlier stage`);
+    const children = [tag('span', { class: 'ig-back-target' }, escapeHtml(target))];
+    if (when && fieldSource(when)) children.push(tag('span', { class: 'ig-back-when' }, r.inline(fieldSource(when))));
+    return tag('li', { class: 'ig-stage-back' }, children);
+  }));
+}
+
 export function processFlow(body: string, r: InlineRenderer): string {
   const stages = readStages(body);
   if (!stages.length) fail('process needs :::stage children');
+  const earlier = new Set<string>();
   return tag('ol', { class: 'ig-process' }, stages.map(({ attrs, items }, index) => {
     const title = attrOf(attrs, 'title');
     if (!title) fail('every process stage needs a title');
@@ -46,7 +63,12 @@ export function processFlow(body: string, r: InlineRenderer): string {
     const head = [tag('span', { class: 'ig-stage-title' }, escapeHtml(title))];
     if (time) head.unshift(tag('span', { class: 'ig-stage-time' }, escapeHtml(time)));
     const children = [tag('p', { class: 'ig-stage-head' }, head)];
-    if (items.length) children.push(stageItems(items, r));
+    const regular: ListField[][] = [];
+    const backs: ListField[][] = [];
+    for (const item of items) (fieldPlain(item[0]).trimStart().startsWith(BACK) ? backs : regular).push(item);
+    if (regular.length) children.push(stageItems(regular, r));
+    if (backs.length) children.push(backMarkers(backs, earlier, r));
+    earlier.add(title);
     return tag('li', { class: ['ig-stage', ...highlightClass(Object.hasOwn(attrs, 'highlight'))], style: `--ig-i:${index}` }, children);
   }));
 }

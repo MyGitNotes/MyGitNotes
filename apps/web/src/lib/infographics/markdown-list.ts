@@ -41,6 +41,14 @@ export function fieldSource(field: ListField): string {
   return field.map(token => token.raw).join('').trim();
 }
 
+export function fieldPlain(field: ListField): string {
+  return field.map(token => {
+    if ('tokens' in token && token.tokens) return fieldPlain(token.tokens);
+    if (token.type === 'mathInline') return String(token.tex);
+    return 'text' in token && typeof token.text === 'string' ? token.text : token.raw;
+  }).join('');
+}
+
 export function fieldStrong(field: ListField): boolean {
   const meaningful = field.filter(token => token.type !== 'text' || token.raw.trim());
   return meaningful.length > 0 && meaningful.every(token => token.type === 'strong');
