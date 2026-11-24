@@ -102,5 +102,5 @@ export function toggleList(layout: BrowseColumnsLayout, stored: StoredBrowseColu
   return { stored: { ...stored, listCollapsed: layout.list }, heldOpen };
 }
 
-/** The list beside the Focus, or the board above the Focus. */
+/** The list beside the Focus, or the board (beside a Focus, or folded into the list column; see `BrowseColumns`). */
 export type BrowsePresentation = 'list' | 'kanban';

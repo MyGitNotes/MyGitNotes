@@ -29,7 +29,7 @@ const page = (layout: BrowseColumnsLayout, board: boolean, note: JSX.Element) =>
   </I18nProvider>
 );
 
-it('keeps the note mounted, not remounted, while the columns beside it fold, open, and the board moves above it', () => {
+it('keeps the note mounted, not remounted, while the columns beside it fold, open, and the board moves beside it', () => {
   const mounts = vi.fn();
   const unmounts = vi.fn();
   const note = <Note mounts={mounts} unmounts={unmounts} />;

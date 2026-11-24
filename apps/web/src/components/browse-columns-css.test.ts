@@ -7,12 +7,15 @@ const split = fs.readFileSync(path.resolve(__dirname, 'kanban-focus-split.css'),
 const rules = [...(css + split).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector!.replace(/\/\*[\s\S]*?\*\//g, '').trim(), body: body!.trim() }));
 const rule = (selector: string) => rules.find(candidate => candidate.selector === selector)?.body ?? '';
 
-describe('the board above the Focus', () => {
-  it('takes the space beside notebooks, with zero height reserved for an absent Focus', () => {
+describe('the board beside the Focus', () => {
+  it('takes the space beside notebooks at full height, with zero width reserved for an absent Focus', () => {
     const board = rule('.kanban-focus-split[data-board]');
     expect(board).toMatch(/flex:\s*1 1 0%/);
-    expect(board).toContain('grid-template-rows: minmax(0, 100fr) 0px minmax(0, 0fr)');
-    expect(rule('.kanban-focus-split[data-split]')).toContain('grid-template-rows: minmax(0, var(--kanban-board-share)) 8px minmax(0, var(--kanban-focus-share))');
+    expect(board).toContain('grid-template-columns: minmax(0, 100fr) 0px minmax(0, 0fr)');
+    expect(board).toContain('grid-template-rows: minmax(0, 1fr)');
+    expect(rule('.kanban-focus-split[data-split]')).toContain('grid-template-columns: minmax(0, var(--kanban-board-share)) 8px minmax(0, var(--kanban-focus-share))');
+    expect(rule('.kanban-focus-split[data-board] > .browse-column-note')).toMatch(/grid-column:\s*3/);
+    expect(rule('.kanban-focus-divider')).toMatch(/cursor:\s*col-resize/);
     expect(rule('.browse-column[hidden]')).toMatch(/display:\s*none/);
   });
 

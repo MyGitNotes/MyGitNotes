@@ -154,7 +154,7 @@ describe('the three columns', () => {
     expect(screen.queryByRole('button', { name: 'Show note list' })).not.toBeInTheDocument();
   });
 
-  it('puts the Focus below the board and remembers the keyboard resize across mounts', () => {
+  it('puts the Focus beside the board at full height and remembers the keyboard resize across mounts', () => {
     const { rerender, unmount } = render(<Page presentation='kanban' />);
     const board = listColumn();
     rerender(<Page note='a' presentation='kanban' layout={{ notebooks: 'open', list: false }} />);
@@ -165,23 +165,35 @@ describe('the three columns', () => {
     expect(board.nextElementSibling).toBe(divider);
     expect(divider.nextElementSibling).toContainElement(focus);
     expect(focus).toBeVisible();
-    expect(divider).toHaveAttribute('aria-orientation', 'horizontal');
-    const initial = Number(divider.getAttribute('aria-valuenow'));
+    expect(divider).toHaveAttribute('aria-orientation', 'vertical');
+    expect(divider).toHaveAttribute('aria-valuenow', '60');
     fireEvent.keyDown(divider, { key: 'Home' });
     expect(divider.getAttribute('aria-valuenow')).toBe(divider.getAttribute('aria-valuemin'));
-    fireEvent.keyDown(divider, { key: 'ArrowUp' });
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' });
     expect(divider.getAttribute('aria-valuenow')).toBe(divider.getAttribute('aria-valuemin'));
     fireEvent.keyDown(divider, { key: 'End' });
     const max = Number(divider.getAttribute('aria-valuemax'));
     expect(divider).toHaveAttribute('aria-valuenow', String(max));
-    fireEvent.keyDown(divider, { key: 'ArrowUp' });
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' });
     expect(divider).toHaveAttribute('aria-valuenow', String(max - 5));
-    expect(max - 5).not.toBe(initial);
+    fireEvent.keyDown(divider, { key: 'ArrowRight' });
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' });
+    expect(divider).toHaveAttribute('aria-valuenow', String(max - 5));
     expect(screen.queryByRole('button', { name: 'Hide note list' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show note list' })).not.toBeInTheDocument();
     unmount();
     render(<Page note='a' presentation='kanban' />);
     expect(screen.getByRole('separator')).toHaveAttribute('aria-valuenow', String(max - 5));
+  });
+
+  it('drops the board height kept for the old board above the Focus', () => {
+    window.localStorage.setItem('github-notes:kanban-board-share', '30');
+    render(<Page note='a' presentation='kanban' />);
+    const divider = screen.getByRole('separator');
+    expect(divider).toHaveAttribute('aria-valuenow', '60');
+    fireEvent.keyDown(divider, { key: 'ArrowRight' });
+    expect(window.localStorage.getItem('github-notes:kanban-board-share')).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem('mygitnotes:kanban')!)).toMatchObject({ boardShare: 65 });
   });
 });
 
