@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { NOTEBOOK_KEY_MAX_LENGTH, parseNotebookKey } from './notebook-key.js';
 import { type StudyProgression, StudyProgressionSchema } from './study-stages.js';
 import { isNoteHidden } from './note-status.js';
+import { type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
 
 /** The workspace `schema_version` that replaced the Screen file with compilation files. */
 export const COMPILATION_SCHEMA_VERSION = 3;
@@ -58,7 +59,9 @@ export const COMPILATION_SIZES = ['thumbnail', 'small', 'medium'] as const;
 export const COMPILATION_GROUPS = ['folder'] as const;
 
 /** The stored file; it never repeats the notebook, which the path decides. */
-export const CompilationFileSchema = z.object({ version: z.literal(1), id, title: z.string().trim().min(1).max(100), arrangement: z.enum([...COMPILATION_ARRANGEMENTS, 'stack']).transform(value => value === 'stack' ? 'book' as const : value), size: z.enum(COMPILATION_SIZES).optional(), tags: z.array(tag).max(100).optional(), status: z.string().trim().min(1).max(200).optional(), items: z.array(FileItemSchema).max(COMPILATION_MAX_ITEMS + COMPILATION_MAX_HEADINGS).optional(), source: FileSourceSchema.optional(), sort: SortSchema.optional(), group: z.enum(COMPILATION_GROUPS).optional(), manualOrder: z.array(repoPath).max(COMPILATION_MAX_ORDER).optional(), study: StudySchema.optional(), progression: StudyProgressionSchema.optional(), graph: GraphLayoutSchema.optional() }).strict().superRefine((file, context) => {
+const knownCompilationFields = z.object({ version: z.literal(1), id, title: z.string().trim().min(1).max(100), description: z.string().trim().max(500).transform(value => value || undefined).optional(), arrangement: z.enum([...COMPILATION_ARRANGEMENTS, 'stack']).transform(value => value === 'stack' ? 'book' as const : value), size: z.enum(COMPILATION_SIZES).optional(), tags: z.array(tag).max(100).optional(), status: z.string().trim().min(1).max(200).optional(), items: z.array(FileItemSchema).max(COMPILATION_MAX_ITEMS + COMPILATION_MAX_HEADINGS).optional(), source: FileSourceSchema.optional(), sort: SortSchema.optional(), group: z.enum(COMPILATION_GROUPS).optional(), manualOrder: z.array(repoPath).max(COMPILATION_MAX_ORDER).optional(), study: StudySchema.optional(), progression: StudyProgressionSchema.optional(), graph: GraphLayoutSchema.optional() });
+const knownCompilationKeys = new Set(Object.keys(knownCompilationFields.shape));
+export const CompilationFileSchema = knownCompilationFields.superRefine((file, context) => {
   if ((file.items === undefined) === (file.source === undefined)) context.addIssue({ code: 'custom', message: 'Give exactly one of items or source', path: ['items'] });
   if (file.sort && !file.source) context.addIssue({ code: 'custom', message: 'sort applies to a source', path: ['sort'] });
   if (file.group && !file.source) context.addIssue({ code: 'custom', message: 'group applies to a source', path: ['group'] });
@@ -73,7 +76,13 @@ export const CompilationFileSchema = z.object({ version: z.literal(1), id, title
     ids.add(item.id);
   }
 });
-export type CompilationFile = z.infer<typeof CompilationFileSchema>;
+// Opaque to MGN and not part of any listing/API metadata. Enumerable so row and file spreads carry it through edits.
+const compilationExtensions = Symbol('compilation extensions');
+interface CompilationExtraFields {
+  description?: string;
+  [compilationExtensions]?: CompilationYamlExtensions;
+}
+export type CompilationFile = z.infer<typeof CompilationFileSchema> & CompilationExtraFields;
 export type CompilationFileItem = z.infer<typeof FileItemSchema>;
 
 /** Whether an item is a chapter heading. */
@@ -123,7 +132,7 @@ export interface CompilationSort {
   field: 'updated' | 'created' | 'title' | 'status' | 'manual';
   order: 'asc' | 'desc';
 }
-interface CompilationRowBase {
+interface CompilationRowBase extends CompilationExtraFields {
   id: string;
   name: string;
   notebookId: string;
@@ -170,14 +179,20 @@ const stripSlash = (value: string) => value.replace(/\/+$/, '');
 export function parseCompilation(raw: string, scope?: readonly string[]): CompilationFile {
   if (new TextEncoder().encode(raw).length > COMPILATION_MAX_BYTES) throw new CompilationError('Compilation file exceeds 512 KiB');
   let value: unknown;
+  let document: YAML.Document;
   try {
-    value = YAML.parse(raw, { maxAliasCount: 20 });
+    document = YAML.parseDocument(raw);
+    if (document.errors.length) throw document.errors[0];
+    value = document.toJS({ maxAliasCount: 20 });
   } catch (error) {
     throw new CompilationError(`Invalid YAML: ${(error as Error).message.split('\n')[0]}`);
   }
   const parsed = CompilationFileSchema.safeParse(value);
   if (!parsed.success) throw new CompilationError(describeIssues(parsed.error));
-  const file = parsed.data;
+  const file: CompilationFile = parsed.data;
+  if (file.description === undefined) delete file.description;
+  const extensions = takeCompilationExtensions(document, knownCompilationKeys);
+  if (extensions) file[compilationExtensions] = extensions;
   if (scope !== undefined && file.source?.kind === 'folder') {
     const roots = scope.map(stripSlash);
     const folder = file.source.path;
@@ -188,8 +203,9 @@ export function parseCompilation(raw: string, scope?: readonly string[]): Compil
 
 export function serializeCompilation(file: CompilationFile): string {
   const { version, id, title, arrangement, size, tags, status, items, source, sort, group, manualOrder, study, progression, graph } = file;
-  const ordered = { version, id, title, arrangement, ...(size ? { size } : {}), ...(tags?.length ? { tags } : {}), ...(status ? { status } : {}), ...(items ? { items } : {}), ...(source ? { source } : {}), ...(sort ? { sort } : {}), ...(group ? { group } : {}), ...(manualOrder?.length ? { manualOrder } : {}), ...(study ? { study } : {}), ...(progression ? { progression } : {}), ...(graph ? { graph } : {}) };
-  return YAML.stringify(ordered, { lineWidth: 0 });
+  const description = file.description?.trim();
+  const ordered = { version, id, title, ...(description ? { description } : {}), arrangement, ...(size ? { size } : {}), ...(tags?.length ? { tags } : {}), ...(status ? { status } : {}), ...(items ? { items } : {}), ...(source ? { source } : {}), ...(sort ? { sort } : {}), ...(group ? { group } : {}), ...(manualOrder?.length ? { manualOrder } : {}), ...(study ? { study } : {}), ...(progression ? { progression } : {}), ...(graph ? { graph } : {}) };
+  return writeCompilationYaml(ordered, file[compilationExtensions]);
 }
 
 /**
@@ -200,7 +216,7 @@ export function serializeCompilation(file: CompilationFile): string {
 export function compilationRow(file: CompilationFile, owner: { notebookId: string; path: string; }, notebookOf: (path: string) => string | undefined = () => undefined): CompilationRow {
   const notebookAt = (path: string) => notebookOf(path) ?? owner.notebookId;
   const view: CompilationView = file.arrangement === 'lane' ? file.size ?? 'small' : file.arrangement;
-  const base = { id: file.id, name: file.title, notebookId: owner.notebookId, path: owner.path, view, ...(file.size ? { size: file.size } : {}), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}), ...(file.graph ? { graph: file.graph } : {}), ...(file.progression ? { progression: file.progression } : {}), ...(file.study ? { study: file.study } : {}) };
+  const base = { ...compilationExtraFields(file), id: file.id, name: file.title, notebookId: owner.notebookId, path: owner.path, view, ...(file.size ? { size: file.size } : {}), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}), ...(file.graph ? { graph: file.graph } : {}), ...(file.progression ? { progression: file.progression } : {}), ...(file.study ? { study: file.study } : {}) };
   if (file.items) {
     return { ...base, kind: 'custom', items: file.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { ...item, notebookId: notebookAt(item.path) }) };
   }
@@ -208,11 +224,18 @@ export function compilationRow(file: CompilationFile, owner: { notebookId: strin
   return { ...base, kind: 'dynamic', source: source.kind === 'tag' ? { ...source, notebookId: owner.notebookId } : { ...source, notebookId: notebookAt(source.path) }, ...(file.sort ? { sort: file.sort } : {}), ...(file.group ? { group: file.group } : {}), ...(file.manualOrder?.length ? { manualOrder: file.manualOrder } : {}) };
 }
 
+/** Descriptive fields that belong to the whole compilation, independent of source and arrangement. */
+export function compilationExtraFields(value?: CompilationExtraFields): CompilationExtraFields {
+  const description = value?.description;
+  const extensions = value?.[compilationExtensions];
+  return { ...(description ? { description } : {}), ...(extensions ? { [compilationExtensions]: extensions } : {}) };
+}
+
 /** The stored form of a lane model; the inverse of `compilationRow`. */
 export function compilationFile(row: CompilationRow): CompilationFile {
   const lane = row.view !== 'graph' && row.view !== 'book';
   const size = lane ? row.view as CompilationFile['size'] : row.size;
-  const common = { version: 1 as const, id: row.id, title: row.name, arrangement: lane ? 'lane' as const : row.view as 'graph' | 'book', ...(size ? { size } : {}), ...(row.tags?.length ? { tags: row.tags } : {}), ...(row.status ? { status: row.status } : {}), ...(row.study ? { study: row.study } : {}), ...(row.progression ? { progression: row.progression } : {}), ...(row.graph ? { graph: row.graph } : {}) };
+  const common = { ...compilationExtraFields(row), version: 1 as const, id: row.id, title: row.name, arrangement: lane ? 'lane' as const : row.view as 'graph' | 'book', ...(size ? { size } : {}), ...(row.tags?.length ? { tags: row.tags } : {}), ...(row.status ? { status: row.status } : {}), ...(row.study ? { study: row.study } : {}), ...(row.progression ? { progression: row.progression } : {}), ...(row.graph ? { graph: row.graph } : {}) };
   if (row.kind === 'custom') return { ...common, items: row.items.map(item => item.kind === 'youtube' || item.kind === 'heading' ? item : { id: item.id, kind: item.kind, path: item.path, ...(item.kind === 'note' && item.anchor ? { anchor: item.anchor } : {}) }) };
   const source = row.source.kind === 'tag' ? { kind: 'tag' as const, tag: row.source.tag } : { kind: 'folder' as const, path: row.source.path, recursive: row.source.recursive };
   return { ...common, source, ...(row.sort ? { sort: row.sort } : {}), ...(row.group ? { group: row.group } : {}), ...(row.manualOrder?.length ? { manualOrder: row.manualOrder } : {}) };
@@ -240,7 +263,7 @@ const fileTitle = (path: string) => path.split('/').pop()!.slice(0, -COMPILATION
 export function compilationFields(raw: string, path: string, scope?: readonly string[]): CompilationFields {
   try {
     const file = parseCompilation(raw, scope);
-    return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? listedItems(file.items) : { sourceKind: file.source!.kind, ...(file.group ? { group: file.group } : {}) }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}) } };
+    return { title: file.title, tags: file.tags ?? [], status: file.status, metadata: { id: file.id, title: file.title, ...(file.description ? { description: file.description } : {}), arrangement: file.arrangement, ...(file.size ? { size: file.size } : {}), ...(file.items ? listedItems(file.items) : { sourceKind: file.source!.kind, ...(file.group ? { group: file.group } : {}) }), ...(file.tags?.length ? { tags: file.tags } : {}), ...(file.status ? { status: file.status } : {}) } };
   } catch (error) {
     let value: unknown;
     try {
@@ -254,36 +277,37 @@ export function compilationFields(raw: string, path: string, scope?: readonly st
   }
 }
 
-/** Carries the caller's `tags` and `status` into the stored file, keeping its comments and order; a file that is not a YAML mapping is returned as it is. */
+/** Carries the caller's `tags` and `status` into the stored file. Non-mappings are returned as they are. */
 export function applyCompilationMetadata(raw: string, metadata: { tags?: unknown; status?: unknown; }): string {
   const document = YAML.parseDocument(raw);
   if (document.errors.length || !YAML.isMap(document.contents)) return raw;
   const stored = document.toJS({ maxAliasCount: 20 }) as Record<string, unknown>;
   const tags = Array.isArray(metadata.tags) ? metadata.tags.map(String) : [];
   const status = typeof metadata.status === 'string' && metadata.status ? metadata.status : undefined;
-  let changed = false;
-  if (JSON.stringify(stored.tags ?? []) !== JSON.stringify(tags)) {
+  const tagsChanged = JSON.stringify(stored.tags ?? []) !== JSON.stringify(tags);
+  if (!tagsChanged && stored.status === status) return raw;
+  const extensions = takeCompilationExtensions(document, knownCompilationKeys);
+  if (tagsChanged) {
     if (tags.length) document.set('tags', tags);
     else document.delete('tags');
-    changed = true;
   }
   if (stored.status !== status) {
     if (status) document.set('status', status);
     else document.delete('status');
-    changed = true;
   }
-  return changed ? document.toString({ lineWidth: 0 }) : raw;
+  return stringifyCompilationYaml(document, extensions);
 }
 
-/** Replaces only the `tags` key of a compilation file, keeping every other field, its comments and order; a file that is not a YAML mapping is returned as it is. */
+/** Replaces only the `tags` value of a compilation file. Non-mappings are returned as they are. */
 export function replaceCompilationTags(raw: string, tags: readonly string[]): string {
   const document = YAML.parseDocument(raw);
   if (document.errors.length || !YAML.isMap(document.contents)) return raw;
   const stored = (document.toJS({ maxAliasCount: 20 }) as { tags?: unknown; }).tags ?? [];
   if (JSON.stringify(stored) === JSON.stringify(tags)) return raw;
+  const extensions = takeCompilationExtensions(document, knownCompilationKeys);
   if (tags.length) document.set('tags', [...tags]);
   else document.delete('tags');
-  return document.toString({ lineWidth: 0 });
+  return stringifyCompilationYaml(document, extensions);
 }
 
 /** Rewrites the paths a compilation pins when files or folders move; returns the new text, or null when nothing it names moved. */
@@ -291,13 +315,12 @@ export function relocateCompilation(raw: string, move: (path: string) => string)
   const document = YAML.parseDocument(raw);
   if (document.errors.length || !YAML.isMap(document.contents)) return null;
   const value = document.toJS({ maxAliasCount: 20 }) as { items?: { kind?: string; path?: unknown; }[]; source?: { kind?: string; path?: unknown; }; manualOrder?: unknown[]; graph?: { nodes?: { path?: unknown; }[]; }; };
-  let changed = false;
+  const edits: { location: (string | number)[]; next: string; }[] = [];
   const update = (location: (string | number)[], current: unknown) => {
     if (typeof current !== 'string') return;
     const next = move(current);
     if (next === current) return;
-    document.setIn(location, next);
-    changed = true;
+    edits.push({ location, next });
   };
   value.items?.forEach((item, index) => {
     if (item.kind !== 'youtube') update(['items', index, 'path'], item.path);
@@ -305,7 +328,10 @@ export function relocateCompilation(raw: string, move: (path: string) => string)
   if (value.source?.kind === 'folder') update(['source', 'path'], value.source.path);
   if (Array.isArray(value.manualOrder)) value.manualOrder.forEach((path, index) => update(['manualOrder', index], path));
   value.graph?.nodes?.forEach((node, index) => update(['graph', 'nodes', index, 'path'], node.path));
-  return changed ? document.toString({ lineWidth: 0 }) : null;
+  if (!edits.length) return null;
+  const extensions = takeCompilationExtensions(document, knownCompilationKeys);
+  for (const { location, next } of edits) document.setIn(location, next);
+  return stringifyCompilationYaml(document, extensions);
 }
 
 /** A file name stem from a title: letters and digits of any script, dashes between words. */

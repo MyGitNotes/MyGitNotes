@@ -226,6 +226,7 @@
 .screen-lane-header { justify-content: space-between; padding: 4px 8px; margin-bottom: 6px; gap: 6px 10px; flex-wrap: wrap; }
 .screen-lane-heading { flex: 1 1 180px; flex-wrap: wrap; gap: 6px; }
 .screen-lane-heading h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.screen-lane-description { flex: 0 0 100%; margin: 0; color: var(--color-muted); font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .screen-count { font-size: 10px; color: var(--color-muted); }
 .screen-dynamic-label { display: inline-flex; align-items: center; gap: 5px; color: var(--color-primary); font-size: 10px; max-width: min(220px, 100%); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .screen-lane-actions { flex: none; gap: 3px; flex-wrap: wrap; max-width: 100%; }

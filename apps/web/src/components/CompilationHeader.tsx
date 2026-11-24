@@ -183,6 +183,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
         )}
         {extra}
       </div>
+      {row.description && <p className='screen-lane-description'>{row.description}</p>}
     </header>
   );
 }
