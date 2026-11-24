@@ -2,7 +2,7 @@ import YAML from 'yaml';
 import { NoteMetadata } from './types.js';
 import { stampSaveTimestamps } from './note-timestamps.js';
 import { fillEmptyBlock, FRONTMATTER_REGEX, patchFrontmatterField } from './frontmatter-patch.js';
-import { createFrontmatterDocument, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
+import { carrySourceStyle, createFrontmatterDocument, frontmatterStyleSource, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 import { NOTE_H1 } from './note-title.js';
 
 export { stringifyFrontmatterYaml } from './frontmatter-yaml.js';
@@ -93,8 +93,9 @@ function quoteTimestampScalars(document: YAML.Document): void {
   }
 }
 
-function stringifyMetadata(metadata: NoteMetadata): string {
-  const doc = createFrontmatterDocument(metadata);
+/** `metadata` as frontmatter YAML; a key `source` (the frontmatter it replaces) holds keeps the style it was written in there. */
+function stringifyMetadata(metadata: NoteMetadata, source?: YAML.Node): string {
+  const doc = createFrontmatterDocument(metadata, source);
   quoteTimestampScalars(doc);
   return doc.toString();
 }
@@ -285,19 +286,22 @@ export function serializeNoteContent(metadata: NoteMetadata, content: string, is
   const keys = Object.keys(stamped);
   const trimmedContent = content.trim();
 
+  let source: YAML.Node | undefined;
   if (existingRaw !== undefined) {
     const existing = parseNoteContent(existingRaw);
     if (existing.hasFrontmatter && existing.content === content) {
       const patched = patchNoteMetadata(existingRaw, stamped);
       if (patched !== null) return patched;
     }
+    // A rewrite of the whole block keeps each key's style as the note wrote it (e.g. a bare date stays a date for js-yaml).
+    if (existing.hasFrontmatter) source = frontmatterStyleSource(existingRaw.match(FRONTMATTER_REGEX)?.[1] ?? '');
   }
 
   if (keys.length === 0) {
     return trimmedContent ? `${trimmedContent}\n` : '';
   }
 
-  const yamlStr = stringifyMetadata(stamped).trim();
+  const yamlStr = stringifyMetadata(stamped, source).trim();
   // Outline markers and annotations are editable source: trimming an empty `- `
   // removes its content column, and trimming indentation can change its hierarchy.
   if (preserveBodyWhitespace && content) {
@@ -327,7 +331,7 @@ export function replaceNoteStatus(raw: string, status: string | null): string {
     const offset = raw.indexOf('\n') + 1;
     const patch = (start: number, end: number, text: string) => raw.slice(0, offset + start) + text + raw.slice(offset + end);
     const node = new YAML.Scalar(status);
-    if (YAML.isScalar(pair?.value) && ['QUOTE_SINGLE', 'QUOTE_DOUBLE'].includes(pair.value.type || '')) node.type = pair.value.type;
+    if (pair) carrySourceStyle(node, pair.value);
     const rendered = stringifyFrontmatterYaml(node, { lineWidth: 0 }).trimEnd();
     if (!pair) {
       if (map.flow) {
@@ -377,7 +381,7 @@ export function replaceNoteTags(raw: string, tags: string[]): string {
   if (!pair || !YAML.isNode(pair.value) || !pair.value.range || !pair.key.range) return raw;
 
   const flow = YAML.isSeq(pair.value) ? pair.value.flow === true : false;
-  const newDocument = createFrontmatterDocument({ tags });
+  const newDocument = createFrontmatterDocument({ tags }, map);
   if (flow && tags.length > 0) {
     const seqNode = newDocument.get('tags', true);
     if (YAML.isSeq(seqNode)) seqNode.flow = true;

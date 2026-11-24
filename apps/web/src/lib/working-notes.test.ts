@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearCommittedNotes, deletionEntry, readStoredWorkingNotes, readWorkingNotes, updateWorkingNote, workingDiff, workingNotesKey } from './working-notes.js';
 import type { NoteItem } from './types.js';
+import { serializeNoteFile } from '@mygitnotes/core/note-file';
 
 const base: NoteItem = { id: 'a', path: 'notes/ex/a.md', notebookId: 'kb~ex', title: 'A', content: '# A\n', metadata: { custom: 'keep' }, tags: [], revision: 'one' };
 beforeEach(() => {
@@ -26,6 +27,12 @@ describe('working note diff previews', () => {
     expect(diff.match(/^--- notes\/ex\/a.md$/gm)).toHaveLength(1);
     expect(workingDiff({ [base.path]: { base, note: base } })).toBe('');
     expect(workingDiff({})).toBe('');
+  });
+
+  it('previews a new date-like field quoted, as the commit writes it (YQR-F002)', () => {
+    const note = { ...base, metadata: { custom: 'keep', due: '2026-11-24' } };
+    expect(workingDiff({ [base.path]: { base, note } })).toContain('+due: "2026-11-24"\n');
+    expect(serializeNoteFile(base.path, note.metadata, note.content, false, new Date(0), `---\ncustom: keep\n---\n${base.content}`)).toContain('due: "2026-11-24"\n');
   });
 
   it('shows a new note as additions including its frontmatter', () => {

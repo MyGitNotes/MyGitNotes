@@ -1,5 +1,5 @@
 import YAML from 'yaml';
-import { frontmatterYamlOptions, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
+import { quotePortably, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 
 const SKILL_ENTRY = /^(.*\/(?:\.agents|\.codex|\.claude|\.agent)\/skills|(?:\.agents|\.codex|\.claude|\.agent)\/skills)\/([^/]+)\/SKILL\.md$/;
 const VALID_SKILL_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -71,8 +71,15 @@ export function renameAgentSkillEntryContent(content: string, oldDirectory: stri
   const rewritten = rewriteAgentSkillReferences(content, oldDirectory, newDirectory);
   const match = rewritten.match(FRONTMATTER);
   if (!match) return `---\n${stringifyFrontmatterYaml({ name: newSlug })}---\n\n${rewritten}`;
-  const document = YAML.parseDocument(match[1], frontmatterYamlOptions);
+  const document = YAML.parseDocument(match[1]);
   if (document.errors.length || !YAML.isMap(document.contents)) throw new Error('Fix the SKILL.md frontmatter before renaming this skill.');
   document.set('name', newSlug);
+  // Every other field keeps its bytes' style. The name is the new slug an agent's skill loader reads, so a plain one is
+  // quoted where a YAML 1.1 reader would take it for another type (`on`, `no`); a quoted one stays quoted.
+  const name = document.get('name', true);
+  if (YAML.isScalar(name) && name.type === 'PLAIN') {
+    name.type = undefined;
+    quotePortably(name);
+  }
   return `---\n${document.toString({ lineWidth: 0 }).trimEnd()}\n---\n${rewritten.slice(match[0].length)}`;
 }

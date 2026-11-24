@@ -1,8 +1,8 @@
-import YAML from 'yaml';
 import type { NoteItem } from './types.js';
 import { sameValue } from './merge-note.js';
 import { createUnifiedDiff } from './unified-diff.js';
 import { isBareNotebookId } from '@mygitnotes/core/notebook-key';
+import { stringifyFrontmatterYaml } from '@mygitnotes/core/frontmatter';
 import { isNotebookKey, notebookIdCodec } from './notebook-keys.js';
 import { demoExpired, noteDemoWrite } from './demo-storage.js';
 
@@ -84,8 +84,9 @@ export function clearCommittedNotes(store: DraftStore, sent: WorkingNotes): Work
   return keyedEntries(entries, store.alias);
 }
 
+/** The drafts as a diff; frontmatter is written as a commit writes it, a key without a stored style quoted as there (YQR-F002). */
 export function workingDiff(entries: WorkingNotes): string {
-  const raw = (note: NoteItem) => `---\n${YAML.stringify(note.metadata)}---\n${note.content}`;
+  const raw = (note: NoteItem) => `---\n${stringifyFrontmatterYaml(note.metadata)}---\n${note.content}`;
   return Object.values(entries).map(({ note, base, deleted }) => createUnifiedDiff(note.path, note.path, base ? raw(base) : null, deleted ? null : raw(note))).filter(Boolean).join('\n');
 }
 

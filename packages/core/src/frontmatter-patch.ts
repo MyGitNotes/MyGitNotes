@@ -1,5 +1,5 @@
 import YAML from 'yaml';
-import { createFrontmatterDocument, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
+import { carrySourceStyle, createFrontmatterDocument, stringifyFrontmatterYaml } from './frontmatter-yaml.js';
 
 /**
  * A note's leading frontmatter block: `---` on the first line, the YAML, and a closing `---` that ends its line (trailing
@@ -103,7 +103,7 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
 
   if (isCollection || YAML.isSeq(oldValue) || YAML.isMap(oldValue)) {
     const flow = (YAML.isSeq(oldValue) || YAML.isMap(oldValue)) ? oldValue.flow === true : false;
-    const newDocument = createFrontmatterDocument({ [key]: value });
+    const newDocument = createFrontmatterDocument({ [key]: value }, map);
     if (flow) {
       const newNode = newDocument.get(key, true);
       if (YAML.isSeq(newNode) || YAML.isMap(newNode)) newNode.flow = true;
@@ -122,7 +122,8 @@ export function patchFrontmatterField(raw: string, key: string, value: unknown):
   // The extracted YAML omits the newline before the closing delimiter, same as the deletion branch above.
   const consumeEnd = isLastField ? cstEnd + closing.length : cstEnd;
   const node = new YAML.Scalar(value);
-  if (YAML.isScalar(oldValue) && ['QUOTE_SINGLE', 'QUOTE_DOUBLE'].includes(oldValue.type || '')) node.type = oldValue.type;
+  // The value keeps the style it was written in: bare stays bare, quoted stays quoted (`carrySourceStyle`).
+  carrySourceStyle(node, oldValue);
   if (typeof oldValue.comment === 'string') node.comment = oldValue.comment;
   // Rendered inside its own key so a multiline value gets a block-scalar indicator with
   // correctly indented content, matching where it would sit under the real key.

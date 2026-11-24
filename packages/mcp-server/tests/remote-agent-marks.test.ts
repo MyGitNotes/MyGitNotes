@@ -18,3 +18,13 @@ it('marks the commits of cp, mv and replace_notes as agent edits', async () => {
   expect(replaced.commit.message).toMatch(/^docs\(notes\): replace "Beta" across 1 notes \(Agent, /);
   expect(isAgentEdit(replaced.commit.message)).toBe(true);
 });
+
+// A post of an Astro blog reads `pubDatetime` with `z.date()`: a replace in its body leaves its bare date bare.
+it('keeps the frontmatter style the stored note wrote when replace_notes rewrites its body', async () => {
+  const post = '---\npubDatetime: 2026-11-24T09:00:00+08:00\ndate: 2025-01-01\ndraft: no\n---\n\nOld words.\n';
+  const f = gitlabFixture(undefined, { 'notes/ex/post.md': post });
+  await callRemoteTool(reader(f), 'replace_notes', { search: 'Old', replace: 'New', revision: f.head }, true);
+  const written = f.files.get('notes/ex/post.md')!;
+  expect(written).toContain('New words.');
+  expect(written.split('\n')).toEqual(expect.arrayContaining(['pubDatetime: 2026-11-24T09:00:00+08:00', 'date: 2025-01-01', 'draft: no']));
+});

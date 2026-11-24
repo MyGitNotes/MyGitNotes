@@ -45,6 +45,12 @@ describe('agent skill metadata', () => {
     expect(renameAgentSkillEntryContent(content, '.agents/skills/run', '.agents/skills/execute', 'execute')).toBe('---\nname: execute\ndescription: Run the tests, then run lint.\ncustom: keep\n---\nUse $run at `.agents/skills/execute/SKILL.md`.\n');
   });
 
+  it('leaves fields the rename does not change as written (YQR-F001)', () => {
+    const content = '---\nname: run\nreleased: 2025-01-01\nenabled: yes\nv: 1.0\n---\n# Run\n';
+    expect(renameAgentSkillEntryContent(content, '.agents/skills/run', '.agents/skills/go', 'go')).toBe(content.replace('name: run', 'name: go'));
+    expect(renameAgentSkillEntryContent(content.replace('name: run', "name: 'run'"), '.agents/skills/run', '.agents/skills/go', 'go')).toBe(content.replace('name: run', "name: 'go'"));
+  });
+
   it('writes a skill name that YAML 1.1 could read as a boolean as text', () => {
     const oldDir = '.agents/skills/run';
     const newDir = '.agents/skills/on';

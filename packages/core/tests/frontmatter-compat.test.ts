@@ -41,10 +41,10 @@ describe('portable YAML frontmatter', () => {
     expect(readFrontmatter(raw, '1.2').options).toEqual(options);
   });
 
-  it('quotes changed fields and updated while leaving untouched frontmatter and body bytes alone on save', () => {
+  it('keeps a changed field as written, quotes a new one and updated, and leaves untouched frontmatter and body bytes alone on save', () => {
     const raw = '---\r\ncreated: "2000-01-01T00:00:00.000Z"\r\nlegacy: 2025-01-01 # untouched\r\ndate: old # keep\r\n---\r\n\r\nBody\n';
-    const result = save({ ...parseNoteContent(raw).metadata, date: '2026-11-24' }, raw);
-    expect(result).toBe(raw.replace('date: old # keep', 'date: "2026-11-24" # keep\r\nupdated: "2026-11-24T10:00:00.000Z"'));
+    const result = save({ ...parseNoteContent(raw).metadata, date: '2026-11-24', due: '2026-12-01' }, raw);
+    expect(result).toBe(raw.replace('date: old # keep', 'date: 2026-11-24 # keep\r\ndue: "2026-12-01"\r\nupdated: "2026-11-24T10:00:00.000Z"'));
   });
 
   it('uses the same quoting when Live creates a block or patches an existing one', () => {
@@ -60,7 +60,7 @@ describe('portable YAML frontmatter', () => {
     expect(raw.endsWith('---\nBody\n')).toBe(true);
   });
 
-  it.each(['Body\n', '---\n---\nBody\n', '---\ntitle: Note\n---\nBody\n', '---\nstatus: old # keep\n---\nBody\n'])('keeps status text when writing to %j', raw => {
+  it.each(['Body\n', '---\n---\nBody\n', '---\ntitle: Note\n---\nBody\n', '---\nstatus: "old" # keep\n---\nBody\n'])('keeps status text when writing to %j', raw => {
     expect(readFrontmatter(replaceNoteStatus(raw, 'on')).status).toBe('on');
   });
 
