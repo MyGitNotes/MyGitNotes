@@ -57,6 +57,11 @@ describe('camera', () => {
     expect(steppedZoom(.3, -1)).toBe(.25);
   });
 
+  it('shows both edges of a wide board on first phone open', () => {
+    const camera = fitCamera({ x: -500, y: -100, w: 1800, h: 600 }, { width: 390, height: 844 });
+    expect(camera.x - 500 * camera.zoom).toBeGreaterThanOrEqual(0);
+    expect(camera.x + 1300 * camera.zoom).toBeLessThanOrEqual(390);
+  });
   it('fits content clamped to 60%–100%, centring what fits and starting at the top-left of what does not', () => {
     const viewport = { width: 1000, height: 600 };
     const small = fitCamera({ x: 0, y: 0, w: 200, h: 100 }, viewport);

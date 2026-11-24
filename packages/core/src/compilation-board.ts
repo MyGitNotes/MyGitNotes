@@ -206,7 +206,11 @@ export function boardFromGraph(graph: GraphLayout, scope: { items?: readonly ({ 
   }
   // A board holds at most BOARD_MAX_CARDS positions; members past them are auto-placed when the board is drawn.
   const kept = placed.slice(0, BOARD_MAX_CARDS);
-  const { nodes } = arrangeGraphLayout({ nodes: kept.map((card, index) => ({ id: String(index), x: card.x, y: card.y, expanded: true, width: BOARD_CARD_WIDTH, height: BOARD_CARD_HEIGHT })) });
+  // Leave room at both extremes for all kept cards to separate before translating the layout.
+  const scale = (size: number) => Math.max(0, 1 - kept.length * (size + 64) / BOARD_COORDINATE_LIMIT);
+  const sx = kept.some(card => Math.abs(card.x) > BOARD_COORDINATE_LIMIT * scale(BOARD_CARD_WIDTH)) ? scale(BOARD_CARD_WIDTH) : 1;
+  const sy = kept.some(card => Math.abs(card.y) > BOARD_COORDINATE_LIMIT * scale(BOARD_CARD_HEIGHT)) ? scale(BOARD_CARD_HEIGHT) : 1;
+  const { nodes } = arrangeGraphLayout({ nodes: kept.map((card, index) => ({ id: String(index), x: card.x * sx, y: card.y * sy, expanded: true, width: BOARD_CARD_WIDTH, height: BOARD_CARD_HEIGHT })) });
   // Separating may push cards past an edge of the range; the layout shifts back inside as a whole, keeping its gaps.
   const shift = (values: number[], size: number) => {
     const low = Math.min(...values) - size / 2, high = Math.max(...values) + size / 2;

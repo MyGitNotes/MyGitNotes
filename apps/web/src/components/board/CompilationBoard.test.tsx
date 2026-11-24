@@ -17,7 +17,7 @@ import { CompilationView } from '../CompilationView.js';
 
 vi.mock('../../lib/note-editing.js', async importOriginal => ({ ...await importOriginal<typeof import('../../lib/note-editing.js')>(), useEditorRegistry: () => () => () => {}, useNoteEditing: () => editing }));
 
-const editing = { flushEditors: async () => true, refreshNotes: async () => {}, editorProps: () => ({ readOnly: false }), addToFocus: () => undefined, renameNote: () => () => {}, moveNote: () => () => {} };
+const editing = { flushEditors: async () => true, refreshNotes: async () => {}, editorProps: () => ({ readOnly: false }), addToFocus: () => () => {}, renameNote: () => () => {}, moveNote: () => () => {} };
 const notebooks = [{ id: 'thesis', title: 'Thesis', root: 'notes/thesis' }, { id: 'reading', title: 'Reading', root: 'notes/reading', icon: 'book', color: 'teal' as const }];
 const note = (notebookId: string, path: string, title: string, content: string, status?: string) => ({ id: path, path, notebookId, title, content, metadata: {}, tags: [] as string[], ...(status ? { status } : {}) });
 const save = vi.fn<(ref: NoteRef, text: string) => Promise<void>>();

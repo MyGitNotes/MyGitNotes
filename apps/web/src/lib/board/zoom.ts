@@ -81,7 +81,7 @@ export const cameraCentre = (camera: Camera, viewport: Size): Point => screenToB
  * larger than the viewport on an axis starts at its top or left edge, where the board's reading order starts. `top`
  * is the margin above, larger where controls float over the board's top edge.
  */
-export function fitCamera(content: Rect | undefined, viewport: Size, range: { min: number; max: number; } = { min: BOARD_FIT_MIN, max: BOARD_FIT_MAX }, margin = 32, top = margin): Camera {
+export function fitCamera(content: Rect | undefined, viewport: Size, range: { min: number; max: number; } = { min: viewport.width <= 767 ? Number.EPSILON : BOARD_FIT_MIN, max: BOARD_FIT_MAX }, margin = 32, top = margin): Camera {
   if (!content || viewport.width <= 0 || viewport.height <= 0) return { x: margin, y: top, zoom: range.max };
   const zoom = Math.min(range.max, Math.max(range.min, Math.min((viewport.width - 2 * margin) / Math.max(1, content.w), (viewport.height - margin - top) / Math.max(1, content.h))));
   const axis = (start: number, size: number, room: number, before: number, after: number) => size * zoom <= room - before - after ? before + (room - before - after) / 2 - (start + size / 2) * zoom : before - start * zoom;

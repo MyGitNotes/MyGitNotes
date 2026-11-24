@@ -74,7 +74,7 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
   const empty = !board.cards.length && !board.texts.length;
   return (
     <section id={`screen-lane-${row.id}`} className={`screen-lane screen-view-board board-arrangement ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`}>
-      <CompilationHeader {...header} row={row} count={board.cards.length} notebooks={notebooks} facets={facets} extra={extra} hideArrangement={phone} />
+      <CompilationHeader {...header} row={row} count={board.cards.length} notebooks={notebooks} facets={facets} extra={phone ? undefined : extra} hideArrangement={phone} />
       {lane.error && <p role='alert' className='screen-error'>{lane.error}</p>}
       {graph.error && showNoteLinks && <p role='alert' className='screen-error'>{graph.error}</p>}
       <BoardCanvas boardKey={`${row.notebookId}:${row.path}`} title={row.name} board={board} arrows={arrows} noteLinks={noteLinks} views={views} descriptions={descriptions} arrowTexts={arrowTexts} loaded={loaded} phone={phone} showNoteLinks={showNoteLinks} onNoteLinks={changeNoteLinks} onOpen={onOpen} />
