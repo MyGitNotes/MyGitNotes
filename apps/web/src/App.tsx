@@ -6,6 +6,7 @@ import { useWebAgentTools } from './app/useWebAgentTools.js';
 import { AddToOutlineDialog } from './components/AddToOutlineDialog.js';
 import { useFilterSidebar } from './app/useFilterSidebar.js';
 import { useTheme } from './app/useTheme.js';
+import { filesInitialPath } from './app/files-initial-path.js';
 import { useFilePanel } from './app/useFilePanel.js';
 import { useWorkspaceNotes } from './app/useWorkspaceNotes.js';
 import { useBrowseRoute } from './app/useBrowseRoute.js';
@@ -327,7 +328,7 @@ export const AppContent: React.FC = () => {
               )}
               {!notebookUnavailable && activeTab === 'assets' && (
                 <main className='workspace-route assets-main has-sidebar-drawer'>
-                  <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWriteFiles} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={new URLSearchParams(location.search).get('asset') || (new URLSearchParams(location.search).has('directory') ? `${folderRoot}/${config?.notebooks.find(nb => nb.id === selectedNotebookId)?.assets || 'assets'}${new URLSearchParams(location.search).get('directory') ? '/' + new URLSearchParams(location.search).get('directory') : ''}` : undefined)} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
+                  <FileManager key={`${sourceId}:${selectedNotebookId}`} ref={fileManagerRef} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} onNotebookChange={id => void setSelectedNotebookId(id)} writable={canWriteFiles} onSelectionChange={setSelectedFileEntry} metadataContainer={fileMetadataContainer} onShowMetadata={() => setFileMetadataOpen(true)} initialPath={filesInitialPath(location.search, folderRoot, selectedNotebook?.assets || 'assets')} onBusyChange={setResourceNavigationBusy} beforeChange={beforeFileChange} onChanged={onFilesChanged} onOpenIndex={openFileIndex} />
                 </main>
               )}
               {!notebookUnavailable && activeTab === 'notes' && route.study && <StudyRoute notebooks={config?.notebooks || []} folders={folders} notebookId={selectedNotebookId} notebook={selectedNotebook} path={route.study} remote={remote} refreshWorkspace={refreshWorkspace} invalidateNotes={invalidateNotes} setGitStatus={setGitStatus} setActionError={setActionError} handleOpenNote={handleOpenNote} navigate={navigate} />}
