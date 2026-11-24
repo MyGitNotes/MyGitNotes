@@ -62,7 +62,6 @@ function questionNodes(question: Question, list: Tokens.List | undefined, index:
   const branches = items.map(branchOf);
   const [leading, extra] = branches.filter(branch => branch.next);
   if (extra) fail('only one branch per question can lead to a next question; split the decision into two graphics');
-  if (index === 0 && !leading) fail('a decision needs at least 2 questions');
 
   const label = (field: ListField) => tag('span', { class: 'ig-branch-label' }, r.inline(fieldSource(field)));
   const rows = branches.filter(branch => !branch.next).map(branch => tag('li', { class: 'ig-branch' }, [label(branch.label), conclusion(branch.content, r)]));

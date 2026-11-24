@@ -31,10 +31,11 @@ The condition is optional, and fall-backs don’t count toward the item grid.
 ## Decision tree (`decision`)
 
 Write one nested list with one root question, followed optionally by `｜What to do first`.
-The tree takes two to five questions with two or three branches per question.
+The tree takes one to five questions with two or three branches per question.
 Each branch is `- Label｜Conclusion` or `- Label｜Next question｜What to do first` with a child list.
 At most one branch per question can lead to another question; the preview draws that branch last.
-Wrap a conclusion in `**…**` to highlight it, or start it with `↺` to mark a return to an earlier question.
+Wrap a conclusion in `**…**` to highlight it, or start it with `↺` to tell the reader what to redo.
+Use `↺` only once in a conclusion and only at its start.
 
 ```markdown
 :::decision{title="Can we publish?"}
