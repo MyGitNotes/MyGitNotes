@@ -32,10 +32,10 @@ describe('planNewCompilation', () => {
     expect(parseCompilation(none.content, [notebook.root]).status).toBeUndefined();
   });
 
-  it('creates a board as the graph older Cores read, keeping its board', async () => {
+  it('creates a board as a board, keeping its board', async () => {
     lookup.mockResolvedValue({ notes: [] });
     const plan = await planNewCompilation({ ...row, view: 'board', board: { texts: [{ id: 't1', x: 0, y: 0, text: 'T' }] } }, notebook, '');
-    expect(parseCompilation(plan.content, [notebook.root])).toMatchObject({ arrangement: 'graph', board: { texts: [{ id: 't1' }] } });
+    expect(parseCompilation(plan.content, [notebook.root])).toMatchObject({ arrangement: 'board', board: { texts: [{ id: 't1' }] } });
   });
 
   it('skips names that exist and gives up when every candidate is taken', async () => {

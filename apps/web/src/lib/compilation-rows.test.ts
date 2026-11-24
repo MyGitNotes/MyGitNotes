@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { NotebookConfig } from './types.js';
-import { parseCompilationNote } from './compilation-rows.js';
+import { compilationText, parseCompilationNote } from './compilation-rows.js';
 
 const notebooks: NotebookConfig[] = [{ id: 'nb1', title: 'NB1', root: 'notes/nb1' }];
 const content = 'version: 1\nid: dup\ntitle: Dup\narrangement: lane\nsource:\n  kind: tag\n  tag: x\n';
@@ -33,4 +33,14 @@ it("takes a dynamic folder source's notebook from its path and refuses a folder 
   const folder = (path: string) => ({ ...manual, content: `version: 1\nid: d\ntitle: D\narrangement: lane\nsource: { kind: folder, path: ${path} }\n` });
   expect(parseCompilationNote(folder('notes/b/sec'), repository).row).toMatchObject({ notebookId: 'r1~a', source: { notebookId: 'r1~b' } });
   expect(parseCompilationNote(folder('gone'), repository).error).toContain('outside every notebook');
+});
+it('reads the graph arrangement as a board, its legacy layout as cards, and writes the board without graph', () => {
+  const legacy = 'version: 1\nid: g\ntitle: G\narrangement: graph\nsource: { kind: tag, tag: x }\ngraph:\n  nodes:\n    - { path: notes/nb1/a.md, x: 0, y: 0 }\n    - { path: notes/nb1/b.md, x: 10, y: 10 }\n';
+  const row = parseCompilationNote({ ...note, content: legacy }, notebooks).row!;
+  expect(row.view).toBe('board');
+  expect(row.graph).toBeUndefined();
+  expect(row.board?.cards?.map(card => 'path' in card && card.path)).toEqual(['notes/nb1/a.md', 'notes/nb1/b.md']);
+  const text = compilationText(row);
+  expect(text).toContain('arrangement: board\n');
+  expect(text).not.toContain('graph');
 });

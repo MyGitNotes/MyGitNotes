@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CompilationPage, type CompilationRow, compilationSlug, uniqueCompilationPath } from '@mygitnotes/core/compilation';
 import { type NoteListItem, type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { useCompilationActions } from './compilation-actions.js';
-import { compilationMetadata, compilationText, newCompilationRow, parseCompilationNote, type ParsedCompilation, planCompilationWrites } from './compilation-rows.js';
+import { compilationMetadata, compilationText, parseCompilationNote, type ParsedCompilation, planCompilationWrites } from './compilation-rows.js';
 import { useEditorRegistry } from './note-editing.js';
 import { initialCompilationStatus } from './compilation-status.js';
 import { useNoteFacets, useNoteList, useNoteLookup } from './use-note-queries.js';
@@ -121,7 +121,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     const writes = planCompilationWrites(current, next.rows);
     if (!writes.save.length && !writes.create.length && !writes.remove.length) return;
     const taken = new Set([...current.map(row => row.path), ...Object.keys(latest.current.pending)]);
-    const created = writes.create.map(newCompilationRow).flatMap(row => {
+    const created = writes.create.flatMap(row => {
       if (row.path) return [row];
       if (!placeNew) return [];
       const path = placeNew(row, taken);
