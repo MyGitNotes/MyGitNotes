@@ -118,6 +118,51 @@ describe('compilation merge by entry', () => {
     const moved = edit(example, ['    - { item: n3, x: 360, y: 56 }\n', '    - { item: n3, x: 360, y: 90 }\n']);
     expect(mergeCompilationText(example, removed, moved)).toEqual({ conflict: false, text: edit(removed, ['    - { item: n3, x: 360, y: 56 }\n', '    - { item: n3, x: 360, y: 90 }\n']) });
   });
+  it('keeps an item added to a chapter in that chapter, wherever the other side moved the chapter', () => {
+    const items = (...ids: string[]) => `version: 1\nid: c\ntitle: C\narrangement: book\nitems:\n${ids.map(id => id.startsWith('h') ? `  - id: ${id}\n    kind: heading\n    title: ${id}\n` : item(id, `notes/${id}.md`)).join('')}`;
+    const base = items('h1', 'a', 'h2', 'b');
+    const merge = (local: string, remote: string) => mergeCompilationText(base, local, remote);
+    for (const [local, remote] of [[items('h2', 'b', 'h1', 'a'), items('h1', 'a', 'c', 'h2', 'b')], [items('h1', 'a', 'c', 'h2', 'b'), items('h2', 'b', 'h1', 'a')]]) {
+      expect(itemsOf((merge(local, remote) as { text: string; }).text)).toEqual(['h2', 'b', 'h1', 'a', 'c']);
+    }
+    // Added after an item the other side moved to another chapter, it still joins the chapter it was added to.
+    const after = mergeCompilationText(items('h1', 'a', 'd', 'h2', 'b'), items('h1', 'd', 'h2', 'b', 'a'), items('h1', 'a', 'c', 'd', 'h2', 'b'));
+    expect(itemsOf((after as { text: string; }).text)).toEqual(['h1', 'd', 'c', 'h2', 'b', 'a']);
+    // A chapter one side removed cannot take the item the other side added to it.
+    expect(merge(items('a', 'h2', 'b'), items('h1', 'a', 'c', 'h2', 'b'))).toEqual({ conflict: true });
+  });
+  it('conflicts when one side removes an item the other moved to another chapter', () => {
+    const items = (...ids: string[]) => `version: 1\nid: c\ntitle: C\narrangement: book\nitems:\n${ids.map(id => id.startsWith('h') ? `  - id: ${id}\n    kind: heading\n    title: ${id}\n` : item(id, `notes/${id}.md`)).join('')}`;
+    const base = items('h1', 'a', 'h2', 'b');
+    expect(mergeCompilationText(base, items('h1', 'h2', 'b'), items('h1', 'h2', 'b', 'a'))).toEqual({ conflict: true });
+    expect(mergeCompilationText(base, items('h1', 'h2', 'b', 'a'), items('h1', 'h2', 'b'))).toEqual({ conflict: true });
+    // Moved within its chapter, the removal stands.
+    const within = items('h1', 'a', 'x', 'h2', 'b');
+    expect(mergeCompilationText(within, items('h1', 'x', 'h2', 'b'), items('h1', 'x', 'a', 'h2', 'b'))).toMatchObject({ conflict: false });
+  });
+  it('compares and keeps external values with typed keys', () => {
+    const base = `${example}external: { 1: old, "1": string }\nother: x\n`;
+    const renamed = edit(base, ['title: 第三章：德性與依據\n', 'title: 第三章\n']);
+    const typed = edit(base, ['{ 1: old', '{ 1: new']);
+    const values = (merged: ReturnType<typeof mergeCompilationText>) => YAML.parseDocument((merged as { text: string; }).text).toJS({ mapAsMap: true }) as Map<unknown, unknown>;
+    expect(values(mergeCompilationText(base, renamed, typed)).get('external')).toEqual(new Map<unknown, unknown>([[1, 'new'], ['1', 'string']]));
+    // Two external fields changed, one on each side, are combined as written.
+    const merged = mergeCompilationText(base, edit(renamed, ['other: x', 'other: y']), typed);
+    expect(values(merged).get('external')).toEqual(new Map<unknown, unknown>([[1, 'new'], ['1', 'string']]));
+    expect(values(merged).get('other')).toBe('y');
+    expect((merged as { text: string; }).text).toContain('external: { 1: new, "1": string }\nother: y\n');
+    // An external field holding an anchor is not combined with the other side's fields: the line merge takes it.
+    const anchored = `${example}shared: &s { a: 1 }\nother: x\n`;
+    expect(mergeCompilationText(anchored, edit(anchored, ['other: x', 'other: y']), edit(anchored, ['a: 1', 'a: 2']))).toBeUndefined();
+  });
+  it('keeps an empty board one side added, and an emptied list the side that emptied it still writes', () => {
+    const lane = 'version: 1\nid: c\ntitle: C\narrangement: lane\nitems:\n' + item('a', 'notes/a.md');
+    const merged = mergeCompilationText(lane, `${lane}board: {}\n`, edit(lane, ['title: C\n', 'title: D\n']));
+    expect(parseCompilation((merged as { text: string; }).text)).toMatchObject({ title: 'D', board: {} });
+    const withCard = `${lane}board:\n  cards:\n    - { item: a, x: 0, y: 0 }\n`;
+    const emptied = mergeCompilationText(withCard, edit(withCard, ['    - { item: a, x: 0, y: 0 }\n', '    []\n']), edit(withCard, ['title: C\n', 'title: D\n']));
+    expect(parseCompilation((emptied as { text: string; }).text)).toMatchObject({ title: 'D', board: { cards: [] } });
+  });
   it('merges a dynamic board by path and folder', () => {
     const dynamic = `version: 1\nid: clues\ntitle: Clues\narrangement: board\nsource:\n  kind: folder\n  path: notes/one/cases\n  recursive: true\ngroup: folder\nboard:\n  sections:\n    - { folder: notes/one/cases/a, x: 0, y: 0 }\n  cards:\n    - { path: notes/one/cases/a/x.md, x: 24, y: 56 }\n    - { path: notes/one/cases/b/y.md, x: 400, y: 56 }\n`;
     const local = edit(dynamic, ['a/x.md, x: 24', 'a/x.md, x: 30']);

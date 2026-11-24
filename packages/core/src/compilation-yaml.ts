@@ -10,25 +10,46 @@ export interface CompilationYamlExtensions {
 /** Where a parsed compilation keeps its extensions: opaque to MGN and not part of any listing/API metadata; enumerable so row and file spreads carry it through edits. */
 export const compilationExtensions = Symbol('compilation extensions');
 
-/** The JS values of extension entries, by key; undefined when a key is not a scalar, which cannot be matched across files. */
-export function extensionValues(extensions: CompilationYamlExtensions | undefined): Map<unknown, unknown> | undefined {
-  const values = new Map<unknown, unknown>();
-  if (!extensions) return values;
+/** An extension entry, with its value as JS for comparison and whether it holds an alias or anchor, which ties it to other entries. */
+export interface ExtensionEntry {
+  pair: Pair;
+  value: unknown;
+  linked: boolean;
+}
+
+/**
+ * The extension entries by key. Values read maps as `Map`, so typed keys such as `1` and `"1"` stay apart. Undefined
+ * when a key, at the top or inside a value, is not a scalar, or a top key repeats: such entries cannot be matched across files.
+ */
+export function extensionEntries(extensions: CompilationYamlExtensions | undefined): Map<unknown, ExtensionEntry> | undefined {
+  const entries = new Map<unknown, ExtensionEntry>();
+  if (!extensions) return entries;
   const document = new YAML.Document(new YAML.YAMLMap(), { schema: extensions.schema });
   (document.contents as YAMLMap).items = [...extensions.entries];
   for (const pair of extensions.entries) {
-    if (!YAML.isScalar(pair.key) || values.has(pair.key.value)) return undefined;
-    values.set(pair.key.value, YAML.isNode(pair.value) ? pair.value.toJS(document, { maxAliasCount: 20 }) : pair.value);
+    if (!YAML.isScalar(pair.key) || entries.has(pair.key.value)) return undefined;
+    let linked = Boolean(pair.key.anchor), matchable = true;
+    if (YAML.isNode(pair.value)) {
+      YAML.visit(pair.value, {
+        Pair(_key, inner) {
+          if (inner.key !== null && !YAML.isScalar(inner.key)) matchable = false;
+        },
+        Node(_key, node) {
+          if (YAML.isAlias(node) || node.anchor) linked = true;
+        },
+      });
+    }
+    if (!matchable) return undefined;
+    entries.set(pair.key.value, { pair, value: YAML.isNode(pair.value) ? pair.value.toJS(document, { maxAliasCount: 20, mapAsMap: true }) : pair.value, linked });
   }
-  return values;
+  return entries;
 }
 
-/** Extension entries built from values, in the schema and directives of `like`; aliases inside them become plain copies. */
-export function extensionsFromValues(values: ReadonlyMap<unknown, unknown>, like: CompilationYamlExtensions | undefined): CompilationYamlExtensions | undefined {
-  if (!values.size) return;
+/** Extension entries made of `pairs`, copied as written, in the schema and directives of `like`. */
+export function extensionsFromPairs(pairs: readonly Pair[], like: CompilationYamlExtensions | undefined): CompilationYamlExtensions | undefined {
+  if (!pairs.length) return;
   const document = new YAML.Document(null, { schema: like?.schema });
-  if (like?.directives) document.directives = like.directives.clone();
-  return { schema: document.schema, directives: document.directives, entries: (document.createNode(new Map(values), { aliasDuplicateObjects: false }) as YAMLMap).items as Pair[] };
+  return { schema: document.schema, directives: like?.directives ? like.directives.clone() : document.directives, entries: pairs.map(pair => pair.clone()) };
 }
 
 /** Separates the extensions from a valid document so edits to known fields cannot affect them. */

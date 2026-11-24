@@ -90,5 +90,8 @@ describe('compilation reconciliation', () => {
     const remote = replace(compilation, ['title: Chapter 3', 'title: Virtue']);
     expect(mergeCompilation(path, file(compilation), file(invalid), file(remote))).toEqual({ conflict: false, draft: file(replace(invalid, ['title: Chapter 3', 'title: Virtue'])) });
     expect(mergeCompilation(path, file(compilation), file(replace(invalid, ['title: Chapter 3', 'title: Other'])), file(remote))).toEqual({ conflict: true });
+    // YAML whose alias names no anchor cannot take its metadata; it merges by line too.
+    const unresolved = `${compilation}blog: *nowhere\n`;
+    expect(mergeCompilation(path, file(compilation), file(unresolved), file(remote))).toEqual({ conflict: false, draft: file(replace(unresolved, ['title: Chapter 3', 'title: Virtue'])) });
   });
 });
