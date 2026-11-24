@@ -118,6 +118,9 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   };
   const copy = async () => {
     if (!row) return;
+    // A copy written from a legacy layout a whiteboard cannot keep would lose positions as a save would.
+    const loss = compilation.upgradeLoss.get(row.path);
+    if (loss) return compilation.setError(loss);
     try {
       const next = await planCompilationCopy(row, initialCompilationStatus(notebooks, notebookId, facets.facets));
       await actions.create(notebookId, next.path, next.content, next.metadata);

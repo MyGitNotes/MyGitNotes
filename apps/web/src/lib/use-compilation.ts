@@ -26,6 +26,8 @@ export interface CompilationController {
   setError: (message: string) => void;
   /** Whether every compilation shown may be written. */
   writable: boolean;
+  /** Files drawn but never written or copied, by path, with the reason: a legacy graph layout whose positions a whiteboard cannot keep. */
+  upgradeLoss: ReadonlyMap<string, string>;
 }
 
 interface ControllerInput {
@@ -172,7 +174,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   }, [flush]);
 
   const writable = rows.length > 0 ? rows.every(row => actions.canWrite(row.notebookId)) : false;
-  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, loading, saving, error: error || loadError, setError, writable };
+  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, loading, saving, error: error || loadError, setError, writable, upgradeLoss: lossy };
 }
 
 /**

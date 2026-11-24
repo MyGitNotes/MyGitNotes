@@ -22,6 +22,7 @@ const notebooks = [{ id: 'thesis', title: 'Thesis', root: 'notes/thesis' }, { id
 const note = (notebookId: string, path: string, title: string, content: string, status?: string) => ({ id: path, path, notebookId, title, content, metadata: {}, tags: [] as string[], ...(status ? { status } : {}) });
 const save = vi.fn<(ref: NoteRef, text: string) => Promise<void>>();
 const onOpenNote = vi.fn();
+const create = vi.fn();
 
 // The spec's example file, with an item from another notebook of the repository and one whose note is gone.
 const example = `version: 1
@@ -81,7 +82,7 @@ function open({ path, notebookId, raw, notes, members = [], links = [] }: { path
   });
   vi.stubGlobal('fetch', requests);
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-  const actions = { save, canWrite: () => true, remove: vi.fn(), create: vi.fn(), repository: () => undefined };
+  const actions = { save, canWrite: () => true, remove: vi.fn(), create, repository: () => undefined };
   const wrapper = ({ children }: { children: ReactNode; }) => (
     <MemoryRouter>
       <QueryClientProvider client={client}>
@@ -101,6 +102,7 @@ const description = (button: HTMLElement) => document.getElementById(button.getA
 beforeEach(() => {
   save.mockReset().mockResolvedValue();
   onOpenNote.mockReset();
+  create.mockReset();
   localStorage.clear();
   setNoteQueryScope({ sourceId: 'test', revisions: {}, repositories: {}, drafts: {} });
   vi.stubGlobal(
@@ -248,6 +250,21 @@ describe('the board, drawn', () => {
     const queries = requests.mock.calls.map(([input]) => new URL(String(input), 'http://localhost')).filter(url => url.pathname === '/api/notes/query');
     expect(queries.length).toBeGreaterThan(0);
     for (const url of queries) expect(url.searchParams.get('status')).toBeNull();
+  });
+
+  it('draws a legacy graph of more notes than a whiteboard keeps, and neither saves nor copies it', async () => {
+    const paths = Array.from({ length: 2001 }, (_, index) => `notes/thesis/${index}.md`);
+    const raw = `version: 1\nid: wide\ntitle: Wide\narrangement: graph\nsource: { kind: tag, tag: t }\ngraph:\n  nodes:\n${paths.map((path, index) => `    - { path: ${path}, x: ${index * 300}, y: 0 }`).join('\n')}\n`;
+    open({ path: 'notes/thesis/wide.compilation.yml', notebookId: 'thesis', raw, notes: [], members: [] });
+    const tabs = within(await screen.findByRole('group', { name: 'View size: Wide' }));
+    fireEvent.click(tabs.getByRole('button', { name: 'Book' }));
+    expect(await screen.findByText(/Wide: not saved, its legacy graph layout places 2001 notes/)).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More compilation actions: Wide' }), { key: 'ArrowDown' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Duplicate compilation' }));
+    await new Promise(resolve => setTimeout(resolve, 500));
+    expect(save).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(tabs.getByRole('button', { name: 'Whiteboard' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('on a phone: no arrangement switch, no minimap, and a tap opens the note', async () => {
