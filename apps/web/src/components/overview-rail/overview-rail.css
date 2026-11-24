@@ -30,8 +30,8 @@
 .overview-rail[data-dragging] .overview-rail-visible { fill: color-mix(in srgb, var(--color-primary) 24%, transparent); stroke: var(--color-primary); }
 .overview-rail-cursor { stroke: var(--color-primary); stroke-width: 2; }
 
-.overview-rail-popover { position: fixed; z-index: 60; width: 228px; padding: 0 8px 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-text); font-family: var(--font-body); font-size: 13px; }
-.overview-rail-popover-head { display: flex; align-items: center; gap: 12px; margin: 0 4px 8px; padding: 12px 2px 8px; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: 11px; }
+.overview-rail-popover { position: fixed; z-index: 60; width: 228px; padding: 8px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-md); color: var(--color-text); font-family: var(--font-body); font-size: 13px; }
+.overview-rail-popover-head { display: flex; align-items: center; gap: 12px; margin: 0 4px 6px; padding: 4px 2px 8px; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: 11px; }
 .overview-rail-popover ul { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
 .overview-rail-popover button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 32px; padding: 0 8px; border-radius: var(--radius-control); color: var(--color-text); text-align: left; }
 .overview-rail-popover button:hover, .overview-rail-popover button[data-active] { background: var(--color-primary-soft); }
@@ -39,4 +39,3 @@
 .overview-rail-depth { display: inline-flex; flex: none; align-items: center; width: 20px; color: var(--color-muted); font-size: 11px; }
 .overview-rail-popover button[data-active] .overview-rail-depth { color: var(--color-primary); }
 .overview-rail-label { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
-.overview-rail-popover-foot { margin: 10px 4px 0; overflow: hidden; color: var(--color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }

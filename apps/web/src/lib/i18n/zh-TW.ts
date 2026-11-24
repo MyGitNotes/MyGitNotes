@@ -1436,7 +1436,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.overviewRail': '捲軸總覽',
   'editor.overviewRailHint': '在桌面編輯器右緣以文件縮圖取代捲軸，顯示目前位置。',
   'editor.overviewNearby': '附近標題',
-  'editor.overviewClickHint': '點一下跳至標題',
   'editor.findInNote': '搜尋筆記內文',
   'editor.findShortcut': '前導鍵後按 F',
   'editor.findPlaceholder': '搜尋文字…',

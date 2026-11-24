@@ -37,16 +37,8 @@ export function RailPopover({ mode, nearby, section, measure, pointerTop, onChoo
   });
   return createPortal(
     <div ref={box} className='overview-rail-popover' data-side={placed?.side} style={{ left: placed?.left ?? 0, top: placed?.top ?? 0, visibility: placed ? 'visible' : 'hidden' }} onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave} onMouseDown={event => event.preventDefault()}>
-      <div className='overview-rail-popover-head'>
-        <span>{t('editor.overviewNearby')}</span>
-        {section && (
-          <>
-            <span aria-hidden='true'>/</span>
-            <span>{section}</span>
-          </>
-        )}
-      </div>
-      <ul>
+      {section && <div className='overview-rail-popover-head'>{section}</div>}
+      <ul aria-label={t('editor.overviewNearby')}>
         {nearby.items.map((item, index) => (
           <li key={item.index}>
             <button
@@ -62,7 +54,6 @@ export function RailPopover({ mode, nearby, section, measure, pointerTop, onChoo
           </li>
         ))}
       </ul>
-      <p className='overview-rail-popover-foot'>{t('editor.overviewClickHint')}</p>
     </div>,
     document.body,
   );

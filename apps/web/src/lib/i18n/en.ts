@@ -1435,7 +1435,6 @@ export const en = {
   'editor.overviewRail': 'Scroll overview',
   'editor.overviewRailHint': 'Shows a minimap of the note in place of the editor scrollbar on desktop.',
   'editor.overviewNearby': 'Nearby headings',
-  'editor.overviewClickHint': 'Click to go to the heading',
   'editor.findInNote': 'Find in note',
   'editor.findShortcut': 'Leader then F',
   'editor.findPlaceholder': 'Find text…',
