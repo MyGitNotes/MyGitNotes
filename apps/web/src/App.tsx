@@ -152,7 +152,8 @@ export const AppContent: React.FC = () => {
   const tagWorkspace = useTagWorkspaceOperations({ queryClient, queryScope, repositories, remote, canWrite: canManageTags, t, invalidateNotes, setRepositoryRevision, setActionError });
   const { tagOperations, handleUndoTagOperation } = tagWorkspace;
 
-  const { editorNotebookId, returnTo, route, activeTab, sidebarGestureRef, selectedFolders, folderRoot, selectedFolder, scopeNotebookId, selectedStatus, showHidden } = useBrowseRoute({ editorRoute, config, location, queryState, setFileMetadataOpen, loading, loadError, filtersOpen, setFiltersOpen, selectedNotebookId, focusNoteRoute: noteLink.inFocus, repositoryId: notebookUnavailable ? undefined : repositoryFor(selectedNotebookId)?.id, folders, foldersLoading, phone });
+  const browseRepositoryId = notebookUnavailable ? undefined : repositoryFor(selectedNotebookId)?.id;
+  const { editorNotebookId, returnTo, route, activeTab, sidebarGestureRef, selectedFolders, folderRoot, selectedFolder, scopeNotebookId, selectedStatus, showHidden } = useBrowseRoute({ editorRoute, config, location, queryState, setFileMetadataOpen, loading, loadError, filtersOpen, setFiltersOpen, selectedNotebookId, focusNoteRoute: noteLink.inFocus, repositoryId: browseRepositoryId, folders, foldersLoading, phone });
 
   /** The repository the header names: the shown notebook's, else the default repository's. */
   const currentRepository = pageRepository(repositories, sourceId, { tab: activeTab, allNotebooks: route.allNotebooks, notebookId: selectedNotebookId });
@@ -162,7 +163,7 @@ export const AppContent: React.FC = () => {
 
   const { hasActiveTab, focusCapacity, noteFocus, focusDisplay, focusNarrowView, setFocusNarrowView, addingToFocus, setAddingToFocus, activePaneNote, activeNotePath, focusDocumentPanel, setDocumentContainer, showFocus, requestClear, confirmingClear, setConfirmingClear } = useFocusPanes({ selectedNotebookId, notebookRepository: repositoryFor(selectedNotebookId)?.id ?? '', focusPage, remote, sourceId, repoRoot, activeTab, route, canWrite: canWriteNotebook(selectedNotebookId), editorRegistry, location, navigate, editorRoute, resolveBareNotebook, focusNoteRoute: noteLink.inFocus, notebookRoot: config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root });
 
-  const navigation = useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
+  const navigation = useWorkspaceNavigation({ repositoryId: browseRepositoryId, filterVocabulary: browseFacets.filterVocabulary, location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook });
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder } = navigation;
 
   const changeDialog = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });

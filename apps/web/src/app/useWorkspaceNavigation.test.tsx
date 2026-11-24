@@ -45,7 +45,7 @@ function notesAt(url: string, { foldersLoading = false, rememberedNotebook = nul
     const selectedNotebookId = openingNotebook({ routed: editorRoute.notebook ?? undefined, remembered: rememberedNotebook, config });
     const workspaceConfig = config as never;
     const browse = useBrowseRoute({ editorRoute, config: workspaceConfig, location, queryState, setFileMetadataOpen, loading: false, loadError: '', filtersOpen, setFiltersOpen, selectedNotebookId, focusNoteRoute: isFocusNoteState(location.state), phone: false, folders, foldersLoading, repositoryId });
-    const navigation = useWorkspaceNavigation({ location, navigate, ...browse, editorRoute, selectedNotebookId, config: workspaceConfig, loading: false, resolveBareNotebook, queryState, setFilterQuery, viewMode: 'flat', editorRegistry, fileManagerRef });
+    const navigation = useWorkspaceNavigation({ repositoryId, location, navigate, ...browse, editorRoute, selectedNotebookId, config: workspaceConfig, loading: false, resolveBareNotebook, queryState, setFilterQuery, viewMode: 'flat', editorRegistry, fileManagerRef });
     return { ...browse, location, navigation, navigationType, back: () => navigate(-1) };
   }, { wrapper, initialProps: { foldersLoading } });
 }
@@ -62,6 +62,26 @@ it("opens another notebook without the last notebook's tags and status, keeping 
   expect(query.get('tagMode')).toBeNull();
   expect(query.get('status')).toBeNull();
   expect(query.get('q')).toBe('causal');
+});
+
+it('restores each notebook’s list filters without adding a history entry', async () => {
+  const { result } = notesAt('/notebooks/life?showHidden=true&groupByFolder=true');
+  await act(() => result.current.navigation.setSelectedNotebookId('thesis'));
+  expect(result.current.location.search).not.toMatch(/showHidden|groupByFolder/);
+  await act(async () => result.current.navigation.changeFilters({ kind: 'outline' }));
+  await waitFor(() => expect(window.location.search).toContain('kind=outline'));
+  await act(() => result.current.navigation.setSelectedNotebookId('life'));
+  await waitFor(() => expect(result.current.route.groupByFolder).toBe(true));
+  expect(result.current.route.showHidden).toBe(true);
+  expect(result.current.navigationType).toBe('REPLACE');
+  await act(async () => result.current.navigation.clearFilters());
+  await waitFor(() => expect(result.current.route.groupByFolder).toBe(false));
+  expect(result.current.route.showHidden).toBe(false);
+  await act(() => result.current.navigation.setSelectedNotebookId('thesis'));
+  await waitFor(() => expect(result.current.route.kind).toBe('outline'));
+  await act(async () => result.current.navigation.changeFilters({ kind: 'note' }));
+  await waitFor(() => expect(result.current.route.kind).toBe('note'));
+  expect(localStorage.getItem('github-notes:list-filters:repo:thesis')).toBeNull();
 });
 
 it.each([['/notebooks/life', 'life', 'journal', null], ['/', 'thesis', 'sources/因果', 'thesis']] as const)('restores the folder on opening %s, using the resolved notebook', async (url, notebook, folder, rememberedNotebook) => {

@@ -1,9 +1,12 @@
+import type { NotebookFacets } from '@mygitnotes/core/note-query';
+import { changesListFilters, rememberListFilters, removeListFilters, restoreListFilters } from '../lib/list-filter-memory.js';
+import { useCurrentEntry } from './current-entry.js';
 import { useQueryStates } from 'nuqs';
 import { filterParsers, type FilterQuery, writeFilterQuery } from '../lib/filter-query.js';
 import { legacyFolderPaths } from '@mygitnotes/core/note-filters';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { bareNotebookRoute, legacyAllNotebooksRoute, notebookRoute, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
+import { bareNotebookRoute, isFocusNoteState, legacyAllNotebooksRoute, notebookRoute, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
 import React, { useEffect, useRef, useState } from 'react';
 import type { ViewMode } from '../lib/types.js';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
@@ -12,6 +15,8 @@ import { type AgentSystemHandle } from '../components/AgentSystemView.js';
 import type { WorkspaceState } from './workspace-state.js';
 
 interface Params {
+  repositoryId?: string;
+  filterVocabulary?: NotebookFacets;
   location: ReturnType<typeof useLocation>;
   queryState: FilterQuery;
   selectedFolders: string[];
@@ -31,7 +36,17 @@ interface Params {
   resolveBareNotebook: WorkspaceState['resolveBareNotebook'];
 }
 
-export function useWorkspaceNavigation({ location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook }: Params) {
+export function useWorkspaceNavigation({ repositoryId, filterVocabulary, location, queryState, selectedFolders, setFilterQuery, navigate, route, activeTab, selectedNotebookId, folderRoot, viewMode, selectedFolder, config, editorRegistry, fileManagerRef, loading, editorRoute, resolveBareNotebook }: Params) {
+  const currentEntry = useCurrentEntry();
+  const editedEntry = useRef<string | undefined>();
+  const filterOwner = !loading && editorRoute.valid && activeTab === 'notes' && (!editorRoute.note || isFocusNoteState(location.state)) && !editorRoute.study && !editorRoute.legacyScreen && !editorRoute.legacyAllNotebooks && editorRoute.view !== 'graph' && (!editorRoute.notebook || editorRoute.notebook === selectedNotebookId) ? repositoryId : undefined;
+  useEffect(() => {
+    if (!currentEntry(location.key) || editedEntry.current === location.key) return;
+    editedEntry.current = undefined;
+    if (!config || !filterOwner) return;
+    const search = restoreListFilters(filterOwner, selectedNotebookId, location.search, filterVocabulary, config.notebooks);
+    if (search !== null) navigate({ pathname: location.pathname, search, hash: location.hash }, { replace: true, state: location.state });
+  }, [config, currentEntry, filterOwner, filterVocabulary, location, navigate, selectedNotebookId]);
   const currentFilterSearch = (patch: Partial<FilterQuery> = {}) => {
     const query = new URLSearchParams(writeFilterQuery(location.search, { ...queryState, folders: selectedFolders, ...patch }));
     query.delete('folder');
@@ -43,9 +58,16 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
     await setFilterQuery({});
     navigate({ pathname, search: query.toString() }, { replace });
   };
+  // nuqs omits defaults. Save the user's edit before navigating, so removing the last filter doesn't restore it.
+  const saveEditedFilters = (query: URLSearchParams) => {
+    if (!filterOwner) return;
+    editedEntry.current = location.key;
+    rememberListFilters(filterOwner, selectedNotebookId, query);
+  };
   const changeFilters: FilterControls['onChange'] = patch => {
     const { tags, notebookId: _notebookId, ...values } = patch;
     const next = { ...values, ...(tags ? { tag: tags } : {}) };
+    if (changesListFilters(next)) saveEditedFilters(currentFilterSearch(next));
     const clearingNotesFolder = activeTab === 'notes' && !patch.kind && patch.folders?.length === 0;
     if (clearingNotesFolder || (patch.folders && route.folder)) {
       const query = currentFilterSearch(next);
@@ -54,7 +76,8 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
     } else void setFilterQuery(next, { history: Object.keys(patch).length === 1 && 'q' in patch ? 'replace' : 'push' });
   };
   const clearFilters = () => {
-    const query = currentFilterSearch({ q: '', kind: 'note', tag: [], folders: [], descendants: true, tagMode: 'any', status: null, live: [], showHidden: false, neighbors: false });
+    const query = currentFilterSearch({ q: '', kind: 'note', tag: [], folders: [], descendants: true, tagMode: 'any', status: null, live: [], showHidden: false, groupByFolder: false, neighbors: false });
+    saveEditedFilters(query);
     query.delete('lanes');
     if (activeTab === 'notes') query.set('folder', '');
     void navigateFiltered(activeTab === 'graph' ? '/graph' : notebookRoute(selectedNotebookId), query);
@@ -103,9 +126,9 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
       if (activeTab === 'agent' && !await agentSystemRef.current?.prepareNotebookChange(id)) return;
       if (activeTab === 'assets' && !await fileManagerRef.current?.prepareLeave()) return;
       if (activeTab === 'notes' && !await editorRegistry.flushEditors()) return;
-      // A sort, tags and a status in the URL belong to the notebook they were chosen in (its tags and statuses are its own, and kept they
-      // would leave the next notebook listing nothing); the next notebook starts without them. The search carries over.
+      // Search travels with the person; the new Notes list restores its own filters and sort.
       const query = currentFilterSearch({ folders: [], kind: 'note', sortField: null, sortOrder: null, tag: [], tagMode: 'any', status: null });
+      if (activeTab === 'notes') removeListFilters(query);
       query.delete('focus');
       query.set('notebook', id);
       await navigateFiltered(activeTab === 'notes' ? notebookRoute(id) : `/${activeTab}`, query);
@@ -115,6 +138,7 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
   };
   const setSelectedFolder = (folder: string | null) => {
     const query = currentFilterSearch({ folders: legacyFolderPaths(config?.notebooks || [], selectedNotebookId, folder), kind: 'note' });
+    if (route.kind !== 'note') saveEditedFilters(query);
     if (folder === null) query.set('folder', '');
     void navigateFiltered(notebookRoute(selectedNotebookId), query);
   };
@@ -122,6 +146,7 @@ export function useWorkspaceNavigation({ location, queryState, selectedFolders, 
     void setFilterQuery({ view: mode });
   };
   const setGroupByFolder = (value: boolean) => {
+    saveEditedFilters(currentFilterSearch({ groupByFolder: value }));
     void setFilterQuery({ groupByFolder: value });
   };
   /* eslint-disable react-hooks/exhaustive-deps -- Canonicalization runs on config or URL arrival; changing the current notebook or navigation helper alone must not replay the redirect. */
