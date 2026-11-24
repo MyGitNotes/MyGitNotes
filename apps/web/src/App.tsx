@@ -370,7 +370,6 @@ export const AppContent: React.FC = () => {
         )}
         {/* Commit Modal */}
         <WorkspaceCommitModal remote={remote} repositories={repositories} documents={documents} pendingDocuments={pendingDocuments} gitStatus={gitStatus} readDraft={readDraft} readDraftIn={readDraftIn} updateDraft={updateDraft} refreshWorkspace={refreshWorkspace} refreshDocuments={refreshDocuments} changeDialog={changeDialog} commitWorkingNotes={commitWorkingNotes} repositoryHeading={repositoryHeading} agentSystemRef={agentSystemRef} editingNote={editingNote} setEditingNote={setEditingNote} setDeletedNotes={setDeletedNotes} setUndoToast={setUndoToast} />
-        {/* Create New Note Modal */}
       </div>
       {gistConfirmDialog}
       <ImageLightbox />
