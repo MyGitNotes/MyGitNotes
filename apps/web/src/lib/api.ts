@@ -270,8 +270,8 @@ export async function fetchGitStatus(repository?: string): Promise<{ status: Git
   return res.json();
 }
 
-export async function fetchFileChanges(): Promise<import('./types.js').FileChange[]> {
-  const response = await fetch(`${API_BASE}/git/changes`);
+export async function fetchFileChanges(repository?: string): Promise<import('./types.js').FileChange[]> {
+  const response = await fetch(`${API_BASE}/git/changes${repository ? `?repository=${encodeURIComponent(repository)}` : ''}`);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Failed to read changes');
   return data.changes;

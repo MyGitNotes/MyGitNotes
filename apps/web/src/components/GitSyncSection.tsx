@@ -14,7 +14,7 @@ export function GitSyncSection({ target }: { target: SyncTarget; }) {
   const busy = state?.kind === 'busy';
   const upstream = gitStatus?.upstream;
   const dirty = hasTrackedChanges(gitStatus);
-  const disabled = busy || !upstream || dirty;
+  const disabled = busy || sync.committing || !upstream || dirty;
   const summary = state?.kind === 'done' && (state.result.pulled || state.result.pushed ? t('panel.syncDone', { pulled: state.result.pulled, pushed: state.result.pushed }) : t('panel.syncUpToDate'));
   const chosen = state?.kind === 'conflict' || state?.kind === 'unresolved';
 

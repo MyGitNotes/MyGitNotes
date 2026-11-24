@@ -31,13 +31,16 @@ export function createLocalGitRouter(): Router {
     if (handle.kind !== 'local') throw new Error('This operation requires a local workspace.');
     return { id: resolved, root: handle.root, config };
   };
-  // Every worktree's changes, each named by its repository: two worktrees can hold the same path.
-  router.get('/changes', async (_req, res) => {
+  // An optional repository limits the read, so a broken worktree does not block committing the others.
+  router.get('/changes', async (req, res) => {
     try {
-      const changes = await Promise.all((await eachRepository(res)).map(async ({ handle, config }) => {
-        const { id, root: repoRoot } = handle as LocalHandle;
-        return (await listChanges(repoRoot)).map(file => ({ ...file, repository: id, available: file.available && canManageChange(repoRoot, config, file.path), unavailableReason: file.kind === 'conflict' ? 'conflict' : !canManageChange(repoRoot, config, file.path) ? 'protected' : !file.available ? 'unsupported' : undefined }));
-      }));
+      const worktrees = req.query.repository === undefined ? (await eachRepository(res)).map(({ handle, config }) => ({ ...(handle as LocalHandle), config })) : [await worktree(res, req.query.repository)];
+      const changes = await Promise.all(worktrees.map(async ({ id, root: repoRoot, config }) =>
+        (await listChanges(repoRoot)).map(file => {
+          const managed = canManageChange(repoRoot, config, file.path);
+          return { ...file, repository: id, available: file.available && managed, unavailableReason: file.kind === 'conflict' ? 'conflict' : !managed ? 'protected' : !file.available ? 'unsupported' : undefined };
+        })
+      ));
       res.json({ changes: changes.flat() });
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });

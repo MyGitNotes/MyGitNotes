@@ -650,6 +650,7 @@ export const AppContent: React.FC = () => {
   /** A phone's drawer of notebooks and filters; its filter sheet shows only the status and tags, and its list screen beside a Focus the folders. */
   const renderSidebar = (filtersOnly = false, dock?: 'folders') => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} dock={dock} />;
 
+  const syncTargets = useMemo(() => remote ? [] : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null })), [remote, repositories, sourceId, gitStatus]);
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;
   if (route.legacyScreen) return <LegacyScreenRedirect laneId={route.legacyLane} notebooks={config?.notebooks || []} onMissing={setActionError} />;
 
@@ -660,7 +661,6 @@ export const AppContent: React.FC = () => {
   // A read-only notebook shows neither the New button nor its menu.
   const newNote: NewNoteActions | undefined = notesActions && canWrite ? { onNewNote: () => void createNote(), onNewOutline: () => void createNote({ kind: 'outline' }), onNewCompilation: () => void createUntitledCompilation(), templates: [...notebookTemplates.templates.map(template => ({ id: template.id, title: template.name })), ...builtinNoteTemplates(t)], onManageTemplates: selectedNotebook ? () => setManageTemplatesOpen(true) : undefined, onNewFromTemplate: templateId => void createNote({ templateId }), onImportLegacy: legacyImportOffered(repositoryFor(selectedNotebookId)) ? () => setLegacyImportOpen(true) : undefined } : undefined;
   const unavailableNotebooks = repositories.filter(repository => repository.unavailable).flatMap(repository => repository.notebooks);
-  const syncTargets = remote ? [] : repositories.filter(repository => !repository.unavailable).map(repository => ({ id: repository.id, label: repository.repository ?? repository.id.replace(/^local:/, ''), gitStatus: repository.id === sourceId ? gitStatus : repository.gitStatus ?? null }));
   const refreshAfterSync = async () => {
     await refreshWorkspace();
     await refreshDocuments().catch(error => setActionError(error instanceof Error ? error.message : String(error)));
@@ -1086,7 +1086,7 @@ export const AppContent: React.FC = () => {
           <TypstPreviewProvider enabled={!remote && !loading}>
             <PhoneNotesProvider value={phoneNotesValue}>
               <EditorModeRouteProvider>
-                <WorkspaceGitSyncProvider enabled={!remote} targets={syncTargets} onSynced={refreshAfterSync} onRevealChanges={() => setFileMetadataOpen(false)}>
+                <WorkspaceGitSyncProvider enabled={!remote} targets={syncTargets} onSynced={refreshAfterSync} flushEditors={editorRegistry.flushEditors} onRevealChanges={() => setFileMetadataOpen(false)}>
                   <LiveEditLinkProvider target={liveEditTarget}>{content}</LiveEditLinkProvider>
                 </WorkspaceGitSyncProvider>
               </EditorModeRouteProvider>
