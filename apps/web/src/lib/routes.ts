@@ -120,7 +120,8 @@ export function noteReturnRoute(search: string, notebook: string, folder: string
     if (route.valid && !route.note && !url.searchParams.has('returnTo')) return url.pathname + url.search + url.hash;
   }
   query.delete('returnTo');
-  query.delete('folder');
+  // A named folder becomes part of the path, but the explicit root stays in the query.
+  if (query.get('folder') !== '') query.delete('folder');
   // `zoom` asked a note link to open in zoom, and `edit` to edit its note live; the browse view behind it has no use for either.
   query.delete('zoom');
   query.delete(LIVE_EDIT_PARAM);

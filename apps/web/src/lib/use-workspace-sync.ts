@@ -222,6 +222,7 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
       const workspace = JSON.stringify([ws.defaultRepository, ws.repositories.map((repository) => [repository.id, repository.branch]), ws.keyedConfig?.notebooks.map((nb) => [nb.id, nb.root])]);
       // A local workspace has no revisions, so its cached answers are refetched by hand.
       if (ws.local && loadedWorkspace.current) void invalidateNoteQueries(queryClient);
+      if (loadedWorkspace.current !== workspace) setFoldersLoading(true);
       loadedWorkspace.current = workspace;
       setSourceId(ws.defaultRepository ?? '');
       setRemote(!ws.local);
