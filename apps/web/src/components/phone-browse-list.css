@@ -1,4 +1,4 @@
-/* PhoneBrowseList: a phone's list screen, the path line over the list. */
+/* PhoneBrowseList: a phone's list screen, the path line over the list, which a pull from its top syncs. */
 
 .phone-browse-list { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; }
 
@@ -7,4 +7,16 @@
 .phone-browse-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .phone-browse-count { flex: none; font-variant-numeric: tabular-nums; }
 
-.phone-browse-scroll { flex: 1 1 0; min-height: 0; }
+/* The list's own scroll never hands a pull at its top to the browser (Android's reload, iOS's bounce). */
+.phone-browse-scroll { position: relative; flex: 1 1 0; min-height: 0; overscroll-behavior-y: contain; }
+
+/* The indicator fills the room the pulled list leaves at the top. */
+.pull-refresh { position: absolute; z-index: 0; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: center; gap: 8px; height: var(--pull-distance, 0px); overflow: hidden; color: var(--color-primary); font-size: 15px; pointer-events: none; }
+.pull-refresh svg { width: 20px; height: 20px; flex: none; }
+.pull-refresh-spin { animation: pull-refresh-spin 900ms linear infinite; }
+.phone-browse-scroll[data-pull] > .pull-refresh-content { position: relative; z-index: 1; transform: translateY(var(--pull-distance, 0px)); }
+.phone-browse-scroll:is([data-pull='syncing'], [data-pull='returning']) > :is(.pull-refresh, .pull-refresh-content) { transition: transform 240ms ease-out, height 240ms ease-out; }
+.phone-browse-scroll[data-pull='closing'] > :is(.pull-refresh, .pull-refresh-content) { transition: transform 320ms ease-out, height 320ms ease-out; }
+
+@keyframes pull-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .pull-refresh-spin { animation: none; } .phone-browse-scroll > :is(.pull-refresh, .pull-refresh-content) { transition: none !important; } }

@@ -116,13 +116,15 @@ interface Params {
   createUntitledCompilation: () => Promise<void>;
   openFileManager: ReturnType<typeof useFileNavigation>['openFileManager'];
   beforeFileChange: ReturnType<typeof useFileNavigation>['beforeFileChange'];
+  /** What a phone's pull on the list runs: the latest Git state, through the app's own refresh and pull (`pullLatest`). */
+  pullLatest: () => Promise<void>;
   /** The phone drawer's page links: whether they are locked, and the command palette they open. */
   navigationDisabled: boolean;
   setShortcutMode: ReturnType<typeof useShortcutSurface>['setShortcutMode'];
 }
 
 /** The Notes page's views: its browse region (the list or board with its notices), the folders and filters beside it, a phone's screens and the three columns. */
-export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets, browse, sort, selection, tags, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, board, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled, setShortcutMode }: Params) {
+export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets, browse, sort, selection, tags, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, board, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled, setShortcutMode, pullLatest }: Params) {
   const { changeFilters, setActiveTab, resourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder, setViewMode, setGroupByFolder } = navigation;
   const { facetsQuery, notebookFacets, notebookStatuses, workspaceTagNames, searchQuery, viewMode, folderless } = facets;
   const { folderIndex, baseQuery, listResult, displayedNotes, filterProps, immediateSubfolders, breadcrumbs, indexLookup, highlightQuery, groupable, groupedByFolder } = browse;
@@ -228,6 +230,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
     const count = filterProps.count;
     return (
       <PhoneBrowseList
+        onRefresh={pullLatest}
         path={withPath && (
           <>
             <Tooltip label={path}>
