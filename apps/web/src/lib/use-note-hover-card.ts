@@ -17,12 +17,19 @@ export interface HoverCardTarget {
   dockRect?: DOMRect;
 }
 
+/**
+ * Whether this device can hover: a phone or tablet held by touch reports no hover, and opens no card even when a stray mouse pointer
+ * (one a lifted finger leaves behind) ends up over a row as the list scrolls or is pulled under it.
+ */
+const deviceHovers = () => typeof window === 'undefined' || typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover)').matches;
+
 const focusable = (card: HTMLElement) => Array.from(card.querySelectorAll<HTMLElement>('button:not(:disabled), [role="combobox"]:not(:disabled), [tabindex]:not([tabindex="-1"])'));
 
 /**
  * One hover card shared by a list's rows. A row opens it after the pointer rests on it, or after keyboard focus rests on it
  * (Tab or the arrow keys, not a click); it moves to another row at once while it is open, stays while the pointer is on it or one of its
- * menus is open, and closes on Escape, on leaving, or when focus leaves both the row and the card.
+ * menus is open, and closes on Escape, on leaving, or when focus leaves both the row and the card. Only a mouse opens it, and only on a
+ * device that hovers: on a touch screen no touch, drag, pull, swipe, long press or focus coming back from a menu brings it up.
  */
 export function useNoteHoverCard() {
   const [target, setTarget] = useState<HoverCardTarget | null>(null);
@@ -95,7 +102,7 @@ export function useNoteHoverCard() {
   /** Event handlers for the row of `note`. */
   const rowProps = (note: NoteListItem) => ({
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {
-      if (event.pointerType === 'touch') return;
+      if (event.pointerType !== 'mouse' || !deviceHovers()) return;
       overRow.current = true;
       open(note, event.currentTarget, targetRef.current ? 0 : HOVER_CARD_OPEN_MS);
     },
@@ -112,7 +119,7 @@ export function useNoteHoverCard() {
     },
     onFocus: (event: FocusEvent<HTMLElement>) => {
       // Only focus that came from the keyboard; a click focuses its row too and should not pop a card up.
-      if (event.target !== event.currentTarget || pressing.current) return;
+      if (event.target !== event.currentTarget || pressing.current || !deviceHovers()) return;
       open(note, event.currentTarget, HOVER_CARD_OPEN_MS);
     },
     onBlur: (event: FocusEvent<HTMLElement>) => {

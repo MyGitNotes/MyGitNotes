@@ -42,7 +42,7 @@ function setup(overrides: Record<string, unknown> = {}) {
 
 const rowOf = (name: string) => [...document.querySelectorAll<HTMLElement>('[data-focus-row]')].find(row => row.textContent?.includes(`Title of ${name}`))!;
 const openCard = async (name: string) => {
-  fireEvent.pointerEnter(rowOf(name));
+  fireEvent.pointerEnter(rowOf(name), { pointerType: 'mouse' });
   await act(async () => {
     vi.advanceTimersByTime(HOVER_CARD_OPEN_MS);
     await Promise.resolve();
@@ -132,7 +132,7 @@ it('leaves the status dot inert in a read-only notebook', () => {
 
 it('shows the hover card after the pointer rests on a row: status, every tag, both dates, folder, excerpt and actions', async () => {
   const props = setup();
-  fireEvent.pointerEnter(rowOf('a'));
+  fireEvent.pointerEnter(rowOf('a'), { pointerType: 'mouse' });
   act(() => vi.advanceTimersByTime(HOVER_CARD_OPEN_MS - 1));
   expect(screen.queryByRole('group', { name: /Details for/ })).toBeNull();
   await act(async () => {
@@ -160,7 +160,7 @@ it('closes the hover card on Escape and after the pointer leaves, but not while 
 
   card = await openCard('a');
   fireEvent.pointerLeave(rowOf('a'));
-  fireEvent.pointerEnter(card);
+  fireEvent.pointerEnter(card, { pointerType: 'mouse' });
   act(() => vi.advanceTimersByTime(HOVER_CARD_CLOSE_MS * 3));
   expect(screen.getByRole('group', { name: /Details for/ })).toBeInTheDocument();
   fireEvent.pointerLeave(card);
@@ -183,6 +183,35 @@ it('opens the hover card from keyboard focus after a short delay, moves into it 
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
   expect(screen.queryByRole('group', { name: /Details for/ })).toBeNull();
   expect(document.activeElement).toBe(row);
+});
+
+/** Answers the media queries as a touch phone does: no hover, a coarse pointer. */
+const touchDevice = () => vi.stubGlobal('matchMedia', (query: string) => ({ matches: !/hover: hover|pointer: fine/.test(query), media: query, onchange: null, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {}, dispatchEvent: () => false }));
+
+it('opens the hover card only for a mouse: a touch, a pen or a pointer of no stated kind resting on a row opens nothing', () => {
+  setup();
+  for (const pointerType of ['touch', 'pen', '']) {
+    fireEvent.pointerEnter(rowOf('a'), { pointerType });
+    act(() => vi.advanceTimersByTime(HOVER_CARD_OPEN_MS * 2));
+    fireEvent.pointerLeave(rowOf('a'), { pointerType });
+  }
+  expect(screen.queryByRole('group', { name: /Details for/ })).toBeNull();
+});
+
+it('never opens the hover card on a device that cannot hover, not even for a mouse event or keyboard focus', () => {
+  touchDevice();
+  try {
+    setup();
+    // A touch screen can still report a stray mouse pointer under a finger that has lifted, as the list scrolls under it.
+    fireEvent.pointerEnter(rowOf('a'), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(HOVER_CARD_OPEN_MS * 2));
+    rowOf('b').focus();
+    fireEvent.focus(rowOf('b'));
+    act(() => vi.advanceTimersByTime(HOVER_CARD_OPEN_MS * 2));
+    expect(screen.queryByRole('group', { name: /Details for/ })).toBeNull();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 it('moves between rows with the arrow keys', () => {
