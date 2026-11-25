@@ -82,7 +82,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const [missing, setMissing] = useState(false);
   const [notice, setNotice] = useState('');
   const row = compilation.page.rows[0] as CompilationRow | undefined;
-  const itemOpen = useCompilationItemOpen({ notebooks, assets, onOpenNote, onMissing: () => setMissing(true) });
+  const itemOpen = useCompilationItemOpen({ notebooks, assets, onOpenNote, onMissing: () => setMissing(true), beforeLeave: () => editing.flushEditors() });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: screenKeyboardCoordinates }));
   // On a phone a board is for looking: nothing there changes the compilation file, the outline or the compilation's place.
   const phone = usePhone();

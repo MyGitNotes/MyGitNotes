@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { compilationFields, parseCompilation } from '@mygitnotes/core/compilation';
 import { isListedBoard } from '../../lib/board/listing.js';
 import { cameraAt } from '../../lib/board/zoom.js';
+import { installPopGuard } from '../../lib/pop-guard.js';
 import { boardsQuery, boardsRoute } from '../../lib/routes.js';
 import { editing, example, note, openBoard, resetBoardTest, router, save, thesisNotes } from './board-test-helpers.js';
 
@@ -162,43 +163,7 @@ describe('the side panel of a board', () => {
   });
 });
 
-describe('leaving a side panel by Back and Forward', () => {
-  it("waits for the panel's note to be saved before Back closes it, and Forward opens it again", async () => {
-    open();
-    fireEvent.click(await card('n1'));
-    await findPanel();
-    let finish!: (saved: boolean) => void;
-    flush.mockReturnValueOnce(new Promise<boolean>(resolve => void (finish = resolve)));
-    act(() => void router.navigate!(-1));
-    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]));
-    // The address moved on; the editor stays on screen until its note is saved.
-    expect(shown().note).toBeNull();
-    expect(panel()).not.toBeNull();
-    expect(within(panel()!).getByRole('textbox', { name: `Editor ${INTRO}` })).toBeInTheDocument();
-    finish(true);
-    await waitFor(() => expect(panel()).toBeNull());
-    expect(shown()).toEqual({ board: BOARD, note: null, card: null });
-    const saves = flush.mock.calls.length;
-    act(() => void router.navigate!(1));
-    await findPanel();
-    expect(shown().note).toBe(INTRO);
-    expect(hosted).toHaveBeenLastCalledWith(expect.objectContaining({ path: INTRO }));
-    // Nothing was shown to save before Forward opened it.
-    expect(flush).toHaveBeenCalledTimes(saves);
-  });
-
-  it('keeps the panel and puts its address back when Back cannot save the note', async () => {
-    open();
-    fireEvent.click(await card('n1'));
-    await findPanel();
-    flush.mockResolvedValueOnce(false);
-    act(() => void router.navigate!(-1));
-    await waitFor(() => expect(shown().note).toBe(INTRO));
-    expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]);
-    expect(panel()).not.toBeNull();
-    expect(hosted).toHaveBeenLastCalledWith(expect.objectContaining({ path: INTRO }));
-  });
-
+describe('leaving a side panel', () => {
   it("saves the panel's note before a folder, asset or missing card opens elsewhere", async () => {
     open(boardsRoute('thesis', BOARD, { note: INTRO }));
     await findPanel();
@@ -273,5 +238,85 @@ describe('around the side panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Book' }));
     await screen.findByText('disk full');
     expect(router.location!.pathname).toBe('/boards');
+  });
+});
+
+describe("Back and Forward with the side panel open, in the browser's history", () => {
+  let uninstall: () => void;
+  beforeAll(() => void (uninstall = installPopGuard(window)));
+  afterAll(() => uninstall());
+  const browse = () => openBoard({ path: BOARD, notebookId: 'thesis', raw: example, notes: thesisNotes, compilations, view: { frame: 'page', sidePanel, url: boardsRoute('thesis', BOARD), browser: true } });
+  const address = () => boardsQuery(window.location.search);
+  const deferred = () => {
+    let finish!: (saved: boolean) => void;
+    flush.mockReturnValueOnce(new Promise<boolean>(resolve => void (finish = resolve)));
+    return (saved: boolean) => finish(saved);
+  };
+
+  it('waits for the note to be saved before Back closes the panel, which takes no input meanwhile; Forward opens it again', async () => {
+    browse();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    const finish = deferred();
+    act(() => window.history.back());
+    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]));
+    // The address is back on the panel's entry while its note is saved, and the editor stays, taking no input.
+    await waitFor(() => expect(address().note).toBe(INTRO));
+    expect(panel()).toHaveAttribute('inert');
+    expect(within(panel()!).getByRole('textbox', { name: `Editor ${INTRO}` })).toBeInTheDocument();
+    finish(true);
+    await waitFor(() => expect(panel()).toBeNull());
+    expect(address()).toEqual({ board: BOARD, note: null, card: null });
+    const saves = flush.mock.calls.length;
+    act(() => window.history.forward());
+    await findPanel();
+    expect(address().note).toBe(INTRO);
+    // Nothing was shown to save on the way.
+    expect(flush).toHaveBeenCalledTimes(saves);
+    expect(panel()).not.toHaveAttribute('inert');
+  });
+
+  it("keeps the panel, its entry and the history when Back cannot save, and ✕ then closes to the board's own entry", async () => {
+    browse();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    const length = window.history.length;
+    flush.mockResolvedValueOnce(false);
+    act(() => window.history.back());
+    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]));
+    // The address returns to the panel's entry; nothing else moves.
+    await waitFor(() => expect(address().note).toBe(INTRO));
+    await waitFor(() => expect(panel()).not.toHaveAttribute('inert'));
+    expect(panel()).not.toBeNull();
+    expect(window.history.length).toBe(length);
+    fireEvent.click(within(panel()!).getByRole('button', { name: 'Close the note' }));
+    await waitFor(() => expect(panel()).toBeNull());
+    expect(window.location.pathname).toBe('/boards');
+    expect(address()).toEqual({ board: BOARD, note: null, card: null });
+  });
+
+  it('waits for the note to be saved before Forward leaves the page, and stays when it cannot be', async () => {
+    browse();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    // Another page, as 開進 Focus or 全螢幕 go to (each saves first), then Back to the board with its panel.
+    act(() => void router.navigate!('/elsewhere'));
+    await screen.findByText('Elsewhere');
+    act(() => window.history.back());
+    await findPanel();
+    flush.mockResolvedValueOnce(false);
+    act(() => window.history.forward());
+    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]));
+    await waitFor(() => expect(window.location.pathname).toBe('/boards'));
+    await waitFor(() => expect(panel()).not.toHaveAttribute('inert'));
+    expect(screen.queryByText('Elsewhere')).toBeNull();
+    const finish = deferred();
+    act(() => window.history.forward());
+    await waitFor(() => expect(panel()).toHaveAttribute('inert'));
+    await waitFor(() => expect(window.location.pathname).toBe('/boards'));
+    finish(true);
+    await screen.findByText('Elsewhere');
+    expect(panel()).toBeNull();
+    expect(window.location.pathname).toBe('/elsewhere');
   });
 });

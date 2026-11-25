@@ -20,6 +20,8 @@ it('treats a same-origin absolute URL as internal when the current origin is giv
   const origin = 'https://notes.wayneh.tw';
   expect(resolveWorkspaceHref(`${origin}/notebooks/x/notes/y.md`, 'notes/a.md', undefined, origin)).toEqual({ kind: 'route', url: '/notebooks/x/notes/y.md' });
   expect(resolveWorkspaceHref(`${origin}/graph`, 'notes/a.md', undefined, origin)).toEqual({ kind: 'route', url: '/graph' });
+  // A copied 白板 address keeps its board, note and card.
+  expect(resolveWorkspaceHref(`${origin}/boards?notebook=x&board=notes%2Fx%2Fb.compilation.yml&card=n1`, 'notes/a.md', undefined, origin)).toEqual({ kind: 'route', url: '/boards?notebook=x&board=notes%2Fx%2Fb.compilation.yml&card=n1' });
   expect(resolveWorkspaceHref(`${origin}/notebooks/x/notes/y.md`, 'notes/a.md')).toMatchObject({ kind: 'external' });
   expect(resolveWorkspaceHref('https://other.example/notebooks/x/notes/y.md', 'notes/a.md', undefined, origin)).toMatchObject({ kind: 'external' });
 });

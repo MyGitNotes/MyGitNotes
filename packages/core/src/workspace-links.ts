@@ -66,7 +66,7 @@ function resolveRelativeWorkspaceHref(href: string, sourcePath: string, aliasesO
   try {
     if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return null;
     if (href.startsWith('#')) return { kind: 'anchor', anchor: decodeURIComponent(href.slice(1)) };
-    if (/^\/(?:notebooks\/|notes(?:[?#]|$)|assets(?:[?#]|$)|screen(?:[?#]|$)|graph(?:[?#]|$))/.test(href)) {
+    if (/^\/(?:notebooks\/|notes(?:[?#]|$)|assets(?:[?#]|$)|screen(?:[?#]|$)|graph(?:[?#]|$)|boards(?:[?#]|$))/.test(href)) {
       return { kind: 'route', url: href };
     }
     const hashed = href.match(/^\/raw-assets\/by-hash\/([a-f0-9]{40})$/);

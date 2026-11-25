@@ -1,7 +1,8 @@
 import { createElement, type ReactNode, useLayoutEffect } from 'react';
 import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type Location, MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, type Location, MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router-dom';
+import { PopGuardSync } from '../../lib/pop-guard.js';
 import { vi } from 'vitest';
 import { BOARD_TEXT_COLORS } from '@mygitnotes/core/compilation';
 import type { NoteRef } from '@mygitnotes/core/note-query';
@@ -67,6 +68,11 @@ export const fetches: { requests: ReturnType<typeof vi.fn>; } = { requests: vi.f
 
 /** The address the last board opened shows, and its router's navigate (Back is `router.navigate(-1)`). */
 export const router: { location?: Location; navigate?: NavigateFunction; } = {};
+/** Another page at `/elsewhere`, where the board is not mounted. */
+function ElsewhereGate({ children }: { children: ReactNode; }) {
+  return useLocation().pathname === '/elsewhere' ? <p>Elsewhere</p> : children;
+}
+
 function RouterProbe() {
   const location = useLocation(), navigate = useNavigate();
   useLayoutEffect(() => {
@@ -80,7 +86,7 @@ function RouterProbe() {
  * Opens a compilation file in a Focus pane's CompilationView (or `view.frame`, with `view.sidePanel`, at `view.url`), its notes, member paths and note links answered by a
  * stubbed fetch, and every write going to `save`. The file's stored copy stays as given, so writes stay pending.
  */
-export function openBoard({ path, notebookId, raw, notes, members = [], links = [], compilations = [], view = {} }: { path: string; notebookId: string; raw: string; notes: ReturnType<typeof note>[]; members?: NoteRef[]; links?: { source: string; target: string; }[]; /** What a listing of the notebook's compilations answers. */ compilations?: ReturnType<typeof note>[]; view?: Partial<Pick<CompilationViewProps, 'frame' | 'sidePanel'>> & { url?: string; }; }) {
+export function openBoard({ path, notebookId, raw, notes, members = [], links = [], compilations = [], view = {} }: { path: string; notebookId: string; raw: string; notes: ReturnType<typeof note>[]; members?: NoteRef[]; links?: { source: string; target: string; }[]; /** What a listing of the notebook's compilations answers. */ compilations?: ReturnType<typeof note>[]; view?: Partial<Pick<CompilationViewProps, 'frame' | 'sidePanel'>> & { url?: string; /** The browser's own history (window.history) instead of a memory one, with the Back and Forward guard told of it; `/elsewhere` is another page. */ browser?: boolean; }; }) {
   const stored = { id: path, path, notebookId, title: 'Board', content: raw, metadata: {}, tags: [] };
   fetches.requests = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input, 'http://localhost');
@@ -95,16 +101,26 @@ export function openBoard({ path, notebookId, raw, notes, members = [], links = 
   vi.stubGlobal('fetch', fetches.requests);
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   const actions = { save, canWrite: () => true, remove: vi.fn(), create, repository: () => undefined };
-  const wrapper = ({ children }: { children: ReactNode; }) => (
-    <MemoryRouter initialEntries={[view.url ?? '/']}>
+  const content = (children: ReactNode) => (
+    <>
       <RouterProbe />
       <QueryClientProvider client={client}>
         <PanelProvider>
           <CompilationActionsProvider value={actions}>{children}</CompilationActionsProvider>
         </PanelProvider>
       </QueryClientProvider>
-    </MemoryRouter>
+    </>
   );
+  if (view.browser) window.history.replaceState(null, '', view.url ?? '/');
+  const wrapper = ({ children }: { children: ReactNode; }) =>
+    view.browser
+      ? (
+        <BrowserRouter>
+          <PopGuardSync />
+          {content(<ElsewhereGate>{children}</ElsewhereGate>)}
+        </BrowserRouter>
+      )
+      : <MemoryRouter initialEntries={[view.url ?? '/']}>{content(children)}</MemoryRouter>;
   return render(createElement(CompilationView, { path, notebookId, notebooks, folders: [], frame: view.frame ?? 'pane', sidePanel: view.sidePanel, onOpenNote }), { wrapper });
 }
 export const openExample = (links: { source: string; target: string; }[] = []) => openBoard({ path: 'notes/thesis/chapter-3.compilation.yml', notebookId: 'thesis', raw: example, notes: thesisNotes, links });

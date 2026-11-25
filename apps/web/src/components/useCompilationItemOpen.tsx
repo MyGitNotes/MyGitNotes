@@ -10,9 +10,10 @@ import { Button } from './Button.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import type { CompilationAsset, CompilationContentProps } from './CompilationCard.js';
 
-export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; assets: CompilationAsset[]; /** Opens a note; `anchor` names the heading a heading-anchored item opens at. */ onOpenNote: (note: NoteListItem, anchor?: string) => void; onMissing: () => void; }): { open: CompilationContentProps['onOpen']; preview: ReactNode; } {
-  const { notebooks, assets, onOpenNote, onMissing } = options;
+export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; assets: CompilationAsset[]; /** Opens a note; `anchor` names the heading a heading-anchored item opens at. */ onOpenNote: (note: NoteListItem, anchor?: string) => void; onMissing: () => void; /** Saves the editors shown before a folder or Locate File leaves the page; false stays. */ beforeLeave?: () => Promise<boolean>; }): { open: CompilationContentProps['onOpen']; preview: ReactNode; } {
+  const { notebooks, assets, onOpenNote, onMissing, beforeLeave = async () => true } = options;
   const navigate = useNavigate();
+  const leave = (to: string) => void beforeLeave().then(saved => saved && navigate(to));
   const { t } = useTranslation();
   const [preview, setPreview] = useState<CompilationAsset>();
   const open: CompilationContentProps['onOpen'] = (item, note) => {
@@ -32,7 +33,7 @@ export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; a
       else onMissing();
     } else if (item.kind === 'folder') {
       const assetRoot = `${nb.root}/${nb.assets || 'assets'}`;
-      navigate(item.path === assetRoot || item.path.startsWith(`${assetRoot}/`) ? `/assets?notebook=${encodeURIComponent(nb.id)}&directory=${encodeURIComponent(item.path.slice(assetRoot.length + 1))}` : notebookRoute(nb.id, item.path === nb.root ? null : item.path.slice(nb.root.length + 1)));
+      leave(item.path === assetRoot || item.path.startsWith(`${assetRoot}/`) ? `/assets?notebook=${encodeURIComponent(nb.id)}&directory=${encodeURIComponent(item.path.slice(assetRoot.length + 1))}` : notebookRoute(nb.id, item.path === nb.root ? null : item.path.slice(nb.root.length + 1)));
     } else {
       const asset = assets.find(asset => asset.notebookId === item.notebookId && asset.path === item.path);
       if (asset) setPreview(asset);
@@ -44,7 +45,7 @@ export function useCompilationItemOpen(options: { notebooks: NotebookConfig[]; a
       <WorkspaceDialog title={preview.name} onClose={() => setPreview(undefined)} className='asset-preview-dialog'>
         <div className='workspace-asset-preview'>{/\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(preview.name) ? <img src={preview.rawUrl} alt={preview.name} /> : <a href={preview.rawUrl} target='_blank' rel={newTabRel(preview.rawUrl)}>{preview.name}</a>}</div>
         <div className='workspace-dialog-actions'>
-          <Button onClick={() => navigate(`/assets?notebook=${encodeURIComponent(preview.notebookId)}&asset=${encodeURIComponent(preview.path)}`)}>{t('links.locateAsset')}</Button>
+          <Button onClick={() => leave(`/assets?notebook=${encodeURIComponent(preview.notebookId)}&asset=${encodeURIComponent(preview.path)}`)}>{t('links.locateAsset')}</Button>
         </div>
       </WorkspaceDialog>
     )

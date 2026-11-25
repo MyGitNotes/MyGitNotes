@@ -38,7 +38,7 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
   const page = frame === 'page';
   const enabled = Boolean(sidePanel) && !phone;
   const query = boardsQuery(location.search);
-  const panel = useBoardPanel({ enabled, owns: !page || query.board === path, row, notebooks });
+  const panel = useBoardPanel({ enabled, row, notebooks });
   // A jump from a side panel names the card to centre and select: once per arrival at the address.
   const card = page ? query.card : null;
   const reveal = useMemo(() => card ? { card, key: location.key } : undefined, [card, location.key]);
@@ -67,7 +67,7 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
   // The board keeps its place whether the panel is open, so opening a card keeps its selection, undo and camera.
   const withPanel = (board: ReactNode, current: CompilationRow) => {
     if (!sidePanel) return board;
-    return <div className='board-with-panel'>{board} {panel.note && <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} onClose={() => void panel.close()} />}</div>;
+    return <div className='board-with-panel'>{board} {panel.note && <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} leaving={panel.leaving} onClose={() => void panel.close()} />}</div>;
   };
   return { page, reveal, leave, openCard, withPanel, saved: panel.saved };
 }

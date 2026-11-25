@@ -9,7 +9,6 @@ import { boardsQuery, boardsRoute, legacyGraphRoute, parseWorkspaceRoute } from 
 import type { FolderItem, NotebookConfig } from '../../lib/types.js';
 import { usePhone } from '../../lib/use-phone.js';
 import type { BoardPanelActions } from '../board/useBoardPanel.js';
-import { useHeldAddress } from '../board/useHeldAddress.js';
 import { CompilationView } from '../CompilationView.js';
 import { BoardList } from './BoardList.js';
 import './boards.css';
@@ -28,8 +27,6 @@ export interface BoardsPageProps {
   onCreate: () => Promise<string | undefined>;
 }
 
-const boardKey = (board: string | null) => board ?? '';
-
 /**
  * The 白板 page (`/boards`): the notebook's boards as tiles, or one board full-window (`&board=<repository path>`) with
  * the breadcrumb 「白板 / <title>」, its side panel open on a card (`&note=`) and a card to centre (`&card=`).
@@ -41,9 +38,7 @@ export function BoardsPage({ notebookId, notebooks, folders, writable, sidePanel
   const editing = useNoteEditing();
   const phone = usePhone();
   const notebook = notebooks.find(candidate => candidate.id === notebookId);
-  // Back and Forward leave a board for another or the list only once its side panel's note is saved.
-  const held = useHeldAddress(boardsQuery(location.search).board, boardKey, shown => shown ? editing.flushEditors() : Promise.resolve(true));
-  const board = held.shown;
+  const { board } = boardsQuery(location.search);
   const { entries, error } = useNotebookBoards(notebookId, notebooks);
   const tiles = useMemo(() => entries ? boardTiles(entries) : null, [entries]);
   const [createError, setCreateError] = useState('');
@@ -57,9 +52,7 @@ export function BoardsPage({ notebookId, notebooks, folders, writable, sidePanel
   }, [redirect, navigate]);
 
   const toList = async () => {
-    if (!await editing.flushEditors()) return;
-    held.expect(null);
-    navigate(boardsRoute(notebookId));
+    if (await editing.flushEditors()) navigate(boardsRoute(notebookId));
   };
   const create = async () => {
     setCreating(true);

@@ -1,3 +1,4 @@
+import { installPopGuard, PopGuardSync } from '../lib/pop-guard.js';
 import React from 'react';
 import { NuqsAdapter } from 'nuqs/adapters/react-router/v6';
 import ReactDOM from 'react-dom/client';
@@ -68,6 +69,9 @@ function App() {
   );
 }
 
+// Back and Forward wait for a board's side panel to save its note; the guard listens before the router does.
+if (typeof window !== 'undefined') installPopGuard(window);
+
 // A visitor's demo data older than 24 hours is removed at every boot, on any route, before anything renders.
 try {
   expireDemoData();
@@ -96,6 +100,7 @@ export function WebApp({ features = [] }: Omit<WebAppOptions, 'themes'>) {
           <UpdateNotice />
           <NuqsAdapter>
             <BrowserRouter {...demo ? { basename: DEMO_BASE } : {}}>
+              <PopGuardSync />
               <PanelProvider>
                 <DemoProvider value={demo}>
                   <Routes>

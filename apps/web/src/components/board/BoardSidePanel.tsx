@@ -1,4 +1,4 @@
-import { Fragment, type KeyboardEvent, type PointerEvent, useId, useRef, useState } from 'react';
+import { Fragment, type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutGrid, Maximize2, X } from 'lucide-react';
 import { boardsContaining, type CompilationRow } from '@mygitnotes/core/compilation';
@@ -25,13 +25,19 @@ const KEY_STEP = 16;
  * a note of the notebook whose Focus it is), 「全螢幕」 and ✕; under it the boards of the notebook that hold the note,
  * each opening that board with the note's card centred and selected. Its divider resizes it; the width is kept on this device.
  */
-export function BoardSidePanel({ note, row, notebooks, actions, onClose }: { note: NoteRef; row: CompilationRow; notebooks: readonly NotebookConfig[]; actions: BoardPanelActions; onClose: () => void; }) {
+export function BoardSidePanel({ note, row, notebooks, actions, leaving = false, onClose }: { note: NoteRef; row: CompilationRow; notebooks: readonly NotebookConfig[]; actions: BoardPanelActions; /** Back or Forward waits for its note to be saved: it takes no input meanwhile. */ leaving?: boolean; onClose: () => void; }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const editing = useNoteEditing();
   const hint = useId();
   const [width, setWidth] = useState(readBoardPanelWidth);
   const drag = useRef<{ x: number; width: number; } | null>(null);
+  const aside = useRef<HTMLElement>(null);
+  // React 18 has no `inert` prop: the attribute keeps typing out of the editor while its note is saved for Back or Forward.
+  useEffect(() => {
+    if (leaving) aside.current?.setAttribute('inert', '');
+    else aside.current?.removeAttribute('inert');
+  }, [leaving]);
   const lookup = useNoteLookup([note], false);
   const listed = lookup.notes[0];
   // The boards of the board's notebook, and of the note's own when it lies in another notebook of the repository.
@@ -75,7 +81,7 @@ export function BoardSidePanel({ note, row, notebooks, actions, onClose }: { not
     </Button>
   );
   return (
-    <aside className='board-side-panel' style={{ width }} aria-label={t('board.panel')} data-board-panel={note.path}>
+    <aside ref={aside} className='board-side-panel' style={{ width }} aria-label={t('board.panel')} aria-busy={leaving || undefined} data-board-panel={note.path}>
       <div className='board-panel-divider' role='separator' tabIndex={0} aria-orientation='vertical' aria-label={t('board.panelResize')} aria-valuenow={width} aria-valuemin={clampPanelWidth(0)} aria-valuemax={clampPanelWidth(Infinity)} {...divider} />
       <header className='board-panel-head'>
         <span className='board-panel-path' title={note.path}>{note.path}</span>

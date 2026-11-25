@@ -103,27 +103,3 @@ it.each([['/graph?notebook=thesis', boardsRoute('thesis')], ['/graph?notebook=th
   page(url);
   await waitFor(() => expect(address()).toBe(target));
 });
-
-it('leaves a board by Back only once its editors are saved, and keeps it with its address when they cannot be', async () => {
-  page(boardsRoute('thesis'));
-  fireEvent.click(await screen.findByRole('button', { name: /第三章/ }));
-  await screen.findByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' });
-  let finish!: (saved: boolean) => void;
-  flushEditors.mockReturnValueOnce(new Promise<boolean>(resolve => void (finish = resolve)));
-  act(() => void at.navigate!(-1));
-  await waitFor(() => expect(flushEditors).toHaveBeenCalledTimes(1));
-  // The address is the list's already; the board and its side panel stay until they are saved.
-  expect(address()).toBe(boardsRoute('thesis'));
-  expect(screen.getByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' })).toBeInTheDocument();
-  finish(true);
-  await screen.findByRole('list', { name: 'Whiteboards of this notebook' });
-  // Forward has nothing shown to save; a refused save on the way back keeps the board and its address.
-  act(() => void at.navigate!(1));
-  await screen.findByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' });
-  expect(flushEditors).toHaveBeenCalledTimes(1);
-  flushEditors.mockResolvedValueOnce(false);
-  act(() => void at.navigate!(-1));
-  await waitFor(() => expect(flushEditors).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(address()).toBe(boardsRoute('thesis', 'notes/thesis/chapter.compilation.yml')));
-  expect(screen.getByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' })).toBeInTheDocument();
-});
