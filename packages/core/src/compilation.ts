@@ -288,12 +288,26 @@ export function compilationFields(raw: string, path: string, scope?: readonly st
  * holding them is returned as it is. Refused with a `CompilationError` as `editCompilationFields` refuses, and when tags
  * are not a list of strings or the status is not a string. `scope`, the repository's notebook roots, is what the result
  * must open for.
+ *
+ * Tags and status that `raw` itself reads as (`compilationFields`) ask for no change, so `raw` is returned as it is,
+ * whether it opens or not: the metadata read from a file and sent back with its text, as the undo of a deletion, a move
+ * or an editor save does, leaves out what an invalid file cannot show (a tag that is no string), and must not become a
+ * write of those fields. Storing the text unchanged is what a save without metadata does anyway.
  */
 export function applyCompilationMetadata(raw: string, metadata: { tags?: unknown; status?: unknown; }, scope?: readonly string[]): string {
   const what = 'Tags and status';
   const { status } = metadata;
   if (status !== undefined && status !== null && typeof status !== 'string') throw new CompilationError(`${what} not written: status must be a string`);
-  return editCompilationFields(raw, { tags: givenTags(metadata.tags, what), status: status || undefined }, what, scope);
+  const tags = givenTags(metadata.tags, what);
+  if (readsAs(raw, tags, status || undefined, scope)) return raw;
+  return editCompilationFields(raw, { tags, status: status || undefined }, what, scope);
+}
+
+/** Whether a compilation's text reads as these tags and status, as its listing shows them, valid or not. */
+function readsAs(raw: string, tags: readonly string[], status: string | undefined, scope?: readonly string[]): boolean {
+  // The path only names an untitled file, which is not compared.
+  const shown = compilationFields(raw, COMPILATION_SUFFIX, scope);
+  return (shown.status || undefined) === status && shown.tags.length === tags.length && shown.tags.every((tag, index) => tag === tags[index]);
 }
 
 /** Replaces only the `tags` value of a compilation file, refused as `applyCompilationMetadata` refuses. */
