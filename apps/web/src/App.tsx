@@ -169,14 +169,14 @@ export const AppContent: React.FC = () => {
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder } = navigation;
 
   const changeDialog = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });
-  const { isCommitOpen, openCommitModal, panelRemoteChanges } = changeDialog;
+  const { isCommitOpen, openCommitModal, leaveLoses } = changeDialog;
   // With every repository hidden or unavailable there is no notebook to show, and Settings is where the person
   // recovers: it opens there (decision C8).
   const nothingToShow = !loading && !loadError && !config?.notebooks.length;
   useEffect(() => {
     if (nothingToShow && activeTab !== 'settings') navigate('/settings#settings-repositories', { replace: true });
   }, [nothingToShow, activeTab, navigate]);
-  useLeaveWarning(Boolean(panelRemoteChanges?.length));
+  useLeaveWarning(leaveLoses);
 
   // Aggregated tags across the workspace for autocomplete
   const availableTags = useMemo(() => Array.from(new Set(workspaceTagNames.map(tag => tag.trim()))).filter(Boolean).sort(), [workspaceTagNames]);
