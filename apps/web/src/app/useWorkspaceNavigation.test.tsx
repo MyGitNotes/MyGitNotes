@@ -161,14 +161,30 @@ it('opens the target folder on notebook switch without adding a second history e
   expect(result.current.selectedFolder).toBe('journal');
 });
 
-it('does not restore or overwrite the notes folder on outline, compilation or graph pages', () => {
+it('does not restore or overwrite the notes folder on outline, compilation or 白板 pages', () => {
   localStorage.setItem(folderKey('life'), 'journal');
-  for (const url of ['/notebooks/life?kind=outline&folders=notes%2Flife%2Farchive', '/notebooks/life?kind=compilation', '/graph?notebook=life']) {
+  for (const url of ['/notebooks/life?kind=outline&folders=notes%2Flife%2Farchive', '/notebooks/life?kind=compilation', '/boards?notebook=life']) {
     const page = notesAt(url);
     expect(page.result.current.location.pathname + page.result.current.location.search).toBe(url);
     expect(localStorage.getItem(folderKey('life'))).toBe('journal');
     page.unmount();
   }
+});
+
+it("redirects the Notes page's former graph view to the notebook's 白板 page, replacing the address", async () => {
+  const { result } = notesAt('/notebooks/thesis/folders/sources?view=graph&tag=demo&q=causal');
+  await waitFor(() => expect(result.current.location.pathname + result.current.location.search).toBe('/boards?notebook=thesis'));
+  expect(result.current.navigationType).toBe('REPLACE');
+  expect(result.current.route.tab).toBe('boards');
+});
+
+it('opens the 白板 page from the top bar on its list, and another notebook there on its own list', async () => {
+  const { result } = notesAt('/notebooks/life?q=causal');
+  await act(() => result.current.navigation.setActiveTab('boards'));
+  expect(result.current.location.pathname + result.current.location.search).toBe('/boards?notebook=life');
+  const board = notesAt('/boards?notebook=life&board=notes%2Flife%2Fa.compilation.yml&note=notes%2Flife%2Fn.md');
+  await act(() => board.result.current.navigation.setSelectedNotebookId('thesis'));
+  expect(board.result.current.location.pathname + board.result.current.location.search).toBe('/boards?notebook=thesis');
 });
 
 it('does not restore the last folder of a same-named notebook in another repository', () => {

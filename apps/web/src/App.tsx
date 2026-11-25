@@ -66,7 +66,8 @@ import { WorkspaceCommitModal } from './app/WorkspaceCommitModal.js';
 import { useWorkspaceHandover } from './app/useWorkspaceHandover.js';
 import { WorkspaceProviders } from './app/WorkspaceProviders.js';
 import { WorkspaceRightPanel } from './app/WorkspaceRightPanel.js';
-import { GraphRoute, NotebookUnavailableRoute, StudyRoute } from './app/WorkspacePages.js';
+import { BoardsRoute, NotebookUnavailableRoute, StudyRoute } from './app/WorkspacePages.js';
+import { boardPanelActions } from './app/board-panel-actions.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
 import { useNoteMove } from './app/useNoteMove.js';
@@ -203,11 +204,12 @@ export const AppContent: React.FC = () => {
 
   const presentation = !phone && viewMode === 'kanban' ? 'kanban' : 'list';
   const browseNotes = useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField: sort.sortField, sortOrder: sort.sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t });
-  const { notebookRoot, displayedNotes, filterProps, debouncedSearch } = browseNotes;
+  const { notebookRoot, displayedNotes, debouncedSearch } = browseNotes;
 
   const { handleOpenNote, closeZoom, closeCompilationZoom } = useNoteActions({ activeTab, editorRegistry, setEditingNote, config, location, editorRoute, focusNoteRoute: noteLink.inFocus, returnTo, selectedFolder, selectedNotebookId, navigate, setAssets });
 
   const { openInFocus, openFromBrowse, openLink, zoomFocusNote, addToFocus } = useFocusNoteNavigation({ noteFocus, selectedNotebookId, setFocusNarrowView, handleOpenNote, setAddingToFocus, isTemplate, trackOpen });
+  const boardPanel = boardPanelActions({ noteFocus, selectedNotebookId, flushEditors: () => editorRegistry.flushEditors(), navigate, handleOpenNote, closeZoomState: () => setEditingNote(null), showFocus: () => setFocusNarrowView('focus'), setActionError, t });
 
   const { handleSaveNote } = useNoteSaving({ canWriteNotebook, remote, readDraft, readCommittedNote, t, stageWorkingNote, invalidateNotes, setEditingNote, setGitStatus, defaultDraftScope: defaultRepository ? draftScope(defaultRepository) : '' });
 
@@ -277,7 +279,7 @@ export const AppContent: React.FC = () => {
 
   // The toolbar search dims what the Focus shows that it does not match; on a phone it only filters the list.
   const focusMatches = useFocusSearch({ q: debouncedSearch, notebookId: selectedNotebookId, enabled: Boolean(noteFocus.layout) && !phone });
-  const { compilationActions, createUntitledCompilation, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse });
+  const { compilationActions, createUntitledCompilation, createUntitledBoard, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse, boardPanel });
   const { renderNotesPage, phoneFilterSheet } = useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets: browseFacets, browse: browseNotes, sort, selection, tags: tagWorkspace, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, board, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled: noteEditorOpen || isCommitOpen, setShortcutMode });
 
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;
@@ -311,7 +313,7 @@ export const AppContent: React.FC = () => {
         <SidebarProvider open={filtersOpen} onOpenChange={setFiltersOpen}>
           <div ref={sidebarGestureRef} className='workspace-body relative flex-1 min-h-0 min-w-0 flex overflow-hidden'>
             <WorkspaceSplitLayout
-              hasSidebar={activeTab !== 'graph' && !route.study && !notesColumns}
+              hasSidebar={activeTab !== 'boards' && !route.study && !notesColumns}
               sidebarDomId={activeTab === 'notes' ? 'notebook-panel' : activeTab === 'agent' ? 'agent-sidebar-panel' : activeTab === 'assets' ? 'assets-sidebar-panel' : activeTab === 'settings' ? 'settings-sidebar-panel' : undefined}
               closeLabel={t('sidebar.closeFilters')}
               rightPanelWidth={rightPanelWidth}
@@ -323,7 +325,7 @@ export const AppContent: React.FC = () => {
               }
               rightPanel={<WorkspaceRightPanel phoneNotes={phoneNotes} documentPanel={activeTab === 'notes' && noteFocus.layout ? { enabled: activePaneNote, onContainer: setDocumentContainer } : undefined} fileMode={activeTab === 'assets'} filePanel={filePanel} canEditFileMetadata={canWriteFiles && !resourceNavigationBusy} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} currentFolder={selectedFolder && notebookRoot ? `${notebookRoot}/${selectedFolder}` : undefined} remote={remote} gitStatus={gitStatus} repoRoot={repoRoot} updateDraft={updateDraft} changeCount={changeCount} remoteTrash={remoteTrash} repositoryHeading={repositoryHeading} deletedNotes={deletedNotes} handleRestoreNote={handleRestoreNote} changeDialog={changeDialog} canWrite={canWrite} handleOpenNote={handleOpenNote} handleSaveNote={handleSaveNote} readNoteForChange={readNoteForChange} refreshAfterSync={refreshAfterSync} />}
             >
-              {notebookUnavailable && ['notes', 'assets', 'graph'].includes(activeTab) && <NotebookUnavailableRoute notebookTitle={selectedNotebook?.title ?? selectedNotebookId} unavailable={notebookUnavailable} />}
+              {notebookUnavailable && ['notes', 'assets', 'boards'].includes(activeTab) && <NotebookUnavailableRoute notebookTitle={selectedNotebook?.title ?? selectedNotebookId} unavailable={notebookUnavailable} />}
               {!notebookUnavailable && activeTab === 'notes' && !route.study && renderNotesPage(focusArea)}
               {activeTab === 'agent' && (
                 <main className='workspace-route agent-main'>
@@ -336,7 +338,7 @@ export const AppContent: React.FC = () => {
                 </main>
               )}
               {!notebookUnavailable && activeTab === 'notes' && route.study && <StudyRoute notebooks={config?.notebooks || []} folders={folders} notebookId={selectedNotebookId} notebook={selectedNotebook} path={route.study} remote={remote} refreshWorkspace={refreshWorkspace} invalidateNotes={invalidateNotes} setGitStatus={setGitStatus} setActionError={setActionError} handleOpenNote={handleOpenNote} navigate={navigate} />}
-              {!notebookUnavailable && activeTab === 'graph' && <GraphRoute graphKey={remote ? sourceId : repoRoot} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} filters={filterProps} folders={folders} />}
+              {!notebookUnavailable && activeTab === 'boards' && <BoardsRoute sourceKey={remote ? sourceId : repoRoot} notebookId={selectedNotebookId} notebooks={config?.notebooks || []} folders={folders} writable={canWrite} sidePanel={boardPanel} onOpenNote={(note, anchor) => void handleOpenNote(note, anchor)} onCreate={createUntitledBoard} />}
               {activeTab === 'settings' && (
                 <main className='workspace-route settings-main has-sidebar-drawer'>
                   <SettingsModal manifest={{ repositories, defaultRepository: sourceId, initialRepository: repositoryFor(selectedNotebookId)?.id ?? sourceId, onManifestRevision: setManifestRevision }} repositories={{ repositories, onMembershipChanged: membershipChanged, onOpenChanges: () => openCommitModal() }} recovery={nothingToShow} local={!remote} coreUpdates={coreUpdate} accountSettings={<AgentAccessSettings local={!remote} />} repositoryChoice={repositoryChoice && defaultRepository?.repository ? <RepositorySwitch repository={defaultRepository.repository} branch={defaultRepositoryBranch} /> : undefined} onRefreshWorkspace={refreshWorkspace} currentTheme={currentTheme} onSelectTheme={handleSelectTheme} />

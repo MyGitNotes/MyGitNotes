@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NotebookFacets, NoteListItem } from '@mygitnotes/core/note-query';
@@ -34,9 +34,10 @@ type BoardHeader = Omit<CompilationHeaderProps, 'row' | 'count' | 'notebooks' | 
  * its sections, free text and arrows, the dashed links written inside its notes, and the minimap. A card opens where
  * the compilation's host opens items (`onOpen`). With `onChange` on a writable board wider than a phone the board is
  * edited in place, each gesture one `onChange`; on a phone it is for looking, without the arrangement switch, the
- * minimap or the tools.
+ * minimap or the tools. `reveal` names a card to centre and select once the board is drawn, once per `key` (an
+ * arrival at an address that names it).
  */
-export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, onChange, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; onChange?: (row: CompilationRow) => void; }) {
+export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, onChange, facets, extra, reveal, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; onChange?: (row: CompilationRow) => void; reveal?: { card: string; key: string; }; }) {
   const { t } = useTranslation();
   const phone = usePhone();
   // A board places every member, so it reads them all, with the body each card's first lines come from. The status
@@ -51,6 +52,20 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
   const camera = useBoardCamera({ board: `${row.notebookId}:${row.path}`, bounds: placed.bounds, loaded });
   const editable = Boolean(onChange) && !phone && !header.readOnly && !header.disabled;
   const editor = useBoardEditor({ row, placed, place, editable, onChange, camera });
+  const revealed = useRef<string>(undefined);
+  const { ready, centreOn, viewport } = camera, { setSelection } = editor;
+  useEffect(() => {
+    if (!reveal || revealed.current === reveal.key || !ready) return;
+    const card = placed.cards.find(candidate => candidate.key === reveal.card);
+    // A card the board does not hold (yet: a dynamic board's members arrive with the query) is waited for while the board loads.
+    if (!card && !loaded) return;
+    revealed.current = reveal.key;
+    if (!card) return;
+    centreOn({ x: card.rect.x + card.rect.w / 2, y: card.rect.y + card.rect.h / 2 });
+    setSelection(new Set([`card:${card.key}` as const]));
+    // The keyboard lands on it too, once the camera has drawn it where it is centred.
+    requestAnimationFrame(() => [...viewport.current?.querySelectorAll<HTMLElement>('[data-board-key]') ?? []].find(element => element.dataset.boardKey === `card:${card.key}`)?.focus({ preventScroll: true }));
+  }, [reveal, ready, placed, loaded, centreOn, setSelection, viewport]);
   // A gesture under way is drawn from the row it would write.
   const shown = editor.preview ?? row;
   const board = editor.previewBoard ?? placed;

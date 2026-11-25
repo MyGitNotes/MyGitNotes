@@ -12,11 +12,11 @@ const wrapper = ({ children }: { children: ReactNode; }) => createElement(Comman
 
 it('lists every KEYMAP entry, then the palette-only commands in registration order', () => {
   const store = new CommandStore();
-  store.register(['nav.graph'], () => ({ id: 'nav.graph', title: 'Go to Graph', group: 'goTo', run: () => {} }));
+  store.register(['nav.boards'], () => ({ id: 'nav.boards', title: 'Go to Whiteboards', group: 'goTo', run: () => {} }));
   store.register(['help.open'], () => ({ id: 'help.open', run: () => {} }));
   const commands = resolveCommands(store, t as never);
   expect(commands).toHaveLength(KEYMAP.length + 1);
-  expect(commands.at(-1)).toMatchObject({ id: 'nav.graph', title: 'Go to Graph', group: 'goTo', keys: [], registered: true });
+  expect(commands.at(-1)).toMatchObject({ id: 'nav.boards', title: 'Go to Whiteboards', group: 'goTo', keys: [], registered: true });
   expect(commands.find(command => command.id === 'help.open')).toMatchObject({ title: 't:command.help.open', englishTitle: 'Keyboard shortcuts', registered: true, palette: true });
   // A dispatcher key nobody registered is listed, and marked as not registered here.
   expect(commands.find(command => command.id === 'palette.notes')).toMatchObject({ registered: false, palette: false });

@@ -6,7 +6,7 @@ import { filterParsers, type FilterQuery, writeFilterQuery } from '../lib/filter
 import { legacyFolderPaths } from '@mygitnotes/core/note-filters';
 import type { FilterControls } from '../lib/filter-controls.js';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { bareNotebookRoute, isFocusNoteState, legacyAllNotebooksRoute, notebookRoute, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
+import { bareNotebookRoute, boardsRoute, isFocusNoteState, legacyAllNotebooksRoute, notebookRoute, parseWorkspaceRoute, WorkspaceTab } from '../lib/routes.js';
 import React, { useEffect, useRef, useState } from 'react';
 import type { ViewMode } from '../lib/types.js';
 import { useNoteEditorRegistry } from '../lib/note-editing.js';
@@ -72,7 +72,7 @@ export function useWorkspaceNavigation({ repositoryId, filterVocabulary, locatio
     if (clearingNotesFolder || (patch.folders && route.folder)) {
       const query = currentFilterSearch(next);
       if (clearingNotesFolder) query.set('folder', '');
-      void navigateFiltered(activeTab === 'graph' ? '/graph' : notebookRoute(selectedNotebookId), query);
+      void navigateFiltered(notebookRoute(selectedNotebookId), query);
     } else void setFilterQuery(next, { history: Object.keys(patch).length === 1 && 'q' in patch ? 'replace' : 'push' });
   };
   const clearFilters = () => {
@@ -80,7 +80,7 @@ export function useWorkspaceNavigation({ repositoryId, filterVocabulary, locatio
     saveEditedFilters(query);
     query.delete('lanes');
     if (activeTab === 'notes') query.set('folder', '');
-    void navigateFiltered(activeTab === 'graph' ? '/graph' : notebookRoute(selectedNotebookId), query);
+    void navigateFiltered(notebookRoute(selectedNotebookId), query);
   };
   // Leaving the all-notebooks scope restores the folder filters chosen before it, within the current notebook.
   const foldersBeforeAllNotebooks = useRef<string[] | null>(null);
@@ -100,13 +100,15 @@ export function useWorkspaceNavigation({ repositoryId, filterVocabulary, locatio
     try {
       if (activeTab === 'agent' && !await agentSystemRef.current?.prepareLeave()) return;
       if (activeTab === 'assets' && !await fileManagerRef.current?.prepareLeave()) return;
-      if (activeTab === 'notes' && !await editorRegistry.flushEditors()) return;
-      if (tab === 'notes' || tab === 'graph') {
+      // The Notes page and the 白板 page's side panel hold note editors, whose edits are saved before leaving.
+      if ((activeTab === 'notes' || activeTab === 'boards') && !await editorRegistry.flushEditors()) return;
+      if (tab === 'notes') {
         const query = currentFilterSearch({ view: viewMode === 'graph' ? 'flat' : viewMode });
         query.delete('focus');
         query.set('notebook', selectedNotebookId);
-        await navigateFiltered(tab === 'notes' ? notebookRoute(selectedNotebookId) : '/graph', query);
-      } else {
+        await navigateFiltered(notebookRoute(selectedNotebookId), query);
+      } else if (tab === 'boards') navigate(boardsRoute(selectedNotebookId));
+      else {
         const query = new URLSearchParams({ notebook: selectedNotebookId });
         // The Files page opens at the folder selected in Notes.
         if (tab === 'assets' && selectedFolder && folderRoot) query.set('asset', `${folderRoot}/${selectedFolder}`);
@@ -125,7 +127,9 @@ export function useWorkspaceNavigation({ repositoryId, filterVocabulary, locatio
     try {
       if (activeTab === 'agent' && !await agentSystemRef.current?.prepareNotebookChange(id)) return;
       if (activeTab === 'assets' && !await fileManagerRef.current?.prepareLeave()) return;
-      if (activeTab === 'notes' && !await editorRegistry.flushEditors()) return;
+      if ((activeTab === 'notes' || activeTab === 'boards') && !await editorRegistry.flushEditors()) return;
+      // The 白板 page of another notebook opens on its list: a board belongs to its notebook.
+      if (activeTab === 'boards') return navigate(boardsRoute(id));
       // Search travels with the person; the new Notes list restores its own filters and sort.
       const query = currentFilterSearch({ folders: [], kind: 'note', sortField: null, sortOrder: null, tag: [], tagMode: 'any', status: null });
       if (activeTab === 'notes') removeListFilters(query);
@@ -158,12 +162,13 @@ export function useWorkspaceNavigation({ repositoryId, filterVocabulary, locatio
   }, [config, location.pathname, location.search]);
   /* eslint-enable react-hooks/exhaustive-deps */
   /* eslint-disable react-hooks/exhaustive-deps -- The legacy graph-view redirect consumes one route-arrival snapshot; query helpers can change while its asynchronous URL update is still pending. */
+  // The Notes page's former graph view (`view=graph`, as an old link or bookmark URL names it) is the notebook's 白板 page now.
   useEffect(() => {
     if (loading || !config || editorRoute.note || route.tab !== 'notes' || route.view !== 'graph') return;
-    const query = currentFilterSearch({ view: 'flat' });
-    query.delete('focus');
-    query.set('notebook', selectedNotebookId);
-    void navigateFiltered('/graph', query, true);
+    void (async () => {
+      await setFilterQuery({});
+      navigate(boardsRoute(selectedNotebookId), { replace: true });
+    })();
   }, [loading, config, editorRoute.note, route.tab, route.view]);
   /* eslint-enable react-hooks/exhaustive-deps */
 

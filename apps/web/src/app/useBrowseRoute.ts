@@ -42,8 +42,8 @@ export function useBrowseRoute({ editorRoute, config, location, queryState, setF
   const sidebarGestureRef = useSidebarSwipe(activeTab === 'notes' && phone && !loading && !loadError, filtersOpen, setFiltersOpen);
   const folderRoot = config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root.replace(/\/$/, '');
   const { selectedFolder, selectedFolders } = useRememberedFolder({ location, editorRoute, browseRoute: route, focusNoteRoute, repositoryId, notebookId: selectedNotebookId, folderRoot, folders, foldersLoading });
-  // The graph queries every notebook while its all-notebooks toggle is on; the Notes page always shows the current notebook.
-  const scopeNotebookId = route.allNotebooks && activeTab === 'graph' ? 'all' : selectedNotebookId;
+  // The Notes page always shows the current notebook.
+  const scopeNotebookId = selectedNotebookId;
   const selectedStatus = route.status;
   const showHidden = route.showHidden;
 

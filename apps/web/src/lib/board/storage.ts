@@ -54,3 +54,23 @@ export function saveBoardNoteLinks(shown: boolean, store: Store = storage()): vo
     store?.setItem(BOARD_NOTE_LINKS_STORAGE_KEY, shown ? 'on' : 'off');
   } catch { /* The choice holds for this visit. */ }
 }
+
+/** The width of a board's side panel on this device, in CSS px. */
+export const BOARD_PANEL_WIDTH_STORAGE_KEY = 'mygitnotes:board-panel-width';
+export const BOARD_PANEL_WIDTH = { min: 320, max: 960, initial: 440 } as const;
+export const clampPanelWidth = (width: number) => Math.round(Math.min(BOARD_PANEL_WIDTH.max, Math.max(BOARD_PANEL_WIDTH.min, width)));
+
+export const readBoardPanelWidth = (store: Store = storage()): number => {
+  try {
+    const value = Number(store?.getItem(BOARD_PANEL_WIDTH_STORAGE_KEY));
+    return value > 0 ? clampPanelWidth(value) : BOARD_PANEL_WIDTH.initial;
+  } catch {
+    return BOARD_PANEL_WIDTH.initial;
+  }
+};
+
+export function saveBoardPanelWidth(width: number, store: Store = storage()): void {
+  try {
+    store?.setItem(BOARD_PANEL_WIDTH_STORAGE_KEY, String(clampPanelWidth(width)));
+  } catch { /* The width holds for this visit. */ }
+}

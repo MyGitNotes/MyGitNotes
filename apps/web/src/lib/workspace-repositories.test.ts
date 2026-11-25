@@ -34,7 +34,7 @@ describe('workspace repositories', () => {
   it("belongs a page to the shown notebook's repository, and to the default repository where no single notebook is shown", () => {
     const page = (tab: string, notebookId: string, allNotebooks = false) => pageRepository([home, other], home.id, { tab, notebookId, allNotebooks })?.id;
     expect(page('notes', 'campaign~trpg')).toBe(other.id);
-    expect(page('graph', 'campaign~trpg')).toBe(other.id);
+    expect(page('boards', 'campaign~trpg')).toBe(other.id);
     expect(page('notes', 'notes~life')).toBe(home.id);
     expect(page('settings', 'campaign~trpg')).toBe(home.id);
     expect(page('agent', 'campaign~trpg')).toBe(home.id);

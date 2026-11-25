@@ -1,0 +1,13 @@
+/* The side panel (白板筆記欄): a resizable column on the right of the board, holding the note's hosted editor. */
+.board-with-panel { display: flex; flex: 1 1 auto; gap: 0; min-width: 0; min-height: 0; }
+.board-with-panel > .board-arrangement { flex: 1 1 auto; min-width: 0; }
+.board-side-panel { position: relative; display: flex; flex: none; flex-direction: column; max-width: 70%; min-height: 0; margin-left: 12px; overflow: hidden; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.board-panel-divider { position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: 8px; cursor: col-resize; touch-action: none; }
+.board-panel-divider:hover, .board-panel-divider:focus-visible { background: color-mix(in srgb, var(--color-primary) 24%, transparent); outline: none; }
+.board-panel-head { display: flex; flex: none; align-items: center; gap: 6px; min-width: 0; padding: 8px 8px 8px 16px; border-bottom: 1px solid var(--color-line); }
+.board-panel-path { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--color-muted); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.board-panel-boards { flex: none; margin: 0; padding: 8px 16px; border-bottom: 1px solid var(--color-line); color: var(--color-muted); font-size: 13px; line-height: 1.6; }
+.board-panel-board { min-height: 24px; padding: 0 2px; border-radius: 4px; color: var(--color-primary); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.board-panel-board:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.board-panel-editor { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
+.board-panel-editor > * { flex: 1 1 auto; min-height: 0; }

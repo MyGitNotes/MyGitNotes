@@ -206,7 +206,7 @@ it('lists the go-to commands first, so Ctrl+Shift+P then Enter goes to Notes', a
   await openCommandPalette();
   await waitFor(() => expect(document.querySelector('[data-command-id="nav.notes"]')).not.toBeNull());
   const ids = [...document.querySelectorAll('.keyboard-shortcuts-list [data-command-id]')].map(row => row.getAttribute('data-command-id'));
-  expect(ids.slice(0, 5)).toEqual(['nav.notes', 'nav.graph', 'nav.assets', 'nav.agent', 'nav.settings']);
+  expect(ids.slice(0, 5)).toEqual(['nav.notes', 'nav.boards', 'nav.assets', 'nav.agent', 'nav.settings']);
   expect(ids.indexOf('note.new')).toBeGreaterThan(4);
   fireEvent.keyDown(document, { key: 'Enter' });
   await waitFor(() => expect(navigatedTo).toEqual(['notes']));
@@ -282,13 +282,13 @@ it('inside the note editor, commands that leave the note are unavailable and not
   await waitFor(() => expect(openedNotes).toEqual(['notes/life/plan.md']));
 });
 
-it('"Go to Graph" is a command and navigates to the Graph page', async () => {
+it('"Go to Whiteboards" is a command and navigates to the 白板 page', async () => {
   render(createElement(Harness), { wrapper });
   const input = await openCommandPalette();
-  fireEvent.change(input, { target: { value: '>graph' } });
-  await waitFor(() => expect(document.querySelector('[data-command-id="nav.graph"]')).not.toBeNull());
+  fireEvent.change(input, { target: { value: '>whiteboards' } });
+  await waitFor(() => expect(document.querySelector('[data-command-id="nav.boards"]')).not.toBeNull());
   fireEvent.keyDown(document, { key: 'Enter' });
-  await waitFor(() => expect(navigatedTo).toEqual(['graph']));
+  await waitFor(() => expect(navigatedTo).toEqual(['boards']));
 });
 
 it('Ctrl+Shift+F runs the note text search instead of opening quick open', async () => {
@@ -352,13 +352,13 @@ it('help lists every registry command, grouped, and its filter matches names and
   // Every KEYMAP entry plus the palette-only commands registered here (six of them: five pages and new note).
   expect(rows()).toHaveLength(KEYMAP.length + 6);
   expect(new Set(rows()).size).toBe(rows().length);
-  expect(rows()).toEqual(expect.arrayContaining(['palette.notes', 'palette.commands', 'help.open', 'editor.leader', 'format.bold', 'nav.graph', 'note.searchList']));
+  expect(rows()).toEqual(expect.arrayContaining(['palette.notes', 'palette.commands', 'help.open', 'editor.leader', 'format.bold', 'nav.boards', 'note.searchList']));
   expect([...help.querySelectorAll('section h3')].map(heading => heading.textContent)).toEqual(expect.arrayContaining(['General', 'Go to', 'Quick open', 'Editor', 'Find', 'Outline', 'Table', 'Image viewer']));
   const filter = help.querySelector<HTMLInputElement>('input[type="search"]')!;
   fireEvent.change(filter, { target: { value: 'ctrl+shift+p' } });
   expect(rows()).toEqual(['palette.commands']);
-  fireEvent.change(filter, { target: { value: 'graph' } });
-  expect(rows()).toEqual(expect.arrayContaining(['nav.graph', 'graph.toggleExpand']));
+  fireEvent.change(filter, { target: { value: 'whiteboards' } });
+  expect(rows()).toEqual(expect.arrayContaining(['nav.boards']));
   expect(rows()).not.toContain('palette.notes');
   // Quick open and the note text search both answer the word people look for.
   fireEvent.change(filter, { target: { value: 'search' } });

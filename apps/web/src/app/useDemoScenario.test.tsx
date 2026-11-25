@@ -91,9 +91,9 @@ it('leaves the app’s own paths, the demo root and deeper routes alone', () => 
 
 it('leaves every static app route alone, so none is read as a scenario', () => {
   for (const segment of APP_ROOT_SEGMENTS) expect(run(`/${segment}`), segment).not.toHaveBeenCalled();
-  for (const pathname of ['/files', '/graph', '/screen', '/index', '/index.html']) expect(run(pathname), pathname).not.toHaveBeenCalled();
+  for (const pathname of ['/files', '/boards', '/graph', '/screen', '/index', '/index.html']) expect(run(pathname), pathname).not.toHaveBeenCalled();
   // Whatever the route parser accepts as a one-segment app page is one of those segments.
-  for (const word of ['notes', 'notebooks', 'assets', 'files', 'agent', 'graph', 'settings', 'screen', 'index', 'index.html', 'trpg']) {
+  for (const word of ['notes', 'notebooks', 'assets', 'files', 'agent', 'boards', 'graph', 'settings', 'screen', 'index', 'index.html', 'trpg']) {
     const route = parseWorkspaceRoute(`/${word}`, '');
     const isPage = route.valid && (route.tab !== 'notes' || route.legacyScreen || ['notes', 'notebooks', 'index', 'index.html'].includes(word));
     if (isPage) expect(run(`/${word}`), word).not.toHaveBeenCalled();

@@ -47,10 +47,12 @@ export interface CompilationHeaderProps {
   hideQuery?: boolean;
   /** Hides the arrangement switch, as a phone does on a whiteboard, which it only shows. */
   hideArrangement?: boolean;
+  /** Shown before the name: the 白板 page's breadcrumb. */
+  lead?: ReactNode;
 }
 
 /** The compilation's name, source and the controls shared by its arrangements. */
-export function CompilationHeader({ row, count, disabled, readOnly, notebooks, facets, onStudy, onView, onAdd, onSort, onEditOrder, onArrange, onRename, onStudyChange, onCreateInSource, scrollButton, extra, hideQuery = false, hideArrangement = false }: CompilationHeaderProps) {
+export function CompilationHeader({ row, count, disabled, readOnly, notebooks, facets, onStudy, onView, onAdd, onSort, onEditOrder, onArrange, onRename, onStudyChange, onCreateInSource, scrollButton, extra, hideQuery = false, hideArrangement = false, lead }: CompilationHeaderProps) {
   const { t } = useTranslation();
   const [queryOpen, setQueryOpen] = useState(false);
   const query = row.study || { filter: 'all' as const, dueFirst: false };
@@ -61,6 +63,7 @@ export function CompilationHeader({ row, count, disabled, readOnly, notebooks, f
   return (
     <header className='screen-lane-header'>
       <div className='screen-lane-heading'>
+        {lead}
         <h3>
           {onRename && !readOnly
             ? (

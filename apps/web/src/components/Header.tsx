@@ -1,6 +1,6 @@
 import { Button } from './Button.js';
 import React, { useEffect } from 'react';
-import { BookOpen, Bot, Image as ImageIcon, Keyboard, Network, PanelLeft, Plus, Settings } from 'lucide-react';
+import { BookOpen, Bot, Image as ImageIcon, Keyboard, PanelLeft, Plus, Presentation, Settings } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import type { WorkspaceTab } from '../lib/routes.js';
 import type { NotebookConfig } from '../lib/types.js';
@@ -75,7 +75,7 @@ export function Header({ workspaceTitle, notebookGroups, unavailableNotebooks = 
   useEffect(() => {
     document.title = `${t(`nav.${activeTab}`)} · MyGitNotes`;
   }, [activeTab, t]);
-  const items = [{ id: 'notes', label: t('nav.notes'), icon: BookOpen }, { id: 'graph', label: t('nav.graph'), icon: Network }, { id: 'assets', label: t('nav.assets'), icon: ImageIcon }, { id: 'settings', label: t('nav.settings'), icon: Settings }] as const;
+  const items = [{ id: 'notes', label: t('nav.notes'), icon: BookOpen }, { id: 'boards', label: t('nav.boards'), icon: Presentation }, { id: 'assets', label: t('nav.assets'), icon: ImageIcon }, { id: 'settings', label: t('nav.settings'), icon: Settings }] as const;
   const nav = (
     <nav aria-label='Main navigation' className='header-nav'>
       {items.map(({ id, label, icon: Icon, ...item }, index) => (

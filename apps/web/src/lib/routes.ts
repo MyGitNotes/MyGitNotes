@@ -5,10 +5,10 @@ import { isBareNotebookId } from '@mygitnotes/core/notebook-key';
 import { matchPath } from 'react-router-dom';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 /** The paths the router serves with the app itself, before any edition's routes. */
-export const APP_ROUTE_PATHS = ['/', '/notes', '/index.html', '/notebooks', '/notebooks/:notebook', '/notebooks/:notebook/folders/*', '/notebooks/:notebook/notes/*', '/assets', '/files', '/agent', '/graph', '/settings', '/screen', '/screen/lanes/:lane', '/notes/study'];
+export const APP_ROUTE_PATHS = ['/', '/notes', '/index.html', '/notebooks', '/notebooks/:notebook', '/notebooks/:notebook/folders/*', '/notebooks/:notebook/notes/*', '/assets', '/files', '/agent', '/boards', '/graph', '/settings', '/screen', '/screen/lanes/:lane', '/notes/study'];
 /** The first segment of each app path: a one-segment address starting with one is a page of the app, not something else's name. */
 export const APP_ROOT_SEGMENTS = [...new Set(APP_ROUTE_PATHS.map(path => path.split('/')[1]!).filter(Boolean))];
-export type WorkspaceTab = 'notes' | 'assets' | 'agent' | 'graph' | 'settings';
+export type WorkspaceTab = 'notes' | 'assets' | 'agent' | 'boards' | 'settings';
 export function parseWorkspaceRoute(pathname: string, search: string) {
   pathname = pathname.replace(/\/+$/, '') || '/';
   if (pathname === '/files') pathname = '/assets';
@@ -17,6 +17,8 @@ export function parseWorkspaceRoute(pathname: string, search: string) {
   /** The id of a Screen lane named by a former `/screen/lanes/:id` URL, which now resolves to a compilation. */
   let legacyLane: string | null = null;
   let legacyScreen = false;
+  /** A former graph address (`/graph`), which the 白板 page redirects (`legacyGraphRoute`). */
+  let legacyGraph = false;
   let study = false;
   let tab: WorkspaceTab = 'notes';
   let notebook: string | null = null;
@@ -31,7 +33,10 @@ export function parseWorkspaceRoute(pathname: string, search: string) {
       valid = /^[a-zA-Z0-9_-]{1,64}$/.test(legacyLane);
     } else if (pathname === '/screen') legacyScreen = true;
     else if (pathname === '/notes/study') study = true;
-    else if (['/assets', '/agent', '/graph', '/settings'].includes(pathname)) tab = pathname.slice(1) as WorkspaceTab;
+    else if (pathname === '/graph') {
+      tab = 'boards';
+      legacyGraph = true;
+    } else if (['/assets', '/agent', '/boards', '/settings'].includes(pathname)) tab = pathname.slice(1) as WorkspaceTab;
     else if (pathname !== '/' && pathname !== '/notes') {
       const entry = matchPath('/notebooks/:notebook/notes/*', pathname);
       const directory = matchPath('/notebooks/:notebook/folders/*', pathname);
@@ -56,14 +61,14 @@ export function parseWorkspaceRoute(pathname: string, search: string) {
   if (queryFolder) folder = queryFolder;
   if ((note !== null && !safeRelative(note)) || (folder !== null && !safeRelative(folder))) valid = false;
   const filters = readFilterQuery(query);
-  const allNotebooks = filters.allNotebooks || (legacyAllNotebooks && (tab === 'notes' || tab === 'graph'));
+  const allNotebooks = filters.allNotebooks || (legacyAllNotebooks && tab === 'notes');
   // `focus` selects a Focus (or `current`); it is not a filter, so it is read separately from readFilterQuery.
   const queryFocus = query.get('focus');
   const focus = queryFocus && /^[a-zA-Z0-9_-]{1,64}$/.test(queryFocus) ? queryFocus : null;
   // A study session names its compilation by path, in the query.
   const studyPath = study ? query.get('path') : null;
   if (study && (!studyPath || !safeRelative(studyPath))) valid = false;
-  return { valid, tab, legacyScreen, legacyLane, study: study && studyPath ? studyPath : null, notebook, folder, note, ...filters, allNotebooks, legacyAllNotebooks, tag: filters.tag[0] || null, tags: filters.tag, focus };
+  return { valid, tab, legacyScreen, legacyLane, legacyGraph, study: study && studyPath ? studyPath : null, notebook, folder, note, ...filters, allNotebooks, legacyAllNotebooks, tag: filters.tag[0] || null, tags: filters.tag, focus };
 }
 /** The canonical URL for a former all-notebooks URL, or null for any other URL. */
 export function legacyAllNotebooksRoute(pathname: string, search: string, defaultNotebook: string): string | null {
@@ -113,7 +118,8 @@ export function noteRoute(notebook: string, relativePath: string) {
 export function noteReturnRoute(search: string, notebook: string, folder: string | null = null): string {
   const query = new URLSearchParams(search);
   const origin = query.get('returnTo');
-  if (origin === 'graph') return `/${origin}?notebook=${encodeURIComponent(notebook)}`;
+  // The former graph page, named by its tab, is the 白板 page now.
+  if (origin === 'graph') return boardsRoute(notebook);
   if (origin?.startsWith('/') && !origin.startsWith('//') && !origin.includes('\\')) {
     const url = new URL(origin, 'https://workspace.invalid');
     const route = parseWorkspaceRoute(url.pathname, url.search);
@@ -164,6 +170,49 @@ export function trailCompilation(state: unknown, notebook: string | null, notebo
   if (!route.valid || route.tab !== 'notes' || !route.note || route.notebook !== notebook) return null;
   const path = `${notebookRoot}/${route.note}`;
   return isCompilationPath(path) ? path : null;
+}
+
+/** What the 白板 page's address names besides its notebook: a board by its repository path, the note its side panel shows, and a card to centre and select. */
+export interface BoardsQuery {
+  board: string | null;
+  note: string | null;
+  card: string | null;
+}
+
+/** Reads the 白板 page's query; a path that is not a plain relative path names nothing. */
+export function boardsQuery(search: string): BoardsQuery {
+  const query = new URLSearchParams(search);
+  const path = (name: string) => {
+    const value = query.get(name);
+    return value && safeRelative(value) ? value : null;
+  };
+  return { board: path('board'), note: path('note'), card: query.get('card') || null };
+}
+
+/** The 白板 page of a notebook: its list of boards, or one board, with a note in its side panel and a card centred and selected. */
+export function boardsRoute(notebook: string, board?: string | null, open: { note?: string | null; card?: string | null; } = {}) {
+  const query = new URLSearchParams({ notebook });
+  if (board) query.set('board', board);
+  if (board && open.note) query.set('note', open.note);
+  if (board && open.card) query.set('card', open.card);
+  return `/boards?${query}`;
+}
+
+/**
+ * Where a former graph address goes, replacing it: `/graph` to the 白板 page of its notebook; `/graph?lanes=<id>` to
+ * that compilation's board when it is one (arranged as a board or holding board data), else to the compilation in zoom
+ * on the Notes page; a compilation the notebook does not hold opens the list. Null while `compilations`, the
+ * notebook's compilations by file id and path, are still being read.
+ */
+export function legacyGraphRoute(search: string, notebook: { id: string; root: string; }, compilations: readonly { id?: string; path: string; board: boolean; }[] | null): string | null {
+  const lane = new URLSearchParams(search).get('lanes');
+  if (!lane) return boardsRoute(notebook.id);
+  if (!compilations) return null;
+  const row = compilations.find(candidate => candidate.id === lane);
+  if (!row) return boardsRoute(notebook.id);
+  if (row.board) return boardsRoute(notebook.id, row.path);
+  const root = notebook.root.replace(/\/$/, '');
+  return row.path.startsWith(`${root}/`) ? `${noteRoute(notebook.id, row.path.slice(root.length + 1))}?zoom` : boardsRoute(notebook.id);
 }
 
 /** The study session of one compilation. */

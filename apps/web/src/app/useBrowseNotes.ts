@@ -41,10 +41,9 @@ interface Params {
 }
 
 export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags, route, searchQuery, selectedStatus, showHidden, config, selectedNotebookId, selectedFolder, activeTab, sortField, sortOrder, viewMode, facetsQuery, notebookFacets, folders, notebookStatuses, changeAllNotebooks, changeFilters, clearFilters, folderless, t }: Params) {
-  // The graph filters by several folders, with or without their subfolders; the Notes page selects one folder and always includes its subfolders (the folder view lists one level itself, below).
-  const graph = activeTab === 'graph';
-  const scopeFolders = useMemo(() => graph ? selectedFolders : selectedFolders.slice(0, 1), [graph, selectedFolders]);
-  const descendants = graph ? route.descendants : true;
+  // The Notes page selects one folder and always includes its subfolders (the folder view lists one level itself, below).
+  const scopeFolders = useMemo(() => selectedFolders.slice(0, 1), [selectedFolders]);
+  const descendants = true;
   // Live states filter only where the workspace has a live editor; a link that names them elsewhere keeps every note.
   const liveAvailable = Boolean(useNoteQueryScope().live?.length);
   const selectedLive = useMemo(() => (liveAvailable ? route.live : []), [liveAvailable, route.live]);
@@ -81,7 +80,7 @@ export function useBrowseNotes({ scopeNotebookId, selectedFolders, selectedTags,
   const filterCount = counted ? (viewMode === 'kanban' ? kanbanCount.total : listResult.total) : (facetsQuery.facets ? notebookFacets.total : null);
   const displayedNotes = listResult.notes;
 
-  const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: graph && route.allNotebooks, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters, liveAvailable };
+  const filterProps: FilterControls = { value: noteFilters, neighbors: route.neighbors, notebooks: config?.notebooks || [], folders, tags: Object.keys(notebookFacets.tags), statuses: notebookStatuses, count: filterCount, allNotebooks: false, onAllNotebooksChange: changeAllNotebooks, onChange: changeFilters, onClear: clearFilters, liveAvailable };
 
   // Hierarchical Subfolder Discovery for current folder
   const immediateSubfolders = useMemo(() => {

@@ -2,6 +2,7 @@ import { AlertCircle } from 'lucide-react';
 import React from 'react';
 import type { useNavigate } from 'react-router-dom';
 import { LoadingStatus } from '../components/LoadingStatus.js';
+import type { BoardsPageProps } from '../components/boards/BoardsPage.js';
 import type { NotebookGraphPage as NotebookGraphView } from '../components/NotebookGraphPage.js';
 import { fetchGitStatus } from '../lib/api.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -13,6 +14,7 @@ import type { WorkspaceState } from './workspace-state.js';
 
 const CompilationStudy = React.lazy(() => import('../components/CompilationStudy.js').then(module => ({ default: module.CompilationStudy })));
 const NotebookGraphPage = React.lazy(() => import('../components/NotebookGraphPage.js').then(module => ({ default: module.NotebookGraphPage })));
+const BoardsPage = React.lazy(() => import('../components/boards/BoardsPage.js').then(module => ({ default: module.BoardsPage })));
 
 /** The notebook views of a notebook whose repository cannot serve it: why, in its place. */
 export function NotebookUnavailableRoute({ notebookTitle, unavailable }: { notebookTitle: string; unavailable: NonNullable<ReturnType<typeof useWorkspaceOverview>['notebookUnavailable']>; }) {
@@ -79,6 +81,18 @@ export function GraphRoute({ graphKey, notebookId, notebooks, filters, folders }
     <main className='workspace-route graph-main flex-1 w-full h-full relative min-h-0'>
       <React.Suspense fallback={<p role='status' className='p-8'>{t('graph.title')}</p>}>
         <NotebookGraphPage key={graphKey} notebookId={notebookId} notebooks={notebooks} filters={filters} folders={folders} />
+      </React.Suspense>
+    </main>
+  );
+}
+
+/** The 白板 page: the notebook's boards, or one board with its side panel, read again when the workspace's source changes (`sourceKey`). */
+export function BoardsRoute({ sourceKey, ...page }: BoardsPageProps & { sourceKey: string; }) {
+  const { t } = useTranslation();
+  return (
+    <main className='workspace-route boards-main flex-1 w-full h-full relative min-h-0'>
+      <React.Suspense fallback={<LoadingStatus className='p-8'>{t('boards.loading')}</LoadingStatus>}>
+        <BoardsPage key={`${sourceKey}:${page.notebookId}`} {...page} />
       </React.Suspense>
     </main>
   );

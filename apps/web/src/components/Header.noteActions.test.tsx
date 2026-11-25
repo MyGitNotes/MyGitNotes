@@ -40,7 +40,7 @@ it('creates a note from the header New button and lists the same menu items as b
   expect(outline).toHaveBeenCalledOnce();
 });
 
-it.each(['graph', 'assets', 'settings', 'agent'] as WorkspaceTab[])('shows neither the Focus controls nor New on %s', activeTab => {
+it.each(['boards', 'assets', 'settings', 'agent'] as WorkspaceTab[])('shows neither the Focus controls nor New on %s', activeTab => {
   header(activeTab);
   expect(screen.queryByRole('group', { name: 'Focus' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Focus switcher' })).toBeNull();

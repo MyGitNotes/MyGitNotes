@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { compilationStudyRoute, legacyAllNotebooksRoute, notebookRoute, noteReturnRoute, noteRoute, pageOf, parseWorkspaceRoute, trailCompilation } from './routes.js';
+import { boardsQuery, boardsRoute, compilationStudyRoute, legacyAllNotebooksRoute, legacyGraphRoute, notebookRoute, noteReturnRoute, noteRoute, pageOf, parseWorkspaceRoute, trailCompilation } from './routes.js';
 describe('workspace URLs', () => {
   it('returns editors to their original workspace and preserves filters', () => {
-    for (const origin of ['/graph?notebook=example', '/screen?notebook=work', '/notebooks/example/folders/projects?view=graph&tag=demo&q=hello']) {
+    for (const origin of ['/boards?notebook=example', '/screen?notebook=work', '/notebooks/example/folders/projects?view=graph&tag=demo&q=hello']) {
       const search = '?' + new URLSearchParams({ returnTo: origin });
       expect(noteReturnRoute(search, 'other')).toBe(origin);
     }
     expect(noteReturnRoute('?returnTo=screen', 'work')).toBe('/notebooks/work');
-    expect(noteReturnRoute('?returnTo=graph', 'work')).toBe('/graph?notebook=work');
+    // The former graph page's own name returns to the 白板 page.
+    expect(noteReturnRoute('?returnTo=graph', 'work')).toBe('/boards?notebook=work');
     expect(noteReturnRoute('?folder=projects&view=card', 'work', 'projects')).toBe('/notebooks/work/folders/projects?view=card');
   });
   it('closes a note opened with ?zoom to its notebook without the zoom request', () => {
@@ -48,7 +49,7 @@ describe('workspace URLs', () => {
     expect(parseWorkspaceRoute('/notes', '?showHidden=true').showHidden).toBe(true);
     expect(parseWorkspaceRoute('/notes', '').showHidden).toBe(false);
     expect(parseWorkspaceRoute('/notes', '?folder=').valid).toBe(true);
-    for (const tab of ['settings', 'assets', 'agent', 'graph']) for (const suffix of ['', '/']) expect(parseWorkspaceRoute('/' + tab + suffix, '?notebook=work').tab).toBe(tab);
+    for (const tab of ['settings', 'assets', 'agent', 'boards']) for (const suffix of ['', '/']) expect(parseWorkspaceRoute('/' + tab + suffix, '?notebook=work').tab).toBe(tab);
     expect(parseWorkspaceRoute(noteRoute('work', 'note.md'), '?folder=projects&q=hello&tag=demo')).toMatchObject({ notebook: 'work', folder: 'projects', q: 'hello', tag: 'demo' });
   });
   it('rejects unknown pages, traversal and malformed URLs', () => {
@@ -86,15 +87,16 @@ describe('focus parameter', () => {
 describe('all-notebooks scope', () => {
   it('reads the toggle from the URL', () => {
     expect(parseWorkspaceRoute('/notebooks/work', '?allNotebooks=true')).toMatchObject({ notebook: 'work', allNotebooks: true, legacyAllNotebooks: false });
-    expect(parseWorkspaceRoute('/graph', '?notebook=work')).toMatchObject({ notebook: 'work', allNotebooks: false });
-    expect(legacyAllNotebooksRoute('/graph', '?notebook=work&allNotebooks=true', 'rules')).toBeNull();
+    expect(parseWorkspaceRoute('/boards', '?notebook=work')).toMatchObject({ notebook: 'work', allNotebooks: false });
+    expect(legacyAllNotebooksRoute('/boards', '?notebook=work&allNotebooks=true', 'rules')).toBeNull();
   });
   it('opens former all-notebooks URLs in the default notebook', () => {
     expect(parseWorkspaceRoute('/notebooks/all', '')).toMatchObject({ valid: true, tab: 'notes', notebook: null, allNotebooks: true, legacyAllNotebooks: true });
     expect(legacyAllNotebooksRoute('/notebooks/all', '?q=hello', 'rules')).toBe('/notebooks/rules?q=hello&notebook=rules&allNotebooks=true');
     expect(legacyAllNotebooksRoute('/notebooks/work', '?notebook=all', 'rules')).toBe('/notebooks/rules?notebook=rules&allNotebooks=true');
-    expect(legacyAllNotebooksRoute('/graph', '?notebook=all&tag=demo', 'rules')).toBe('/graph?notebook=rules&tag=demo&allNotebooks=true');
-    for (const page of ['/files', '/agent', '/settings']) {
+    // The former graph page had an all-notebooks scope; it now redirects to one notebook's 白板 page.
+    expect(legacyAllNotebooksRoute('/graph', '?notebook=all&tag=demo', 'rules')).toBe('/graph?notebook=rules&tag=demo');
+    for (const page of ['/files', '/agent', '/settings', '/boards']) {
       expect(parseWorkspaceRoute(page, '?notebook=all').allNotebooks).toBe(false);
       expect(legacyAllNotebooksRoute(page, '?notebook=all', 'rules')).toBe(`${page}?notebook=rules`);
     }
@@ -123,5 +125,38 @@ describe('pageOf', () => {
     expect(pageOf('/notebooks/life/notes/a.md', '?returnTo=%2Fnotebooks%2Flife')).toBe('/notebooks/life/notes/a.md');
     expect(pageOf('/notebooks/life/notes/a.md', '?zoom')).toBe('/notebooks/life/notes/a.md');
     expect(pageOf('/settings', '')).toBe('/settings');
+  });
+});
+
+describe('the 白板 page', () => {
+  const notebook = { id: 'thesis', root: 'notes/thesis' };
+  const row = (id: string, board: boolean) => ({ id, path: `notes/thesis/${id}.compilation.yml`, board });
+  // A board, a lane or book holding board data (listed as a board too), and a plain lane.
+  const rows = [row('chapter', true), row('kept', true), row('reading', false)];
+
+  it('reads /boards and the former /graph as the 白板 tab, the latter marked for its redirect', () => {
+    expect(parseWorkspaceRoute('/boards', '?notebook=thesis')).toMatchObject({ valid: true, tab: 'boards', notebook: 'thesis', legacyGraph: false });
+    expect(parseWorkspaceRoute('/graph/', '?notebook=thesis&lanes=chapter')).toMatchObject({ valid: true, tab: 'boards', notebook: 'thesis', legacyGraph: true });
+  });
+  it('names a board, the note of its side panel and the card to centre, and reads back only plain paths', () => {
+    const url = boardsRoute('thesis', 'notes/thesis/第三章.compilation.yml', { note: 'notes/thesis/依據 #1.md', card: 'n2' });
+    expect(url.startsWith('/boards?')).toBe(true);
+    expect(boardsQuery(url.slice('/boards'.length))).toEqual({ board: 'notes/thesis/第三章.compilation.yml', note: 'notes/thesis/依據 #1.md', card: 'n2' });
+    expect(boardsRoute('thesis')).toBe('/boards?notebook=thesis');
+    // A note or card without a board means nothing.
+    expect(boardsRoute('thesis', null, { note: 'notes/thesis/a.md' })).toBe('/boards?notebook=thesis');
+    expect(boardsQuery('?board=../secret.compilation.yml&note=%2Fetc%2Fpasswd')).toEqual({ board: null, note: null, card: null });
+  });
+  it("redirects /graph to the notebook's 白板 page at once", () => {
+    expect(legacyGraphRoute('?notebook=thesis', notebook, null)).toBe('/boards?notebook=thesis');
+    expect(legacyGraphRoute('?notebook=thesis&tag=demo&allNotebooks=true', notebook, null)).toBe('/boards?notebook=thesis');
+  });
+  it("redirects /graph?lanes= to that compilation's board when it is one, else to the compilation in zoom, once the compilations are read", () => {
+    expect(legacyGraphRoute('?notebook=thesis&lanes=chapter', notebook, null)).toBeNull();
+    expect(legacyGraphRoute('?notebook=thesis&lanes=chapter', notebook, rows)).toBe('/boards?notebook=thesis&board=notes%2Fthesis%2Fchapter.compilation.yml');
+    expect(legacyGraphRoute('?notebook=thesis&lanes=kept', notebook, rows)).toBe('/boards?notebook=thesis&board=notes%2Fthesis%2Fkept.compilation.yml');
+    expect(legacyGraphRoute('?notebook=thesis&lanes=reading', notebook, rows)).toBe('/notebooks/thesis/notes/reading.compilation.yml?zoom');
+    expect(parseWorkspaceRoute('/notebooks/thesis/notes/reading.compilation.yml', '?zoom')).toMatchObject({ valid: true, tab: 'notes', note: 'reading.compilation.yml' });
+    expect(legacyGraphRoute('?notebook=thesis&lanes=missing', notebook, rows)).toBe('/boards?notebook=thesis');
   });
 });

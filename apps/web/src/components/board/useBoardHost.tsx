@@ -1,0 +1,68 @@
+import { type ReactNode, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import type { CompilationRow } from '@mygitnotes/core/compilation';
+import { boardsQuery, boardsRoute, noteRoute } from '../../lib/routes.js';
+import type { NotebookConfig } from '../../lib/types.js';
+import { usePhone } from '../../lib/use-phone.js';
+import { shownView } from '../CompilationHeader.js';
+import type { CompilationContentProps } from '../CompilationCard.js';
+import { BoardSidePanel } from './BoardSidePanel.js';
+import { type BoardPanelActions, useBoardPanel } from './useBoardPanel.js';
+
+interface Params {
+  /** `page` is the 白板 page, which always draws the board; `zoom` and `pane` draw it when the compilation is arranged as one. */
+  frame: 'zoom' | 'pane' | 'page';
+  notebookId: string;
+  path: string;
+  row: CompilationRow | undefined;
+  notebooks: readonly NotebookConfig[];
+  /** Opens note cards in the side panel; without it (a Focus pane, a phone) they open where the host opens notes. */
+  sidePanel: BoardPanelActions | undefined;
+  /** Saves every editor of the page, before the page is left. */
+  flushEditors: () => Promise<boolean>;
+  change: (row: CompilationRow) => void;
+  save: () => Promise<void>;
+}
+
+/**
+ * What a compilation view adds around its board: the side panel a note card opens in, the card an address names to
+ * centre and select (`&card=`, on the 白板 page), and the 白板 page's arrangement switch, which leaves the page for
+ * the book or a lane.
+ */
+export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePanel, flushEditors, change, save }: Params) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const phone = usePhone();
+  const page = frame === 'page';
+  const enabled = Boolean(sidePanel) && !phone;
+  const panel = useBoardPanel({ enabled, row, notebooks });
+  // A jump from a side panel names the card to centre and select: once per arrival at the address.
+  const card = page ? boardsQuery(location.search).card : null;
+  const reveal = useMemo(() => card ? { card, key: location.key } : undefined, [card, location.key]);
+  /**
+   * Choosing the book or a lane on the 白板 page writes that arrangement and opens the compilation in zoom on the Notes
+   * page, which closes back to the list, where it stays (it holds board data).
+   */
+  const leave = async (current: CompilationRow, view: CompilationRow['view']) => {
+    if (shownView(view) === 'board') return;
+    const notebook = notebooks.find(candidate => candidate.id === notebookId);
+    if (!notebook || !await flushEditors()) return;
+    if (view !== current.view) {
+      change({ ...current, view });
+      await save();
+    }
+    navigate(`${noteRoute(notebookId, path.slice(notebook.root.replace(/\/$/, '').length + 1))}?${new URLSearchParams({ returnTo: boardsRoute(notebookId) })}`);
+  };
+  /** A note card opens in the side panel where there is one; a folder, asset or video, or a missing note, opens as in a lane. */
+  const openCard = (open: CompilationContentProps['onOpen']): CompilationContentProps['onOpen'] => (item, note) => item.kind === 'note' && note && enabled ? void panel.open(note) : open(item, note);
+  const withPanel = (board: ReactNode, current: CompilationRow) => {
+    if (!panel.note || !sidePanel) return board;
+    return (
+      <div className='board-with-panel'>
+        {board}
+        <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} onClose={() => void panel.close()} />
+      </div>
+    );
+  };
+  return { page, reveal, leave, openCard, withPanel };
+}

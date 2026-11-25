@@ -1,14 +1,14 @@
-import { createElement, type ReactNode } from 'react';
+import { createElement, type ReactNode, useLayoutEffect } from 'react';
 import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router-dom';
+import { type Location, MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router-dom';
 import { vi } from 'vitest';
 import { BOARD_TEXT_COLORS } from '@mygitnotes/core/compilation';
 import type { NoteRef } from '@mygitnotes/core/note-query';
 import { CompilationActionsProvider } from '../../lib/compilation-actions.js';
 import { PanelProvider } from '../../lib/panel-context.js';
 import { setNoteQueryScope } from '../../lib/use-note-queries.js';
-import { CompilationView } from '../CompilationView.js';
+import { CompilationView, type CompilationViewProps } from '../CompilationView.js';
 
 /** The note editing the board tests stub: saving editors always succeeds. */
 export const editing = { flushEditors: async () => true, refreshNotes: async () => {}, editorProps: () => ({ readOnly: false }), addToFocus: () => () => {}, renameNote: () => () => {}, moveNote: () => () => {} };
@@ -65,11 +65,22 @@ export const onOpenNote = vi.fn();
 export const create = vi.fn();
 export const fetches: { requests: ReturnType<typeof vi.fn>; } = { requests: vi.fn() };
 
+/** The address the last board opened shows, and its router's navigate (Back is `router.navigate(-1)`). */
+export const router: { location?: Location; navigate?: NavigateFunction; } = {};
+function RouterProbe() {
+  const location = useLocation(), navigate = useNavigate();
+  useLayoutEffect(() => {
+    router.location = location;
+    router.navigate = navigate;
+  }, [location, navigate]);
+  return null;
+}
+
 /**
- * Opens a compilation file in a Focus pane's CompilationView, its notes, member paths and note links answered by a
+ * Opens a compilation file in a Focus pane's CompilationView (or `view.frame`, with `view.sidePanel`, at `view.url`), its notes, member paths and note links answered by a
  * stubbed fetch, and every write going to `save`. The file's stored copy stays as given, so writes stay pending.
  */
-export function openBoard({ path, notebookId, raw, notes, members = [], links = [] }: { path: string; notebookId: string; raw: string; notes: ReturnType<typeof note>[]; members?: NoteRef[]; links?: { source: string; target: string; }[]; }) {
+export function openBoard({ path, notebookId, raw, notes, members = [], links = [], compilations = [], view = {} }: { path: string; notebookId: string; raw: string; notes: ReturnType<typeof note>[]; members?: NoteRef[]; links?: { source: string; target: string; }[]; /** What a listing of the notebook's compilations answers. */ compilations?: ReturnType<typeof note>[]; view?: Partial<Pick<CompilationViewProps, 'frame' | 'sidePanel'>> & { url?: string; }; }) {
   const stored = { id: path, path, notebookId, title: 'Board', content: raw, metadata: {}, tags: [] };
   fetches.requests = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input, 'http://localhost');
@@ -77,7 +88,7 @@ export function openBoard({ path, notebookId, raw, notes, members = [], links = 
       const refs = JSON.parse(String(init?.body)).notes as NoteRef[];
       return Response.json({ notes: [stored, ...notes].filter(result => refs.some(ref => ref.path === result.path && ref.notebookId === result.notebookId)) });
     }
-    if (url.pathname === '/api/notes/query') return Response.json(url.searchParams.get('select') === 'paths' ? { notes: members } : { notes: [], total: 0, nextCursor: null });
+    if (url.pathname === '/api/notes/query') return Response.json(url.searchParams.get('select') === 'paths' ? { notes: members } : url.searchParams.get('kind') === 'compilation' ? { notes: compilations, total: compilations.length, nextCursor: null } : { notes: [], total: 0, nextCursor: null });
     if (url.pathname === '/api/notes/graph') return Response.json({ nodes: [], links, revisions: {} });
     return Response.json(url.pathname === '/api/assets' ? { assets: [] } : {});
   });
@@ -85,7 +96,8 @@ export function openBoard({ path, notebookId, raw, notes, members = [], links = 
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   const actions = { save, canWrite: () => true, remove: vi.fn(), create, repository: () => undefined };
   const wrapper = ({ children }: { children: ReactNode; }) => (
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[view.url ?? '/']}>
+      <RouterProbe />
       <QueryClientProvider client={client}>
         <PanelProvider>
           <CompilationActionsProvider value={actions}>{children}</CompilationActionsProvider>
@@ -93,7 +105,7 @@ export function openBoard({ path, notebookId, raw, notes, members = [], links = 
       </QueryClientProvider>
     </MemoryRouter>
   );
-  render(createElement(CompilationView, { path, notebookId, notebooks, folders: [], frame: 'pane', onOpenNote }), { wrapper });
+  return render(createElement(CompilationView, { path, notebookId, notebooks, folders: [], frame: view.frame ?? 'pane', sidePanel: view.sidePanel, onOpenNote }), { wrapper });
 }
 export const openExample = (links: { source: string; target: string; }[] = []) => openBoard({ path: 'notes/thesis/chapter-3.compilation.yml', notebookId: 'thesis', raw: example, notes: thesisNotes, links });
 

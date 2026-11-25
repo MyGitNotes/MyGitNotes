@@ -1,4 +1,5 @@
 import type { CompilationRow } from '@mygitnotes/core/compilation';
+import type { BoardPanelActions } from '../components/board/useBoardPanel.js';
 import { CompilationView } from '../components/CompilationView.js';
 import { planNewCompilation } from '../lib/compilation-create.js';
 import { initialCompilationStatus } from '../lib/compilation-status.js';
@@ -40,23 +41,32 @@ interface Params {
   closeCompilationZoom: ReturnType<typeof useNoteActions>['closeCompilationZoom'];
   openInFocus: ReturnType<typeof useFocusNoteNavigation>['openInFocus'];
   openFromBrowse: ReturnType<typeof useFocusNoteNavigation>['openFromBrowse'];
+  /** What a board's side panel in zoom asks of the page. */
+  boardPanel: BoardPanelActions;
 }
 
 /** Compilations: their actions, a new one, and a compilation shown in zoom or in a Focus pane. */
-export function useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState, routeNotebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse }: Params) {
+export function useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState, routeNotebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse, boardPanel }: Params) {
   const compilationActions = useCompilationActionsValue({ remote, canWriteNotebook, repositoryId: notebookId => repositoryFor(notebookId)?.id, revisionFor, save: handleSaveNote, remove: handleDeleteNote, stageWorkingNote, invalidateNotes, setGitStatus, createNote: options => void createNote(options) });
-  const createCompilation = async (row: CompilationRow) => {
+  /** Writes a new compilation at the notebook root, the path rule of 新增合輯. */
+  const writeCompilation = async (row: CompilationRow) => {
     const notebook = config?.notebooks.find(nb => nb.id === row.notebookId);
-    if (!notebook) return;
+    if (!notebook) return undefined;
+    const plan = await planNewCompilation(row, notebook, '', UNTITLED_STEM, initialCompilationStatus(config?.notebooks || [], notebook.id, facets));
+    return compilationActions.create(notebook.id, plan.path, plan.content, plan.metadata);
+  };
+  const untitled = (name: string, view: CompilationRow['view']): CompilationRow => ({ id: crypto.randomUUID(), name, notebookId: selectedNotebookId, path: '', view, kind: 'custom', items: [] });
+  // A new compilation starts empty, named Untitled, at the notebook root; its menu edits, renames and moves it.
+  const createUntitledCompilation = async () => {
     try {
-      const plan = await planNewCompilation(row, notebook, '', UNTITLED_STEM, initialCompilationStatus(config?.notebooks || [], notebook.id, facets));
-      void openFromBrowse(await compilationActions.create(notebook.id, plan.path, plan.content, plan.metadata));
+      const created = await writeCompilation(untitled(t('compilation.untitled'), 'small'));
+      if (created) void openFromBrowse(created);
     } catch (error) {
       setActionError((error as Error).message);
     }
   };
-  // A new compilation starts empty, named Untitled, at the notebook root; its menu edits, renames and moves it.
-  const createUntitledCompilation = () => createCompilation({ id: crypto.randomUUID(), name: t('compilation.untitled'), notebookId: selectedNotebookId, path: '', view: 'small', kind: 'custom', items: [] });
+  /** 新增白板: an empty custom compilation arranged as a board, named 未命名白板; its path, for the 白板 page to open. Throws what the write throws. */
+  const createUntitledBoard = async () => (await writeCompilation(untitled(t('boards.untitled'), 'board')))?.path;
   const openCompilationFolder = (item: { notebookId: string; path: string; }) => {
     // A folder of this notebook filters the browse region and keeps the Focus; others open as they do elsewhere.
     const notebook = config?.notebooks.find(nb => nb.id === item.notebookId);
@@ -83,11 +93,13 @@ export function useCompilations({ config, remote, folders, canWriteNotebook, rep
       })()}
       onOpenFolder={openCompilationFolder}
       onClose={pane === undefined ? closeCompilationZoom : undefined}
+      // In zoom a note card opens in the side panel inside the zoom; in a Focus pane it opens in another pane (above).
+      sidePanel={pane === undefined ? boardPanel : undefined}
     />
   );
 
   // A note opened from a zoomed compilation leaves that compilation mounted behind it.
   const behindPath = trailCompilation(locationState, routeNotebook, config?.notebooks.find(nb => nb.id === selectedNotebookId)?.root ?? '');
   const compilationBehind = behindPath ? { notebookId: selectedNotebookId, path: behindPath } : null;
-  return { compilationActions, createUntitledCompilation, renderCompilation, compilationBehind };
+  return { compilationActions, createUntitledCompilation, createUntitledBoard, renderCompilation, compilationBehind };
 }

@@ -1,5 +1,5 @@
 import { Tooltip } from './Tooltip.js';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -33,6 +33,8 @@ import { shownView } from './CompilationHeader.js';
 import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 import { CompilationBook } from './CompilationBook.js';
 import { CompilationBoard } from './board/CompilationBoard.js';
+import type { BoardPanelActions } from './board/useBoardPanel.js';
+import { useBoardHost } from './board/useBoardHost.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { useCompilationAssets, useCompilationItemOpen } from './useCompilationItemOpen.js';
 import { compilationNotebookIds } from '../lib/compilation-rows.js';
@@ -45,18 +47,22 @@ export interface CompilationViewProps {
   path: string;
   notebooks: NotebookConfig[];
   folders: FolderItem[];
-  /** `zoom` is the full-screen dialog; `pane` fills a Focus pane. */
-  frame: 'zoom' | 'pane';
+  /** `zoom` is the full-screen dialog; `pane` fills a Focus pane; `page` is the 白板 page, which always draws the board. */
+  frame: 'zoom' | 'pane' | 'page';
   /** Opens a pinned note where the host opens notes; with `anchor`, a heading-anchored item opens the whole note in zoom at that heading. */
   onOpenNote: (note: NoteListItem, anchor?: string) => void;
   /** Opens a pinned folder inside the Notes page; false lets the item navigate to it. */
   onOpenFolder?: (item: Extract<CompilationItem, { kind: 'folder'; }>) => boolean;
   /** Closes the view: the zoom dialog, or the Focus tab once the file is deleted. */
   onClose?: () => void;
+  /** Opens a board's note cards in its side panel (`&note=` in the address), wider than a phone; without it they open through `onOpenNote`. */
+  sidePanel?: BoardPanelActions;
+  /** What the header shows before the title: the 白板 page's breadcrumb. */
+  lead?: ReactNode;
 }
 
 /** One open compilation: its header, then the lane, book or whiteboard arrangement. Edits write the file through the note actions. */
-export function CompilationView({ notebookId, path, notebooks, folders, frame, onOpenNote, onOpenFolder, onClose }: CompilationViewProps) {
+export function CompilationView({ notebookId, path, notebooks, folders, frame, onOpenNote, onOpenFolder, onClose, sidePanel, lead }: CompilationViewProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const editing = useNoteEditing();
@@ -80,7 +86,10 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: screenKeyboardCoordinates }));
   // On a phone a board is for looking: nothing there changes the compilation file, the outline or the compilation's place.
   const phone = usePhone();
-  const writable = compilation.writable && !(phone && row !== undefined && shownView(row.view) === 'board');
+  // The 白板 page draws any compilation it lists as a board, whatever its arrangement.
+  const page = frame === 'page';
+  const host = useBoardHost({ frame, notebookId, path, row, notebooks, sidePanel, flushEditors: () => editing.flushEditors(), change: next => compilation.change({ rows: [next] }), save: compilation.save });
+  const writable = compilation.writable && !(phone && row !== undefined && (page || shownView(row.view) === 'board'));
   const disabled = !writable || compilation.loading;
   // A folder source includes assets, so an incomplete asset read must not become a saved manual order.
   const dragDisabled = row?.kind === 'dynamic' && row.source.kind === 'folder' && (assetsLoading || assetError);
@@ -200,7 +209,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       study,
       facets: facets.facets,
       onStudy: () => void startStudy(),
-      onView: (next: CompilationRow['view']) => rearrange(current, { ...current, view: next }),
+      // The 白板 page's switch leaves the page for the book or a lane.
+      onView: (next: CompilationRow['view']) => host.page ? void host.leave(current, next) : rearrange(current, { ...current, view: next }),
       onStudyChange: (value: NonNullable<CompilationRow['study']>) => change({ ...current, study: value }),
       onAdd: () => setDialog('add'),
       extra: (
@@ -275,13 +285,17 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onCreateNote: actions.createNote,
     };
     if (current.view === 'book') return <CompilationBook {...common} />;
-    if (shownView(current.view) === 'board') {
+    if (page || shownView(current.view) === 'board') {
       // A board draws its items where the file places them; its status filter does not apply, and on a phone it is for looking.
       const createInSource = () => {
         const context = createLaneNoteContext(current, notebooks);
         if (context) actions.createNote?.(context);
       };
-      return <CompilationBoard row={current} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={open} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} onChange={writable ? change : undefined} hideQuery />;
+      // The 白板 page draws a book or lane holding board data as its board, and its edits keep the stored arrangement.
+      const drawn = page && shownView(current.view) !== 'board' ? { ...current, view: 'board' as const } : current;
+      const edit = drawn === current ? change : (next: CompilationRow) => change({ ...next, view: current.view });
+      const board = <CompilationBoard row={drawn} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={host.openCard(open)} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} onChange={writable ? edit : undefined} hideQuery lead={lead} reveal={host.reveal} />;
+      return host.withPanel(board, current);
     }
     return (
       <CompilationLane
@@ -298,7 +312,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
 
   return (
     <CompilationEditingProvider value={slots}>
-      <div className='compilation-view' data-frame={frame} data-arrangement={row && shownView(row.view)}>
+      <div className='compilation-view' data-frame={frame} data-arrangement={row && (page ? 'board' : shownView(row.view))}>
         {frame === 'zoom' && onClose && (
           <div className='compilation-frame-bar'>
             <Tooltip label={t('common.close')}>
