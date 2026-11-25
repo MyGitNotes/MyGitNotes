@@ -17,12 +17,19 @@ export interface CompilationActions {
   /** Starts a note in the folder or tag a dynamic compilation draws from. */
   createNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void;
   /**
-   * Creates a blank note as the New note action does (at the notebook root, or in the folder or with the tag given)
-   * without opening it, and gives it back: a board's 卡片 tool places it and opens it in the side panel.
+   * Creates a blank note as the New note action does, in the notebook given (at its root, or in the folder or with the
+   * tag given) without opening it: a board's 卡片 tool places it, writes the board, then opens it in the side panel,
+   * and rolls it back when the board cannot hold it.
    */
-  createBoardNote?: (context: { notebookId: string; folder?: string; tag?: string; }) => Promise<NoteItem | undefined>;
+  createBoardNote?: (context: { notebookId: string; folder?: string; tag?: string; }) => Promise<BoardNoteReceipt>;
   /** Whether a notebook's new notes start as pending live notes, with no Git path until their first check-in. */
   newNotesLive?: (notebookId: string) => boolean;
+}
+
+/** A note the 卡片 tool created, and how to take it away again: a hosted draft is dropped, a local file deleted. */
+export interface BoardNoteReceipt {
+  note: NoteItem;
+  rollback: () => Promise<void>;
 }
 
 const CompilationActionsContext = createContext<CompilationActions | null>(null);

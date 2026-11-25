@@ -6,22 +6,21 @@ import type { Point } from '../../lib/board/geometry.js';
 import type { PlacedBoard } from '../../lib/board/placement.js';
 import { screenToBoard } from '../../lib/board/zoom.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import type { BoardNoteReceipt } from '../../lib/compilation-actions.js';
 import type { NoteItem } from '../../lib/types.js';
 import type { BoardCamera } from './useBoardCamera.js';
 import type { BoardEditor } from './useBoardEditor.js';
 
 /** What the 卡片 tool asks of the board's host: a blank note for this board, whether new notes start live, and where it opens. */
 export interface BoardCardNote {
-  /** Creates a blank note (at the notebook root, or in a dynamic board's folder or with its tag) and gives it back. */
-  create: () => Promise<NoteItem | undefined>;
+  /** Creates a blank note (at the notebook root, or in a dynamic board's folder or with its tag): the note, and how to take it away again. */
+  create: () => Promise<BoardNoteReceipt>;
   /** New notes of this repository start as pending live notes, with no Git path a board item could name: 卡片 is off. */
   live: boolean;
   /** Opens the new note: in the side panel with its title selected, or where the host opens notes. */
   open: (note: NoteItem) => void;
   /** Writes the board's pending edits now; false when the write failed. */
   save: () => Promise<boolean>;
-  /** Deletes a note the board could not take, so no blank note is left behind. */
-  discard: (note: NoteItem) => Promise<void>;
 }
 
 /**
@@ -79,12 +78,11 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
     if (refused) return void editor.current?.apply({ row: latest.current.row, refused });
     creating.current = true;
     try {
-      const note = await cardNote.create();
-      if (!note) return;
+      const { note, rollback } = await cardNote.create();
       // A dynamic board's new member is auto-placed once its query takes it.
       const held = !custom || (mounted.current && placeNew(note, at) && await cardNote.save());
       if (!held) {
-        await cardNote.discard(note);
+        await rollback();
         return;
       }
       if (mounted.current) cardNote.open(note);

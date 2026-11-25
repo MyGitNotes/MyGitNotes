@@ -5,6 +5,7 @@ import { planNewCompilation } from '../lib/compilation-create.js';
 import { initialCompilationStatus } from '../lib/compilation-status.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
 import { trailCompilation } from '../lib/routes.js';
+import type { useBoardNoteCreation } from './useBoardNoteCreation.js';
 import type { useBrowseFacets } from './useBrowseFacets.js';
 import { useCompilationActionsValue } from './useCompilationActionsValue.js';
 import { UNTITLED_STEM, type useCreateNote } from './useCreateNote.js';
@@ -43,16 +44,13 @@ interface Params {
   openFromBrowse: ReturnType<typeof useFocusNoteNavigation>['openFromBrowse'];
   /** What a board's side panel in zoom asks of the page. */
   boardPanel: BoardPanelActions;
+  /** The 卡片 tool's notes. */
+  boardNotes: ReturnType<typeof useBoardNoteCreation>;
 }
 
 /** Compilations: their actions, a new one, and a compilation shown in zoom or in a Focus pane. */
-export function useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState, routeNotebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse, boardPanel }: Params) {
-  // A live repository's new note is pending, with no Git path a board item could name until its first check-in.
-  const newNotesLive = (notebookId: string) => {
-    const repository = repositoryFor(notebookId);
-    return Boolean(repository?.live && repository.write);
-  };
-  const compilationActions = useCompilationActionsValue({ remote, canWriteNotebook, repositoryId: notebookId => repositoryFor(notebookId)?.id, revisionFor, save: handleSaveNote, remove: handleDeleteNote, stageWorkingNote, invalidateNotes, setGitStatus, createNote: options => void createNote(options), createBoardNote: context => createNote({ ...context, open: false }), newNotesLive });
+export function useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState, routeNotebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse, boardPanel, boardNotes }: Params) {
+  const compilationActions = useCompilationActionsValue({ remote, canWriteNotebook, repositoryId: notebookId => repositoryFor(notebookId)?.id, revisionFor, save: handleSaveNote, remove: handleDeleteNote, stageWorkingNote, invalidateNotes, setGitStatus, createNote: options => void createNote(options), createBoardNote: boardNotes.createBoardNote, newNotesLive: boardNotes.newNotesLive });
   /** Writes a new compilation at the notebook root, the path rule of 新增合輯. */
   const writeCompilation = async (row: CompilationRow) => {
     const notebook = config?.notebooks.find(nb => nb.id === row.notebookId);

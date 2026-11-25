@@ -18,7 +18,7 @@ const note = (notebookId: string, path: string) => ({ id: path, path, notebookId
 const openInFocus = vi.fn<(note: NoteListItem, pane?: string, placement?: string) => Promise<boolean>>();
 const handleOpenNote = vi.fn();
 const boardPanel = { focusNotebook: 'thesis', openInFocus: vi.fn(), fullscreen: vi.fn() };
-const compilations = () => renderHook(() => useCompilations({ config: { notebooks: [{ id: 'thesis', title: 'Thesis', root: 'notes/thesis' }] }, folders: [], selectedNotebookId: 'thesis', openInFocus, handleOpenNote, boardPanel, t: (key: string) => key } as never)).result.current;
+const compilations = () => renderHook(() => useCompilations({ config: { notebooks: [{ id: 'thesis', title: 'Thesis', root: 'notes/thesis' }] }, folders: [], selectedNotebookId: 'thesis', openInFocus, handleOpenNote, boardPanel, boardNotes: { createBoardNote: vi.fn(), newNotesLive: () => false }, t: (key: string) => key } as never)).result.current;
 const shown = (path: string, pane?: string) => {
   render(compilations().renderCompilation(path, pane));
   return views.mock.lastCall![0];

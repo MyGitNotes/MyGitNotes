@@ -70,6 +70,7 @@ import { BoardsRoute, NotebookUnavailableRoute, StudyRoute } from './app/Workspa
 import { boardPanelActions } from './app/board-panel-actions.js';
 import { useActionErrorReset } from './app/useActionErrorReset.js';
 import { useCreateNote } from './app/useCreateNote.js';
+import { useBoardNoteCreation } from './app/useBoardNoteCreation.js';
 import { useNoteMove } from './app/useNoteMove.js';
 import { noteFolder } from './lib/note-move.js';
 import { RenameNoteDialog } from './components/RenameNoteDialog.js';
@@ -279,7 +280,8 @@ export const AppContent: React.FC = () => {
 
   // The toolbar search dims what the Focus shows that it does not match; on a phone it only filters the list.
   const focusMatches = useFocusSearch({ q: debouncedSearch, notebookId: selectedNotebookId, enabled: Boolean(noteFocus.layout) && !phone });
-  const { compilationActions, createUntitledCompilation, createUntitledBoard, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse, boardPanel });
+  const boardNotes = useBoardNoteCreation({ config, folders, foldersLoading, remote, canWriteNotebook, repositoryFor, readDraft, updateDraft, queryClient, queryScope, stageWorkingNote, revisionFor, invalidateNotes, setGitStatus, facets: facetsQuery.facets, t });
+  const { compilationActions, createUntitledCompilation, createUntitledBoard, renderCompilation, compilationBehind } = useCompilations({ config, remote, folders, canWriteNotebook, repositoryFor, revisionFor, stageWorkingNote, setGitStatus, setActionError, invalidateNotes, facets: facetsQuery.facets, t, selectedNotebookId, folderRoot, setSelectedFolder, locationState: location.state, routeNotebook: editorRoute.notebook, handleSaveNote, handleDeleteNote, createNote, handleOpenNote, closeCompilationZoom, openInFocus, openFromBrowse, boardPanel, boardNotes });
   const { renderNotesPage, phoneFilterSheet } = useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, remote, loading, folders, foldersLoading, actionError, refreshWorkspace, refreshDocuments, staleNotice, readNoteForChange, notebookGroups, unavailableNotebooks, route, activeTab, selectedNotebookId, selectedNotebook, selectedFolder, folderRoot, showHidden, canWrite, canWriteFiles, filtersOpen, setFiltersOpen, navigation, facets: browseFacets, browse: browseNotes, sort, selection, tags: tagWorkspace, bulkToolbar, noteFocus, activeNotePath, columns, notesColumns, presentation, board, noteSearch, focusNoteSearch, notebookAppearance, handleOpenNote, openFromBrowse, handleDeleteNote, handleUpdateNoteStatus, noteMove, createNote, createUntitledCompilation, openFileManager, beforeFileChange, navigationDisabled: noteEditorOpen || isCommitOpen, setShortcutMode });
 
   if (loading || loadError) return <ConnectionState loading={loading} error={loadError} onRetry={refreshWorkspace} />;

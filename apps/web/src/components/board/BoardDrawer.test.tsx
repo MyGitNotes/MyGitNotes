@@ -217,7 +217,8 @@ describe('「＋N 相連」', () => {
 describe('the 卡片 tool', () => {
   it('creates a note where the board is clicked, places it in that section, and opens it in the side panel with its title selected', async () => {
     const created = { ...note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled'), status: 'draft' };
-    const createBoardNote = vi.fn(async () => created);
+    const rollback = vi.fn(async () => {});
+    const createBoardNote = vi.fn(async () => ({ note: created, rollback }));
     await ready({ actions: { createBoardNote, newNotesLive: () => false } });
     fireEvent.click(screen.getByRole('button', { name: 'Card' }));
     press(region(), 800, 300);
@@ -228,11 +229,26 @@ describe('the 卡片 tool', () => {
     expect(file.board!.cards).toContainEqual({ item: idOf(file, created.path), x: 680, y: 236 });
     const panel = await screen.findByRole('complementary', { name: 'Note beside the whiteboard' }, SLOW);
     expect(panel).toHaveAttribute('data-board-panel', created.path);
-    // Its title opens for typing, once.
+    // Its title opens for typing, once; the board holds the note, so nothing is rolled back.
     await waitFor(() => expect(renaming).toHaveBeenCalledWith(created.path));
     expect(renaming).toHaveBeenCalledTimes(1);
+    expect(rollback).not.toHaveBeenCalled();
     // The tool returns to 選取 after one use.
     expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('on a dynamic board drawn from another notebook creates the note there, writes no board item and opens it', async () => {
+    const created = note('reading', 'notes/reading/untitled.md', 'Untitled', '# Untitled');
+    const rollback = vi.fn(async () => {});
+    const createBoardNote = vi.fn(async () => ({ note: created, rollback }));
+    openBoard({ path: BOARD, notebookId: 'thesis', raw: 'version: 1\nid: elsewhere\ntitle: 第三章：德性與依據\narrangement: board\nsource: { kind: folder, path: notes/reading }\n', notes: library, respond: search, actions: { createBoardNote, newNotesLive: () => false }, view: { frame: 'page', sidePanel, url: boardsRoute('thesis', BOARD) } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Card' }, SLOW));
+    press(region(), 800, 300);
+    await waitFor(() => expect(createBoardNote).toHaveBeenCalledWith({ notebookId: 'reading', folder: '' }));
+    const panel = await screen.findByRole('complementary', { name: 'Note beside the whiteboard' }, SLOW);
+    expect(panel).toHaveAttribute('data-board-panel', created.path);
+    expect(save).not.toHaveBeenCalled();
+    expect(rollback).not.toHaveBeenCalled();
   });
 
   it('creates nothing on a board at its item limit, and says why', async () => {
@@ -244,31 +260,34 @@ describe('the 卡片 tool', () => {
     expect(createBoardNote).not.toHaveBeenCalled();
   });
 
-  it('deletes the new note again and opens nothing when the board cannot be written', async () => {
+  it('rolls the new note back and opens nothing when the board cannot be written', async () => {
     const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
-    const discard = vi.fn(async () => {});
-    await ready({ actions: { createBoardNote: vi.fn(async () => created), newNotesLive: () => false, remove: discard } });
+    const rollback = vi.fn(async () => {});
+    const remove = vi.fn();
+    await ready({ actions: { createBoardNote: vi.fn(async () => ({ note: created, rollback })), newNotesLive: () => false, remove } });
     save.mockRejectedValue(new Error('The disk is full.'));
     fireEvent.click(screen.getByRole('button', { name: 'Card' }));
     press(region(), 800, 300);
-    await waitFor(() => expect(discard).toHaveBeenCalledWith(created), SLOW);
+    await waitFor(() => expect(rollback).toHaveBeenCalledOnce(), SLOW);
+    // The note's own rollback, not the trash.
+    expect(remove).not.toHaveBeenCalled();
     expect(screen.queryByRole('complementary', { name: 'Note beside the whiteboard' })).toBeNull();
     expect(renaming).not.toHaveBeenCalled();
   });
 
-  it('deletes the new note again when the board went away while it was created', async () => {
+  it('rolls the new note back when the board went away while it was created', async () => {
     const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
-    let finish!: (value: typeof created) => void;
-    const createBoardNote = vi.fn(() => new Promise<typeof created>(resolve => finish = resolve));
-    const discard = vi.fn(async () => {});
-    const view = open({ actions: { createBoardNote, newNotesLive: () => false, remove: discard } });
+    const rollback = vi.fn(async () => {});
+    let finish!: (value: { note: typeof created; rollback: typeof rollback; }) => void;
+    const createBoardNote = vi.fn(() => new Promise<{ note: typeof created; rollback: typeof rollback; }>(resolve => finish = resolve));
+    const view = open({ actions: { createBoardNote, newNotesLive: () => false } });
     await screen.findByRole('group', { name: '二、德性知識論' }, SLOW);
     fireEvent.click(screen.getByRole('button', { name: 'Card' }));
     press(region(), 800, 300);
     await waitFor(() => expect(createBoardNote).toHaveBeenCalled());
     view.unmount();
-    finish(created);
-    await waitFor(() => expect(discard).toHaveBeenCalledWith(created));
+    finish({ note: created, rollback });
+    await waitFor(() => expect(rollback).toHaveBeenCalledOnce());
     expect(save).not.toHaveBeenCalled();
   });
 

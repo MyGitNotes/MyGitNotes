@@ -59,8 +59,6 @@ export interface NewNoteOptions {
   kind?: 'note' | 'outline';
   templateId?: string;
   initialLink?: Pick<NoteItem, 'notebookId' | 'path' | 'title'>;
-  /** False when the caller opens the note itself (a board's 卡片 tool, in its side panel): the note is only given back. */
-  open?: boolean;
 }
 
 /** The stem every new note starts from; the editor's Rename gives it a name. */
@@ -113,15 +111,11 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
   };
 
   const pending = useRef<NewNoteOptions | null>(null);
-  /** Creates the note and opens it (unless `open` is false); gives back the note made in Git, or nothing. */
-  const createNote = async (options?: string | NewNoteOptions): Promise<NoteItem | undefined> => {
+  const createNote = async (options?: string | NewNoteOptions) => {
     const opts: NewNoteOptions = typeof options === 'string' ? { status: options } : { ...options };
     // Creating in another notebook switches to it first; the note is made once that notebook is the selected one.
     if (opts.notebookId && opts.notebookId !== selectedNotebookId) {
-      if (!config?.notebooks.some(n => n.id === opts.notebookId)) {
-        onError(t('outline.changed'));
-        return;
-      }
+      if (!config?.notebooks.some(n => n.id === opts.notebookId)) return onError(t('outline.changed'));
       pending.current = opts;
       setSelectedNotebookId(opts.notebookId);
       return;
@@ -192,12 +186,11 @@ export function useCreateNote({ config, selectedNotebookId, setSelectedNotebookI
       const res = remote ? { note: stageWorkingNote({ ...(kind === 'outline' ? { kind: 'outline' as const } : {}), id: slug, path: notePath, notebookId: notebook.id, title, content, metadata, status: draft.status, tags: Array.isArray(metadata.tags) ? metadata.tags.map(String) : [], revision: revisionFor(notebook.id) }, null) } : await saveNote({ path: notePath, notebookId: notebook.id, createOnly: true, content, metadata, noCommit: true });
       if (!remote) invalidateNotes();
       if (!currentRequest()) return;
-      if (opts.open !== false) onCreated(res.note);
+      onCreated(res.note);
       // Creation has already succeeded; a status refresh failure must not invite a duplicate retry.
       void fetchGitStatus().then(statusRes => {
         if (currentRequest()) setGitStatus(statusRes.status);
       }).catch(() => {});
-      return res.note;
     } catch (error) {
       if (currentRequest()) onError((error as Error).message);
     } finally {
