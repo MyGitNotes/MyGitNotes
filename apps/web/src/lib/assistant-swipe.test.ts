@@ -65,6 +65,22 @@ describe('the assistant swipe on a phone', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(document.getElementById('assistant-dock')!.classList.contains('is-dragging')).toBe(false);
   });
+  it('leaves a swipe that starts on a list row to the row, even in the right half', () => {
+    document.getElementById('page')!.insertAdjacentHTML('beforeend', "<div class='notes-main'><div data-row-swipe><span id='row'>A note</span></div></div>");
+    swipe('row', 300, -150);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+  it("starts nothing while a sheet, the drawer or a row's actions are open over the page", () => {
+    document.body.insertAdjacentHTML('beforeend', "<div class='phone-sheet-layer'></div>");
+    swipe('text', 300, -150);
+    document.querySelector('.phone-sheet-layer')!.remove();
+    document.body.insertAdjacentHTML('beforeend', "<div data-responsive-sidebar class='is-open'></div>");
+    swipe('text', 300, -150);
+    document.querySelector('[data-responsive-sidebar]')!.remove();
+    document.body.insertAdjacentHTML('beforeend', "<div data-row-swipe data-revealed='end'></div>");
+    swipe('text', 300, -150);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
   it('does nothing above the phone width', () => {
     phone = false;
     swipe('text', 300, -150);

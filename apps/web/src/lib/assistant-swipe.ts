@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { insideSidewaysScroll } from './book-paging.js';
+import { lockAxis, overlayOpen, ROW_SWIPE_SELECTOR, screenOf, sideGestureOf } from './gesture-arbiter.js';
 
 /** How far a finger travels sideways before the dock opens or closes. */
 export const ASSISTANT_SWIPE_DISTANCE = 64;
@@ -17,7 +18,8 @@ interface SwipeOptions {
 /**
  * The assistant's swipe on a phone, the mirror of the sidebar drawer's: a finger that starts in the right half of `root` and
  * moves left opens the dock, and one that moves right on the open dock closes it, the dock following the finger. Touches in
- * a field, on something that scrolls sideways (a wide table, a code block, a chip row) or in the Book or the study page are left alone.
+ * a field, on something that scrolls sideways (a wide table, a code block, a chip row) or in the Book or the study page are left alone,
+ * as is one on a list row (its own actions) and any while a sheet, the drawer or a row's actions are open (`sideGestureOf`).
  * Returns the cleanup.
  */
 export function attachAssistantSwipe(root: HTMLElement, { isOpen, onOpen, onClose }: SwipeOptions): () => void {
@@ -36,7 +38,11 @@ export function attachAssistantSwipe(root: HTMLElement, { isOpen, onOpen, onClos
     const touch = event.touches[0];
     const open = isOpen();
     const dock = target.closest<HTMLElement>('#assistant-dock');
-    if (open ? !dock : dock || touch.clientX - root.getBoundingClientRect().left < root.getBoundingClientRect().width / 2) return;
+    if (open && !dock) return;
+    if (!open) {
+      const bounds = root.getBoundingClientRect();
+      if (dock || sideGestureOf({ screen: screenOf(target), x: touch.clientX - bounds.left, width: bounds.width, onRow: Boolean(target.closest(ROW_SWIPE_SELECTOR)), owned: false, overlay: overlayOpen() }) !== 'assistant') return;
+    }
     gesture = { x: touch.clientX, y: touch.clientY, dx: 0, open, dragging: false, dock };
   };
   const move = (event: TouchEvent) => {
@@ -45,8 +51,9 @@ export function attachAssistantSwipe(root: HTMLElement, { isOpen, onOpen, onClos
     const touch = event.touches[0];
     const dx = touch.clientX - gesture.x, dy = touch.clientY - gesture.y;
     if (!gesture.dragging) {
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) return reset();
-      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      const axis = lockAxis(dx, dy);
+      if (axis === 'vertical') return reset();
+      if (!axis) return;
       if (gesture.open ? dx < 0 : dx > 0) return reset();
       gesture.dragging = true;
       gesture.dock?.classList.add('is-dragging');
