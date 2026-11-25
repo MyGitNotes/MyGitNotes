@@ -85,12 +85,20 @@ export function updateWorkingNote(store: DraftStore, path: string, entry: Workin
 /**
  * Drops the draft at `path` only while storage still holds `shown`, the version the person was shown and confirmed (or
  * that was just found to hold nothing but its base): one another tab wrote since stays. The entries come back as stored.
+ *
+ * Browsers apply another tab's localStorage writes between tasks, so this read, compare and write, done in one task with
+ * no await or callback between them, is a compare-and-swap no other tab can interleave. It reads storage once: a second
+ * read before the delete would decide on one value and delete another.
  */
 export function discardShownWorkingNote(store: DraftStore, path: string, shown: WorkingNote): { entries: WorkingNotes; dropped: boolean; } {
+  // An expired demo scope is cleared by demoExpired, and nothing is written over it.
+  const expired = demoExpired(store.scope);
   const entries = readStoredWorkingNotes(store.scope);
   const stored = entries[path];
-  if (!stored || !sameValue(keyedWorkingNote(stored, store.alias), shown)) return { entries: keyedEntries(entries, store.alias), dropped: false };
-  return { entries: updateWorkingNote(store, path, null), dropped: true };
+  if (expired || !stored || !sameValue(keyedWorkingNote(stored, store.alias), shown)) return { entries: keyedEntries(entries, store.alias), dropped: false };
+  delete entries[path];
+  localStorage.setItem(workingNotesKey(store.scope), JSON.stringify(entries));
+  return { entries: keyedEntries(entries, store.alias), dropped: true };
 }
 
 /** Clear only the committed version, preserving any edit made during the request. */

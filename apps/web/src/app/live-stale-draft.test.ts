@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dismissConflictDraftNotice, getLocalDraft, saveLocalDraft } from '../lib/storage.js';
 import type { NoteItem } from '../lib/types.js';
 import { discardShownWorkingNote, readWorkingNotes, updateWorkingNote, type WorkingNote, workingNotesKey } from '../lib/working-notes.js';
@@ -13,7 +13,10 @@ const stored = () => readWorkingNotes(store)[base.path];
 /** What a page offers of the note now, its drafts read as another tab may have left them. */
 const offer = (draft = stored()) => liveStaleDraft({ note: base, draft, conflictScope, discardShown: shown => shown ? discardShownWorkingNote(store, base.path, shown).dropped : false });
 
-afterEach(() => localStorage.clear());
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
+});
 
 describe('the older draft the live editor offers', () => {
   it('discards only the draft it showed: one another tab wrote since stays, with the conflict draft beside it', () => {
@@ -33,6 +36,36 @@ describe('the older draft the live editor offers', () => {
     next.discard();
     expect(stored()).toBeUndefined();
     expect(getLocalDraft(conflictScope, base.path)?.content).toBe('# A\n\nD1\n');
+  });
+
+  it('decides and drops each draft on one read of storage, so no other tab can write between them', () => {
+    // Another tab's writes land between tasks, never inside one: a discard is a compare-and-swap only if every key it
+    // drops is read once and written right after, with no second read to decide on one value and delete another.
+    updateWorkingNote(store, base.path, edited('# A\n\nD1\n'));
+    saveLocalDraft(conflictScope, base.path, '# A\n\nD1\n', base.metadata);
+    const shown = offer()!;
+    const log: string[] = [];
+    const proto = Object.getPrototypeOf(localStorage);
+    const get = proto.getItem, set = proto.setItem, remove = proto.removeItem;
+    vi.spyOn(proto, 'getItem').mockImplementation(function(this: Storage, key: unknown) {
+      log.push(`get ${key}`);
+      return get.call(this, key);
+    });
+    vi.spyOn(proto, 'setItem').mockImplementation(function(this: Storage, key: unknown, value: unknown) {
+      log.push(`set ${key}`);
+      return set.call(this, key, value);
+    });
+    vi.spyOn(proto, 'removeItem').mockImplementation(function(this: Storage, key: unknown) {
+      log.push(`remove ${key}`);
+      return remove.call(this, key);
+    });
+    shown.discard();
+    const working = workingNotesKey(store.scope);
+    expect(log.filter(entry => entry.endsWith(working))).toEqual([`get ${working}`, `set ${working}`]);
+    const backup = log.filter(entry => entry.includes(':conflict:'));
+    expect(backup).toHaveLength(2);
+    expect(backup[0]).toMatch(/^get /);
+    expect(backup[1]).toMatch(/^remove /);
   });
 
   it('discards the draft it showed with the conflict draft that holds the same text', () => {
