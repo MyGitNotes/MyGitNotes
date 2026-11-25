@@ -6,8 +6,6 @@ import '@testing-library/jest-dom/vitest';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { RenameNoteDialog } from './RenameNoteDialog.js';
-import { GraphSaveDialog } from './graph/GraphSaveDialog.js';
-import type { useGraphController } from './graph/useGraphController.js';
 import { FileOperation } from './files/FileOperation.js';
 import type { useFileManager } from './files/useFileManager.js';
 import { CompilationEditRow } from './CompilationDialogs.js';
@@ -88,12 +86,6 @@ describe('each dialog opens on its first field', () => {
     expect(screen.queryByText('Rename “Plan Next”')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
     expect(onConfirm).toHaveBeenCalledWith('Plan Next');
-  });
-
-  it('Save graph lane focuses the name', () => {
-    const model = { t: (key: string) => key, saveOpen: true, setSaveOpen: () => undefined, name: '', setName: () => undefined, saveLane: () => undefined };
-    render(<GraphSaveDialog model={model as unknown as ReturnType<typeof useGraphController>} />);
-    expect(screen.getByRole('textbox', { name: 'screen.rowName' })).toHaveFocus();
   });
 
   const fileModel = (operation: string) => ({ t: (key: string) => key, listing: { entries: [] }, selected: 'notes/a/plan.md', busy: false, operation, setOperation: () => undefined, name: 'plan.md', setName: () => undefined, destination: 'notes/a', setDestination: () => undefined, mutable: true, operationLabel: operation, destinationDirs: [{ path: 'notes/a' }, { path: 'notes/b' }], relative: (path: string) => path, deleteMode: 'preserve', setDeleteMode: () => undefined, deleteConfirmed: false, setDeleteConfirmed: () => undefined, metadataReady: true, error: '', submit: async () => undefined });

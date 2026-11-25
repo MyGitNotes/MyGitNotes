@@ -258,8 +258,9 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
 }
 
 /**
- * Every compilation of `notebookId`, for views that draw several at once (the graph page): the rows
- * come from the same query as the left pane, with the files' content, and new rows need a `path`.
+ * Every compilation of `notebookId` as one controller, which creates rows (new rows need a `path`): the rows
+ * come from the same query as the left pane, with the files' content. No view draws several at once since the
+ * graph page went; the controller's create and hold paths are tested through it.
  */
 export function useCompilations(notebookId: string, notebooks: readonly NotebookConfig[]): CompilationController {
   const list = useNoteList({ notebookId, kind: 'compilation', showHidden: true, sort: 'title', order: 'asc' }, { content: true });

@@ -3,14 +3,14 @@ import { formatKeys, type KeyText, matchesKeys, type ParsedKeys, parseKeys } fro
 import { type Browser, type KeyEnvironment, keyEnvironment, type Platform } from './platform.js';
 
 /** Where a key acts. `global` covers every other scope, including text fields and editors. */
-export type KeyScope = 'global' | 'palette' | 'help' | 'note' | 'markdown-editor' | 'code-editor' | 'link-completion' | 'outline-panel' | 'find-panel' | 'document-panel' | 'focus-tabs' | 'focus-pane-picker' | 'table' | 'directive' | 'image' | 'graph' | 'assistant-input' | 'file-list' | 'drawer' | 'compilation' | 'compilation-edit' | 'book' | 'asset-preview';
+export type KeyScope = 'global' | 'palette' | 'help' | 'note' | 'markdown-editor' | 'code-editor' | 'link-completion' | 'outline-panel' | 'find-panel' | 'document-panel' | 'focus-tabs' | 'focus-pane-picker' | 'table' | 'directive' | 'image' | 'assistant-input' | 'file-list' | 'drawer' | 'compilation' | 'compilation-edit' | 'book' | 'asset-preview';
 
 /** Who acts on the key: the global dispatcher, a CodeMirror keymap built from this table, or a widget's own handler. */
 export type KeyHandler = 'dispatcher' | 'codemirror' | 'widget';
-export type ShortcutGroup = 'general' | 'goTo' | 'palette' | 'panes' | 'list' | 'editor' | 'find' | 'focus' | 'outline' | 'table' | 'graph' | 'image' | 'edition';
+export type ShortcutGroup = 'general' | 'goTo' | 'palette' | 'panes' | 'list' | 'editor' | 'find' | 'focus' | 'outline' | 'table' | 'image' | 'edition';
 
 /** Help and palette order. */
-export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = ['general', 'goTo', 'palette', 'panes', 'list', 'editor', 'find', 'focus', 'outline', 'table', 'graph', 'image', 'edition'];
+export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = ['general', 'goTo', 'palette', 'panes', 'list', 'editor', 'find', 'focus', 'outline', 'table', 'image', 'edition'];
 
 export interface BindingCondition {
   platforms?: readonly Platform[];
@@ -152,9 +152,6 @@ export const KEYMAP: readonly KeymapEntry[] = [
   entry('table.previousCell', 'table', ['table'], 'widget', ['Shift+Tab']),
   entry('table.undo', 'table', ['table'], 'widget', ['Mod+Z']),
   entry('table.redo', 'table', ['table'], 'widget', ['Mod+Shift+Z']),
-  // Graph
-  entry('graph.toggleExpand', 'graph', ['graph'], 'widget', ['Enter']),
-  entry('graph.closeFilters', 'graph', ['graph'], 'widget', ['Escape']),
   // Image viewer and file preview
   entry('image.close', 'image', ['image'], 'widget', ['Escape']),
   entry('image.zoomIn', 'image', ['image'], 'widget', ['+', '=']),

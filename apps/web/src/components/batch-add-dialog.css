@@ -1,0 +1,7 @@
+/* The Focus batch-add dialog's filter list (批次新增): its result count, checkboxes, option list, tag mode and empty state. */
+.filter-results { font-size: 0.75rem; color: var(--color-muted); }
+.filter-check { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.75rem; padding: 0.3rem 0; cursor: pointer; overflow-wrap: anywhere; }
+.filter-check input { flex-shrink: 0; margin-top: 0.15rem; accent-color: var(--color-primary); }
+.filter-options { max-height: 9rem; overflow-y: auto; margin-top: 0.4rem; }
+.filter-tag-mode { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; font-size: 0.7rem; }
+.filter-empty { color: var(--color-muted); font-size: 0.75rem; padding: 0.4rem; }

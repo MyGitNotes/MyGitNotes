@@ -422,11 +422,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
           </div>
         )}
         <div className='markdown-format-group'>
-          <Tooltip label={t('graph.insertLink')}>
+          <Tooltip label={t('editor.linkToNote')}>
             <button
               type='button'
               className='ui-icon-button toolbar-icon-button insert-icon-button'
-              aria-label={t('graph.insertLink')}
+              aria-label={t('editor.linkToNote')}
               aria-expanded={picker}
               onMouseDown={event => event.preventDefault()}
               onClick={() => {
@@ -687,7 +687,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
       )}
       <div key={path} className='relative flex-1 flex min-h-0 overflow-hidden'>
         {suggestions.length > 0 && (
-          <div role='listbox' aria-label={t('graph.findNote')} className='note-source-completions'>
+          <div role='listbox' aria-label={t('editor.findNoteToLink')} className='note-source-completions'>
             {suggestions.map((note, index) => (
               <button
                 type='button'
@@ -801,8 +801,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, Props>(({ content
           <input
             autoFocus
             type='search'
-            aria-label={t('graph.findNote')}
-            placeholder={t('graph.findNote')}
+            aria-label={t('editor.findNoteToLink')}
+            placeholder={t('editor.findNoteToLink')}
             value={query}
             onChange={event => setQuery(event.target.value)}
             onKeyDown={event => {

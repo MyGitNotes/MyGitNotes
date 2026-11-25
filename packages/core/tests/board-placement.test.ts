@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { arrangeGraphLayout } from './graph-layout.js';
-import type { GraphPlacement } from './graph-layout.js';
+import { arrangeGraphLayout } from '../src/board-placement.js';
+import type { GraphPlacement } from '../src/board-placement.js';
 
 const size = (node: GraphPlacement['nodes'][number]) => node.expanded ? [node.width || 360, node.height || 300] : [32, 32];
 function expectSeparated(layout: GraphPlacement) {

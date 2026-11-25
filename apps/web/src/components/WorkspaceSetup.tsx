@@ -42,7 +42,7 @@ export interface SessionProbe {
   workspace?: { repository: string; branch: string; } | null;
 }
 
-const FEATURES = [{ icon: ListTree, key: 'setup.featureNotes' }, { icon: Network, key: 'setup.featureGraph' }, { icon: GitBranch, key: 'setup.featureGit' }] as const;
+const FEATURES = [{ icon: ListTree, key: 'setup.featureNotes' }, { icon: Network, key: 'setup.featureBoards' }, { icon: GitBranch, key: 'setup.featureGit' }] as const;
 
 /**
  * The screens before a workspace opens: the product on one side, the sign-in or repository picker on the other.

@@ -10,7 +10,7 @@ import { useTranslation } from '../lib/i18n/index.js';
 import { Button } from './Button.js';
 import { Select } from './Select.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
-import './graph-filters.css';
+import './batch-add-dialog.css';
 
 /**
  * Adds every note matching a folder and/or tag filter to one pane, deduplicated against what it already holds.
