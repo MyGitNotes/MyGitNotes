@@ -4,6 +4,7 @@
  * matching the user's blog specifications and editorial design.
  */
 
+import { escapeHtml } from './escape-html.js';
 import { en, type TranslationKey } from './i18n/en.js';
 import { zhTW } from './i18n/zh-TW.js';
 import { InfographicError, renderInfographic, renderInfographicError } from './infographics/render.js';
@@ -26,9 +27,7 @@ export interface DirectiveTitle {
   depth?: number;
 }
 
-export function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+export { escapeHtml };
 
 export function parseDirectiveAttributes(rawAttrs?: string): Record<string, string> {
   const result: Record<string, string> = {};

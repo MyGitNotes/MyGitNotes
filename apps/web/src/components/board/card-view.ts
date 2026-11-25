@@ -1,5 +1,7 @@
 import type { NoteListItem } from '@mygitnotes/core/note-query';
-import { itemSection, noteSummary } from '../../lib/compilation-content.js';
+import { boardMathText } from '../../lib/board/math-text.js';
+import { noteExcerpt } from '../../lib/note-excerpt.js';
+import { itemSection } from '../../lib/compilation-content.js';
 import { outsideNotebook } from '../../lib/compilation-rows.js';
 import type { PlacedCard } from '../../lib/board/placement.js';
 import type { FolderItem, NotebookConfig } from '../../lib/types.js';
@@ -18,6 +20,17 @@ export interface CardSources {
   loading: boolean;
   assetsLoading: boolean;
   dotClass: (status: string) => string;
+}
+
+// Camera changes redraw the board; parse a loaded note's formulas only once per note snapshot.
+const previews = new WeakMap<NoteListItem, { title: string; excerpt?: string; }>();
+function preview(note: NoteListItem) {
+  const cached = previews.get(note);
+  if (cached) return cached;
+  const title = boardMathText(note.title);
+  const result = { title, excerpt: typeof note.content === 'string' ? noteExcerpt(boardMathText(note.content), title, 180) : undefined };
+  previews.set(note, result);
+  return result;
 }
 
 const lastSegment = (path: string) => path.split('/').pop() || path;
@@ -44,6 +57,7 @@ export function cardView(card: PlacedCard, sources: CardSources): CardView {
   const note = sources.noteAt(item.notebookId, item.path);
   if (!note) return { ...base, title: lastSegment(item.path).replace(/\.md$/, ''), loading: sources.loading, missing: !sources.loading };
   const dot = note.status ? sources.dotClass(note.status) : undefined;
-  if (item.anchor) return { ...base, note, ...(dot ? { dot } : {}), title: note.title, excerpt: itemSection(item, note)?.heading ?? item.anchor };
-  return { ...base, note, ...(dot ? { dot } : {}), title: note.title || lastSegment(item.path), excerpt: typeof note.content === 'string' ? noteSummary(note.content) : undefined, loading: typeof note.content !== 'string' };
+  const { title, excerpt } = preview(note);
+  if (item.anchor) return { ...base, note, ...(dot ? { dot } : {}), title, excerpt: boardMathText(itemSection(item, note)?.heading ?? item.anchor) };
+  return { ...base, note, ...(dot ? { dot } : {}), title: title || lastSegment(item.path), excerpt, loading: typeof note.content !== 'string' };
 }

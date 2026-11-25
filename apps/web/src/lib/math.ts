@@ -1,6 +1,6 @@
 import katex, { type KatexOptions } from 'katex';
 import type { MarkedExtension, Tokens } from 'marked';
-import { escapeHtml } from './directives.js';
+import { escapeHtml } from './escape-html.js';
 
 export interface MathSpan {
   from: number;
