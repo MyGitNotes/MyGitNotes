@@ -6,8 +6,8 @@ import type { RepositoryId } from '@mygitnotes/core/repository';
 import { useFocusPage } from './use-focus-page.js';
 import { legacyBookmarkRecoveries } from './legacy-bookmark-recovery.js';
 import { useTranslation } from './i18n/index.js';
-import { pendingDocumentDrafts } from './use-workspace-document.js';
-import { WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
+import { adoptDeviceDrafts, pendingDocumentDrafts } from './use-workspace-document.js';
+import { CHANGES_DOCUMENT_CLIENTS, WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
 import { AssetItem, FolderItem, GitStatus, NoteItem, WorkspaceConfig } from './types.js';
 import { fetchAssets, fetchFolders, fetchGitStatus, fetchWorkspace, openWorkspaceEvents } from './api.js';
 import { followPage } from './page-events.js';
@@ -162,8 +162,14 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return strandedDrafts({ notebookId, paths: [...paths], carried: [...carried] }, drafts, pages);
   };
   // Remote drafts wait in Changes until committed, whichever notebook is open; local ones autosave to the working tree.
-  const pendingDocuments = remote ? pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, repositories.filter(editable)) : [];
+  // The Focus layout is no such draft online: it stays on this device (`deviceKey`).
+  const pendingDocuments = remote ? pendingDocumentDrafts(CHANGES_DOCUMENT_CLIENTS, repositories.filter(editable)) : [];
   const writable = repositories.filter(editable).map(repository => repository.id).join('\n');
+  const writableOwners = repositories.filter(editable).map(repository => `${repository.id}\t${repository.alias}`).join('\n');
+  // Focus drafts an earlier version left in Changes become this device's layouts, the closed repositories' included.
+  useEffect(() => {
+    if (remote) adoptDeviceDrafts(WORKSPACE_DOCUMENT_CLIENTS, writableOwners.split('\n').filter(Boolean).map(line => line.split('\t')).map(([id, alias]) => ({ id, alias })));
+  }, [remote, writableOwners]);
   /** Drafts of the repositories this requester may commit to, by `noteRefKey`: two repositories can hold the same path. */
   const activeWorkingNotes = useMemo<WorkingNotes>(() => (remote ? Object.fromEntries(writable.split('\n').filter(Boolean).flatMap(id => Object.values(workingNotes[id] ?? {})).map(entry => [noteRefKey(entry.note), entry])) : {}), [remote, writable, workingNotes]);
 

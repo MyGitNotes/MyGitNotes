@@ -1,6 +1,6 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, relocateFocusLayout, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
+import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, relocateFocusLayout, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
 import { noteDemoViewWriteIn, noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
@@ -334,6 +334,11 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
    * Focus it rewrites in the workspace, and the tab each pane of any Focus shows with them, so a moved note stays shown.
    */
   const relocatePaths = (movedNotebookId: string, move: (path: string) => string) => {
+    // Online, the named Focuses are this device's layout, which no server rewrites: they follow the files here.
+    if (page.device && page.writable) {
+      const next = structuredClone(page.page);
+      if (relocateFocusPaths(next, movedNotebookId, move)) page.change(next);
+    }
     if (movedNotebookId !== notebookId) return;
     const layout = structuredClone(viewRef.current.current);
     const moved = relocateFocusLayout(layout, move);

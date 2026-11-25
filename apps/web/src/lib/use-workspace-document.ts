@@ -14,6 +14,12 @@ export interface WorkspaceDocumentClient<T> {
   /** Local storage key prefix for the device draft, scoped by repository. */
   draftKey: string;
   messages: Record<'load' | 'conflict' | 'limit' | 'draft' | 'save' | 'loading', TranslationKey>;
+  /**
+   * Set for a document that, in an online workspace, is how this device arranges notes rather than repository content:
+   * it is kept in this browser under this key prefix, scoped by repository, never listed in Changes nor committed, and
+   * the repository's committed file is where it starts while the device keeps none. A local workspace still saves it.
+   */
+  deviceKey?: string;
 }
 interface Snapshot<T> {
   page: T;
@@ -61,6 +67,45 @@ function writeDocumentDraft<T>(client: WorkspaceDocumentClient<T>, repository: D
   const stored = (page: T) => client.document.mapNotebookIds(page, toLocal);
   if (!noteDemoWriteIn(repository.id)) return;
   localStorage.setItem(documentDraftKey(client, repository.id), JSON.stringify({ ...draft, page: stored(draft.page), base: stored(draft.base) }));
+}
+
+/** Where this device keeps its own copy of a device document of one repository (`deviceKey`). */
+export const deviceDocumentKey = (client: Pick<WorkspaceDocumentClient<unknown>, 'deviceKey'>, repository: string) => `github-notes:${client.deviceKey}:${storageOwner(repository)}`;
+
+/** This device's copy of a device document, its notebooks named by key; undefined while the device keeps none. */
+function readDeviceDocument<T>(client: WorkspaceDocumentClient<T>, repository: DocumentRepository): T | undefined {
+  const raw = localStorage.getItem(deviceDocumentKey(client, repository.id));
+  if (!raw) return;
+  const { toKey } = notebookIdCodec(repository.alias);
+  return client.document.mapNotebookIds(client.document.read(JSON.parse(raw).page), toKey);
+}
+
+/** Stores this device's copy of a device document with the repository's local notebook ids; false when a demo refuses the write. */
+function writeDeviceDocument<T>(client: WorkspaceDocumentClient<T>, repository: DocumentRepository, page: T): boolean {
+  if (!noteDemoWriteIn(repository.id)) return false;
+  const { toLocal } = notebookIdCodec(repository.alias);
+  localStorage.setItem(deviceDocumentKey(client, repository.id), JSON.stringify({ page: client.document.mapNotebookIds(page, toLocal) }));
+  return true;
+}
+
+/**
+ * Turns the drafts of device documents an earlier version left waiting in Changes into this device's copies: a draft
+ * is the arrangement last made in this browser, so it replaces the copy and leaves Changes. A draft that cannot be read
+ * stays where it is, for Settings to discard with the repository's other drafts.
+ */
+export function adoptDeviceDrafts(clients: WorkspaceDocumentClient<unknown>[], repositories: DocumentRepository[]): void {
+  for (const client of clients) {
+    if (!client.deviceKey) continue;
+    for (const repository of repositories) {
+      let draft;
+      try {
+        draft = readDocumentDraft(client, repository, client.document.empty());
+      } catch {
+        continue;
+      }
+      if (draft && writeDeviceDocument(client, repository, draft.page)) localStorage.removeItem(documentDraftKey(client, repository.id));
+    }
+  }
 }
 
 /** A document draft of one repository, waiting in Changes for a remote commit. */
@@ -125,6 +170,8 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   saved.current = onSaved;
   /* eslint-enable react/refs */
   const key = documentDraftKey(client, repository ?? '');
+  // Online, a device document is this device's own copy: no draft, nothing to commit (`deviceKey`).
+  const device = remote && client.deviceKey ? deviceDocumentKey(client, repository ?? '') : undefined;
   const target = repository ? `${endpoint}?repository=${encodeURIComponent(repository)}` : endpoint;
   const currentKey = useRef(key);
   /* eslint-disable react/refs -- Document callbacks and the saved comparison baseline remain current without restarting loads. */
@@ -154,6 +201,27 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
         record.writable = true;
       }
       if (currentKey.current !== key || request !== loadRequest.current) return;
+      if (device) {
+        const owned = { id: repository, alias };
+        adoptDeviceDrafts([client as WorkspaceDocumentClient<unknown>], [owned]);
+        let kept: T | undefined;
+        try {
+          kept = readDeviceDocument(client, owned);
+        } catch (error) {
+          // Reloading drops a copy that cannot be read, and the device starts again from the committed file.
+          if (!discard) throw error;
+          localStorage.removeItem(device);
+        }
+        base.current = record.page;
+        current.current = kept ?? record.page;
+        draftIdentity.current = undefined;
+        revision.current = record.revision;
+        setSnapshotKey(key);
+        setSnapshot(record);
+        setPage(current.current);
+        setDirty(false);
+        return;
+      }
       if (discard) localStorage.removeItem(key);
       base.current = record.page;
       const draft = readDraft();
@@ -174,7 +242,7 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
     } finally {
       if (currentKey.current === key && request === loadRequest.current) setLoading(false);
     }
-  }, [key, enabled, repository, remote, readDraft, t, target, messages, document, demo]);
+  }, [key, device, client, alias, enabled, repository, remote, readDraft, t, target, messages, document, demo]);
   useEffect(() => {
     /* eslint-disable react/set-state-in-effect -- Loading synchronizes a persisted workspace document and its recovery draft; the request lifecycle owns loading, error and conflict state. */
     void load();
@@ -182,16 +250,28 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   }, [load]);
   useEffect(() => {
     const refresh = (event: StorageEvent) => {
-      if (event.key === key) void load();
+      // A tab of an earlier version still writes drafts; this one adopts them as the device's copy.
+      if (event.key === key || (device && event.key === device)) void load();
     };
     window.addEventListener('storage', refresh);
     return () => window.removeEventListener('storage', refresh);
-  }, [key, load]);
+  }, [key, device, load]);
   const change = (next: T) => {
     if (!snapshot?.writable || loading || error || snapshotKey !== key || !repository) return;
     const result = document.schema.safeParse(next);
     if (!result.success) {
       setError(t(messages.limit));
+      return;
+    }
+    if (device) {
+      try {
+        if (!writeDeviceDocument(client, { id: repository, alias }, result.data)) return;
+      } catch {
+        setError(t(messages.draft));
+        return;
+      }
+      current.current = result.data;
+      setPage(result.data);
       return;
     }
     try {
@@ -262,6 +342,6 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   /* eslint-disable react/refs -- Document callbacks and the saved comparison baseline remain current without restarting loads. */
   const diff = dirty ? documentDiff(document.file, base.current, page) : '';
   /* eslint-enable react/refs */
-  return { client: client as WorkspaceDocumentClient<unknown>, repository, file: document.file, page: snapshotKey === key ? page : document.empty(), change, save, reload: () => load(true), refresh: () => load(), loading: loading || snapshotKey !== key, saving, dirty: snapshotKey === key && dirty, error, writable: Boolean(enabled && repository && snapshotKey === key && !loading && !error && snapshot?.writable), setError, diff };
+  return { client: client as WorkspaceDocumentClient<unknown>, repository, file: document.file, device: Boolean(device), page: snapshotKey === key ? page : document.empty(), change, save, reload: () => load(true), refresh: () => load(), loading: loading || snapshotKey !== key, saving, dirty: snapshotKey === key && dirty, error, writable: Boolean(enabled && repository && snapshotKey === key && !loading && !error && snapshot?.writable), setError, diff };
 }
 export type WorkspaceDocumentController<T> = ReturnType<typeof useWorkspaceDocument<T>>;
