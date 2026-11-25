@@ -2,9 +2,11 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
+import { compilationFields, parseCompilation } from '@mygitnotes/core/compilation';
+import { isListedBoard } from '../../lib/board/listing.js';
 import { cameraAt } from '../../lib/board/zoom.js';
 import { boardsQuery, boardsRoute } from '../../lib/routes.js';
-import { editing, example, note, openBoard, resetBoardTest, router, thesisNotes } from './board-test-helpers.js';
+import { editing, example, note, openBoard, resetBoardTest, router, save, thesisNotes } from './board-test-helpers.js';
 
 vi.mock('../../lib/note-editing.js', async importOriginal => ({ ...await importOriginal<typeof import('../../lib/note-editing.js')>(), useEditorRegistry: () => () => () => {}, useNoteEditing: () => editing }));
 /** The hosted editor a Focus pane uses, standing in for the whole editor: what it was asked to edit, and a field to type in. */
@@ -114,10 +116,10 @@ describe('the side panel of a board', () => {
   });
 
   it('centres and selects the card the address names, and puts the keyboard on it', async () => {
-    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
-    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+    const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
+    const height = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
     // The viewport fills 1000 × 600 and a focused card is measured where the camera centred it, as a browser lays them out.
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function(this: Element) {
+    const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function(this: Element) {
       return (this.classList.contains('board-viewport') ? new DOMRect(0, 0, 1000, 600) : new DOMRect(380, 236, 240, 128));
     });
     open(boardsRoute('thesis', BOARD, { note: CAUSAL, card: 'n3' }));
@@ -131,7 +133,7 @@ describe('the side panel of a board', () => {
     expect(y).toBeCloseTo(expected.y);
     await waitFor(() => expect(document.activeElement).toBe(target));
     expect(document.querySelectorAll('[data-board-card][data-selected]')).toHaveLength(1);
-    vi.restoreAllMocks();
+    [width, height, rect].forEach(spy => spy.mockRestore());
   });
 
   it('opens a note of this notebook in Focus or full screen, and disables Focus for a card of another notebook', async () => {
@@ -154,5 +156,75 @@ describe('the side panel of a board', () => {
     expect(sidePanel.fullscreen).toHaveBeenCalledWith(expect.objectContaining({ notebookId: 'reading', path: 'notes/reading/sosa-2007.md' }));
     fireEvent.click(within(aside).getByRole('button', { name: 'Close the note' }));
     await waitFor(() => expect(panel()).toBeNull());
+  });
+});
+
+describe('leaving a side panel by Back and Forward', () => {
+  it("waits for the panel's note to be saved before Back closes it, and Forward opens it again", async () => {
+    open();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    let finish!: (saved: boolean) => void;
+    flush.mockReturnValueOnce(new Promise<boolean>(resolve => void (finish = resolve)));
+    act(() => void router.navigate!(-1));
+    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]));
+    // The address moved on; the editor stays on screen until its note is saved.
+    expect(shown().note).toBeNull();
+    expect(panel()).not.toBeNull();
+    expect(within(panel()!).getByRole('textbox', { name: `Editor ${INTRO}` })).toBeInTheDocument();
+    finish(true);
+    await waitFor(() => expect(panel()).toBeNull());
+    expect(shown()).toEqual({ board: BOARD, note: null, card: null });
+    const saves = flush.mock.calls.length;
+    act(() => void router.navigate!(1));
+    await findPanel();
+    expect(shown().note).toBe(INTRO);
+    expect(hosted).toHaveBeenLastCalledWith(expect.objectContaining({ path: INTRO }));
+    // Nothing was shown to save before Forward opened it.
+    expect(flush).toHaveBeenCalledTimes(saves);
+  });
+
+  it('keeps the panel and puts its address back when Back cannot save the note', async () => {
+    open();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    flush.mockResolvedValueOnce(false);
+    act(() => void router.navigate!(-1));
+    await waitFor(() => expect(shown().note).toBe(INTRO));
+    expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]);
+    expect(panel()).not.toBeNull();
+    expect(hosted).toHaveBeenLastCalledWith(expect.objectContaining({ path: INTRO }));
+  });
+
+  it("saves the panel's note before a folder, asset or missing card opens elsewhere", async () => {
+    open(boardsRoute('thesis', BOARD, { note: INTRO }));
+    await findPanel();
+    flush.mockResolvedValueOnce(false);
+    fireEvent.click(document.querySelector<HTMLElement>('[data-board-card="n5"]')!);
+    await waitFor(() => expect(flush).toHaveBeenCalledWith([`thesis:${INTRO}`]));
+    // A refused save opens nothing: the missing note's notice stays away.
+    expect(screen.queryByText(/may have moved or been deleted/)).toBeNull();
+  });
+});
+
+describe('the 白板 page draws every compilation it lists as a board', () => {
+  it('draws a book holding board data as its board, with the panel', async () => {
+    openBoard({ path: BOARD, notebookId: 'thesis', raw: example.replace('arrangement: board', 'arrangement: book'), notes: thesisNotes, compilations, view: { frame: 'page', sidePanel, url: boardsRoute('thesis', BOARD) } });
+    await screen.findByRole('group', { name: '二、德性知識論' });
+    expect(document.querySelector('.compilation-view')).toHaveAttribute('data-arrangement', 'board');
+    expect(document.querySelector('.book-view, .compilation-book')).toBeNull();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+  });
+
+  it('writes the book chosen there with a board section, so the compilation stays listed, and opens it in zoom', async () => {
+    const fresh = 'version: 1\nid: fresh\ntitle: 未命名白板\narrangement: board\nitems: []\n';
+    openBoard({ path: 'notes/thesis/untitled.compilation.yml', notebookId: 'thesis', raw: fresh, notes: [], view: { frame: 'page', sidePanel, url: boardsRoute('thesis', 'notes/thesis/untitled.compilation.yml') } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Book' }));
+    await waitFor(() => expect(router.location!.pathname).toBe('/notebooks/thesis/notes/untitled.compilation.yml'));
+    expect(new URLSearchParams(router.location!.search).get('returnTo')).toBe(boardsRoute('thesis'));
+    const written = save.mock.lastCall![1];
+    expect(parseCompilation(written)).toMatchObject({ arrangement: 'book', board: {} });
+    expect(isListedBoard(compilationFields(written, 'notes/thesis/untitled.compilation.yml').metadata)).toBe(true);
   });
 });

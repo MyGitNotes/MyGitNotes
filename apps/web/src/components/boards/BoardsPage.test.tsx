@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { createElement, type ReactNode } from 'react';
+import { createElement, type ReactNode, useLayoutEffect } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { type Location, MemoryRouter, useLocation } from 'react-router-dom';
+import { type Location, MemoryRouter, type NavigateFunction, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { compilationFields } from '@mygitnotes/core/compilation';
@@ -33,9 +33,13 @@ const file = (id: string, title: string, arrangement: string, extra = '') => {
 const listing = [file('chapter', '第三章', 'board', 'board:\n  cards:\n    - { item: n1, x: 0, y: 0 }\n'), file('kept', '曾是白板', 'book', 'board: {}\n'), file('reading', '閱讀清單', 'lane')];
 const sidePanel = { focusNotebook: 'thesis', openInFocus: vi.fn(), fullscreen: vi.fn() };
 const onCreate = vi.fn<() => Promise<string | undefined>>();
-const at: { location?: Location; } = {};
+const at: { location?: Location; navigate?: NavigateFunction; } = {};
 function Probe() {
-  at.location = useLocation();
+  const location = useLocation(), navigate = useNavigate();
+  useLayoutEffect(() => {
+    at.location = location;
+    at.navigate = navigate;
+  }, [location, navigate]);
   return null;
 }
 
@@ -98,4 +102,28 @@ it('creates an untitled board and opens it; a read-only notebook or a phone has 
 it.each([['/graph?notebook=thesis', boardsRoute('thesis')], ['/graph?notebook=thesis&lanes=chapter', boardsRoute('thesis', 'notes/thesis/chapter.compilation.yml')], ['/graph?notebook=thesis&lanes=kept', boardsRoute('thesis', 'notes/thesis/kept.compilation.yml')], ['/graph?notebook=thesis&lanes=reading', '/notebooks/thesis/notes/reading.compilation.yml?zoom']])('replaces the former graph address %s with %s', async (url, target) => {
   page(url);
   await waitFor(() => expect(address()).toBe(target));
+});
+
+it('leaves a board by Back only once its editors are saved, and keeps it with its address when they cannot be', async () => {
+  page(boardsRoute('thesis'));
+  fireEvent.click(await screen.findByRole('button', { name: /第三章/ }));
+  await screen.findByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' });
+  let finish!: (saved: boolean) => void;
+  flushEditors.mockReturnValueOnce(new Promise<boolean>(resolve => void (finish = resolve)));
+  act(() => void at.navigate!(-1));
+  await waitFor(() => expect(flushEditors).toHaveBeenCalledTimes(1));
+  // The address is the list's already; the board and its side panel stay until they are saved.
+  expect(address()).toBe(boardsRoute('thesis'));
+  expect(screen.getByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' })).toBeInTheDocument();
+  finish(true);
+  await screen.findByRole('list', { name: 'Whiteboards of this notebook' });
+  // Forward has nothing shown to save; a refused save on the way back keeps the board and its address.
+  act(() => void at.navigate!(1));
+  await screen.findByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' });
+  expect(flushEditors).toHaveBeenCalledTimes(1);
+  flushEditors.mockResolvedValueOnce(false);
+  act(() => void at.navigate!(-1));
+  await waitFor(() => expect(flushEditors).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(address()).toBe(boardsRoute('thesis', 'notes/thesis/chapter.compilation.yml')));
+  expect(screen.getByRole('region', { name: 'Board notes/thesis/chapter.compilation.yml' })).toBeInTheDocument();
 });

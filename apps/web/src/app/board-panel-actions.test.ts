@@ -36,8 +36,13 @@ it('leaves a note of another notebook where it is, and opens full screen in zoom
   const panel = actions({ shown: null, last: null });
   panel.openInFocus({ ...note, notebookId: 'reading' });
   panel.fullscreen(note);
-  expect(handleOpenNote).toHaveBeenCalledWith(note);
-  await Promise.resolve();
+  // Zoom replaces what the panel sat in, so its note is saved first.
+  await vi.waitFor(() => expect(handleOpenNote).toHaveBeenCalledWith(note));
+  expect(flushEditors).toHaveBeenCalledTimes(1);
   expect(place).not.toHaveBeenCalled();
+  flushEditors.mockResolvedValueOnce(false);
+  panel.fullscreen(note);
+  await vi.waitFor(() => expect(flushEditors).toHaveBeenCalledTimes(2));
+  expect(handleOpenNote).toHaveBeenCalledTimes(1);
   expect(panel.focusNotebook).toBe('thesis');
 });

@@ -35,9 +35,10 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
   const phone = usePhone();
   const page = frame === 'page';
   const enabled = Boolean(sidePanel) && !phone;
-  const panel = useBoardPanel({ enabled, row, notebooks });
+  const query = boardsQuery(location.search);
+  const panel = useBoardPanel({ enabled, owns: !page || query.board === path, row, notebooks });
   // A jump from a side panel names the card to centre and select: once per arrival at the address.
-  const card = page ? boardsQuery(location.search).card : null;
+  const card = page ? query.card : null;
   const reveal = useMemo(() => card ? { card, key: location.key } : undefined, [card, location.key]);
   /**
    * Choosing the book or a lane on the 白板 page writes that arrangement and opens the compilation in zoom on the Notes
@@ -47,14 +48,22 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
     if (shownView(view) === 'board') return;
     const notebook = notebooks.find(candidate => candidate.id === notebookId);
     if (!notebook || !await flushEditors()) return;
-    if (view !== current.view) {
-      change({ ...current, view });
+    // The file keeps a board section, empty when it had none, so the compilation stays on the 白板 page's list.
+    if (view !== current.view || !current.board) {
+      change({ ...current, view, board: current.board ?? {} });
       await save();
     }
     navigate(`${noteRoute(notebookId, path.slice(notebook.root.replace(/\/$/, '').length + 1))}?${new URLSearchParams({ returnTo: boardsRoute(notebookId) })}`);
   };
-  /** A note card opens in the side panel where there is one; a folder, asset or video, or a missing note, opens as in a lane. */
-  const openCard = (open: CompilationContentProps['onOpen']): CompilationContentProps['onOpen'] => (item, note) => item.kind === 'note' && note && enabled ? void panel.open(note) : open(item, note);
+  /**
+   * A note card opens in the side panel where there is one; a folder, asset or video, or a missing note, opens as in a
+   * lane, once the panel's note is saved, since a folder or a note in zoom leaves the board.
+   */
+  const openCard = (open: CompilationContentProps['onOpen']): CompilationContentProps['onOpen'] => (item, note) => {
+    if (item.kind === 'note' && note && enabled) return void panel.open(note);
+    if (!panel.note) return open(item, note);
+    void panel.saved().then(saved => saved && open(item, note));
+  };
   const withPanel = (board: ReactNode, current: CompilationRow) => {
     if (!panel.note || !sidePanel) return board;
     return (

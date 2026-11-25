@@ -40,5 +40,9 @@ export function boardPanelActions({ noteFocus, selectedNotebookId, flushEditors,
     showFocus();
     navigate(`${notebookRoute(selectedNotebookId)}?${new URLSearchParams({ focus: target })}`);
   };
-  return { focusNotebook: selectedNotebookId, openInFocus: note => void openInFocus(note), fullscreen: note => void handleOpenNote(note) };
+  // Zoom replaces the page, or the compilation zoomed around the panel, so the panel's note is saved first.
+  const fullscreen = async (note: NoteListItem) => {
+    if (await flushEditors()) await handleOpenNote(note);
+  };
+  return { focusNotebook: selectedNotebookId, openInFocus: note => void openInFocus(note), fullscreen: note => void fullscreen(note) };
 }

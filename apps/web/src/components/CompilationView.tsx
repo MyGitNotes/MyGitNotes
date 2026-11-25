@@ -284,7 +284,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onRename: rename(current),
       onCreateNote: actions.createNote,
     };
-    if (current.view === 'book') return <CompilationBook {...common} />;
+    // The 白板 page draws every compilation it lists as a board, a book holding board data too.
+    if (current.view === 'book' && !page) return <CompilationBook {...common} />;
     if (page || shownView(current.view) === 'board') {
       // A board draws its items where the file places them; its status filter does not apply, and on a phone it is for looking.
       const createInSource = () => {
