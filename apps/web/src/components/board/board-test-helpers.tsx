@@ -88,7 +88,7 @@ export function openBoard({ path, notebookId, raw, notes, members = [], links = 
       const refs = JSON.parse(String(init?.body)).notes as NoteRef[];
       return Response.json({ notes: [stored, ...notes].filter(result => refs.some(ref => ref.path === result.path && ref.notebookId === result.notebookId)) });
     }
-    if (url.pathname === '/api/notes/query') return Response.json(url.searchParams.get('select') === 'paths' ? { notes: members } : url.searchParams.get('kind') === 'compilation' ? { notes: compilations, total: compilations.length, nextCursor: null } : { notes: [], total: 0, nextCursor: null });
+    if (url.pathname === '/api/notes/query') return Response.json(url.searchParams.get('select') === 'paths' ? { notes: members } : url.searchParams.get('kind') === 'compilation' ? { notes: compilations.filter(entry => entry.notebookId === url.searchParams.get('notebookId')), total: compilations.length, nextCursor: null } : { notes: [], total: 0, nextCursor: null });
     if (url.pathname === '/api/notes/graph') return Response.json({ nodes: [], links, revisions: {} });
     return Response.json(url.pathname === '/api/assets' ? { assets: [] } : {});
   });

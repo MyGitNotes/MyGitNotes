@@ -16,10 +16,10 @@ export interface CompilationController {
   page: CompilationPage;
   /** Files that do not open, with the reason. */
   invalid: ParsedCompilation[];
-  /** Replaces the rows; changed rows are written, new rows created and missing rows deleted. */
-  change: (next: CompilationPage) => void;
-  /** Writes what is waiting and resolves once nothing is in flight. */
-  save: () => Promise<void>;
+  /** Replaces the rows; changed rows are written, new rows created and missing rows deleted. False when a row was refused (the error says why). */
+  change: (next: CompilationPage) => boolean;
+  /** Writes what is waiting and resolves once nothing is in flight: true when every write succeeded. */
+  save: () => Promise<boolean>;
   loading: boolean;
   saving: boolean;
   error: string;
@@ -67,7 +67,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   latest.current = { pending, stored, entries, rows, actions, newPath, initialStatus, lossy };
   /* eslint-enable react/refs */
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const inflight = useRef<Promise<void>>(Promise.resolve());
+  const inflight = useRef<Promise<boolean>>(Promise.resolve(true));
   const queued = useRef(new Map<string, CompilationRow | null>());
 
   // A pending edit ends once the stored file shows it.
@@ -90,7 +90,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   const write = useCallback(async () => {
     const batch = [...queued.current];
     queued.current.clear();
-    if (!batch.length) return;
+    if (!batch.length) return true;
     const { stored: existing, entries: listed, actions: api } = latest.current;
     const failed: string[] = [];
     for (const [path, row] of batch) {
@@ -106,24 +106,23 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       }
     }
     if (failed.length) setPending(current => Object.fromEntries(Object.entries(current).filter(([path]) => !failed.includes(path))));
+    return !failed.length;
   }, []);
-  const flush = useCallback((): Promise<void> => {
+  const flush = useCallback((): Promise<boolean> => {
     clearTimeout(timer.current);
     timer.current = undefined;
     setSaving(true);
-    inflight.current = inflight.current.then(write).finally(() => {
+    inflight.current = inflight.current.then(() => write()).finally(() => {
       if (!queued.current.size && !timer.current) setSaving(false);
     });
     return inflight.current;
   }, [write]);
-  const save = useCallback(async () => {
-    await flush();
-  }, [flush]);
+  const save = useCallback(() => flush(), [flush]);
 
   const change = useCallback((next: CompilationPage) => {
     const { rows: current, actions: api, newPath: placeNew, initialStatus: startStatus } = latest.current;
     const writes = planCompilationWrites(current, next.rows);
-    if (!writes.save.length && !writes.create.length && !writes.remove.length) return;
+    if (!writes.save.length && !writes.create.length && !writes.remove.length) return true;
     const taken = new Set([...current.map(row => row.path), ...Object.keys(latest.current.pending)]);
     const created = writes.create.flatMap(row => {
       if (row.path) return [row];
@@ -160,6 +159,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     setError(refused.join('\n'));
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), WRITE_DELAY);
+    return !refused.length;
   }, [flush]);
 
   // Edits waiting for the pause are written before the view goes away, and before the app saves its editors.

@@ -26,7 +26,10 @@ const OTHER = 'notes/thesis/other.compilation.yml';
 const INTRO = 'notes/thesis/第三章導論.md', CAUSAL = 'notes/thesis/依據關係的因果條件.md';
 // Another board of the notebook holding the second note, under the item id `c1`.
 const other = `version: 1\nid: other\ntitle: Other board\narrangement: board\nitems:\n  - id: c1\n    kind: note\n    path: ${CAUSAL}\n`;
-const compilations = [note('thesis', BOARD, '第三章：德性與依據', example), note('thesis', OTHER, 'Other board', other)].map(entry => ({ ...entry, kind: 'compilation' as const }));
+// A board of the reading notebook holding its note, which the example pins from there.
+const SOSA = 'notes/reading/sosa-2007.md';
+const reading = `version: 1\nid: reading-board\ntitle: Reading board\narrangement: board\nitems:\n  - id: s1\n    kind: note\n    path: ${SOSA}\n`;
+const compilations = [note('thesis', BOARD, '第三章：德性與依據', example), note('thesis', OTHER, 'Other board', other), note('reading', 'notes/reading/board.compilation.yml', 'Reading board', reading)].map(entry => ({ ...entry, kind: 'compilation' as const }));
 const sidePanel = { focusNotebook: 'thesis', openInFocus: vi.fn(), fullscreen: vi.fn() };
 const flush = vi.spyOn(editing, 'flushEditors');
 
@@ -34,7 +37,7 @@ const open = (url = boardsRoute('thesis', BOARD)) => openBoard({ path: BOARD, no
 // The first board of a run reads its modules cold, so it may take longer than a waitFor's default second.
 const SLOW = { timeout: 5000 };
 /** The notes of the example's cards: a card opens its note once the note was read, which its excerpt shows. */
-const cardNotes: Record<string, string> = { n1: INTRO, n2: CAUSAL, n3: 'notes/thesis/德性與能力的區分.md', n4: 'notes/reading/sosa-2007.md' };
+const cardNotes: Record<string, string> = { n1: INTRO, n2: CAUSAL, n3: 'notes/thesis/德性與能力的區分.md', n4: SOSA };
 const card = (key: string) =>
   waitFor(() => {
     const found = document.querySelector<HTMLElement>(`[data-board-card="${key}"]`);
@@ -226,5 +229,49 @@ describe('the 白板 page draws every compilation it lists as a board', () => {
     const written = save.mock.lastCall![1];
     expect(parseCompilation(written)).toMatchObject({ arrangement: 'book', board: {} });
     expect(isListedBoard(compilationFields(written, 'notes/thesis/untitled.compilation.yml').metadata)).toBe(true);
+  });
+});
+
+describe('around the side panel', () => {
+  it('keeps the board in place when the panel opens, so its selection, undo and camera stay', async () => {
+    open();
+    const target = await card('n1');
+    const board = document.querySelector('.board-arrangement');
+    fireEvent.click(target);
+    await findPanel();
+    expect(document.querySelector('.board-arrangement')).toBe(board);
+    expect(document.querySelector('[data-board-card="n1"]')).toBe(target);
+  });
+
+  it("lists the boards of a cross-notebook card's own notebook as well", async () => {
+    open(boardsRoute('thesis', BOARD, { note: SOSA }));
+    const aside = await findPanel();
+    const boards = await within(aside).findByText(/On 2 whiteboards/);
+    expect(within(boards).getAllByRole('button').map(button => button.textContent)).toEqual(['第三章：德性與依據', 'Reading board']);
+    fireEvent.click(within(boards).getByRole('button', { name: 'Open the whiteboard Reading board at this card' }));
+    await waitFor(() => expect(router.location!.search).toBe(boardsRoute('reading', 'notes/reading/board.compilation.yml', { note: SOSA, card: 's1' }).slice('/boards'.length)));
+  });
+
+  it("saves the panel's note before a zoomed board changes arrangement, and changes nothing when it cannot", async () => {
+    openBoard({ path: BOARD, notebookId: 'thesis', raw: example, notes: thesisNotes, compilations, view: { frame: 'zoom', sidePanel, url: '/notebooks/thesis/notes/chapter-3.compilation.yml?returnTo=%2Fnotebooks%2Fthesis' } });
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    flush.mockResolvedValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Book' }));
+    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${INTRO}`]));
+    await new Promise(resolve => setTimeout(resolve, 400));
+    expect(document.querySelector('.compilation-view')).toHaveAttribute('data-arrangement', 'board');
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Book' }));
+    await waitFor(() => expect(document.querySelector('.compilation-view')).toHaveAttribute('data-arrangement', 'book'));
+  });
+
+  it('stays on the 白板 page with the error when the book chosen there cannot be written', async () => {
+    save.mockRejectedValueOnce(new Error('disk full'));
+    open();
+    await card('n1');
+    fireEvent.click(screen.getByRole('button', { name: 'Book' }));
+    await screen.findByText('disk full');
+    expect(router.location!.pathname).toBe('/boards');
   });
 });

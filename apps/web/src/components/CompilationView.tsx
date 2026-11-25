@@ -139,7 +139,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     }
   };
   const remove = async () => {
-    if (!compilation.note) return;
+    // Deleting closes the view, and the note of its side panel with it.
+    if (!compilation.note || !await host.saved()) return;
     setDialog(null);
     try {
       await actions.remove(compilation.note);
@@ -188,8 +189,9 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   };
   // A change of arrangement unmounts the slot being edited, so its note is saved first and a failed save keeps everything as it is (E8).
   const rearrange = (current: CompilationRow, next: CompilationRow) => {
-    if (next.view === current.view) return change(next);
-    void slots.finish().then(saved => saved && change(next));
+    if (next.view === current.view) return void change(next);
+    // A board's side panel goes with the board, so its note is saved too.
+    void host.saved().then(saved => saved && slots.finish()).then(saved => saved && change(next));
   };
   const addToFocus = compilation.note ? editing.addToFocus({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
   const move = writable && compilation.note ? editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;

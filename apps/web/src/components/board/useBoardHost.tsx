@@ -20,8 +20,10 @@ interface Params {
   sidePanel: BoardPanelActions | undefined;
   /** Saves every editor of the page, before the page is left. */
   flushEditors: () => Promise<boolean>;
-  change: (row: CompilationRow) => void;
-  save: () => Promise<void>;
+  /** False when the row was refused; the view shows why. */
+  change: (row: CompilationRow) => boolean;
+  /** False when a write failed; the view shows why. */
+  save: () => Promise<boolean>;
 }
 
 /**
@@ -48,11 +50,9 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
     if (shownView(view) === 'board') return;
     const notebook = notebooks.find(candidate => candidate.id === notebookId);
     if (!notebook || !await flushEditors()) return;
-    // The file keeps a board section, empty when it had none, so the compilation stays on the 白板 page's list.
-    if (view !== current.view || !current.board) {
-      change({ ...current, view, board: current.board ?? {} });
-      await save();
-    }
+    // The file keeps a board section, empty when it had none, so the compilation stays on the 白板 page's list. A
+    // refused or failed write stays on the board, where its error shows.
+    if ((view !== current.view || !current.board) && (!change({ ...current, view, board: current.board ?? {} }) || !await save())) return;
     navigate(`${noteRoute(notebookId, path.slice(notebook.root.replace(/\/$/, '').length + 1))}?${new URLSearchParams({ returnTo: boardsRoute(notebookId) })}`);
   };
   /**
@@ -64,14 +64,10 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
     if (!panel.note) return open(item, note);
     void panel.saved().then(saved => saved && open(item, note));
   };
+  // The board keeps its place whether the panel is open, so opening a card keeps its selection, undo and camera.
   const withPanel = (board: ReactNode, current: CompilationRow) => {
-    if (!panel.note || !sidePanel) return board;
-    return (
-      <div className='board-with-panel'>
-        {board}
-        <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} onClose={() => void panel.close()} />
-      </div>
-    );
+    if (!sidePanel) return board;
+    return <div className='board-with-panel'>{board} {panel.note && <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} onClose={() => void panel.close()} />}</div>;
   };
-  return { page, reveal, leave, openCard, withPanel };
+  return { page, reveal, leave, openCard, withPanel, saved: panel.saved };
 }

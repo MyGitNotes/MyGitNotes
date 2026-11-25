@@ -34,8 +34,10 @@ export function BoardSidePanel({ note, row, notebooks, actions, onClose }: { not
   const drag = useRef<{ x: number; width: number; } | null>(null);
   const lookup = useNoteLookup([note], false);
   const listed = lookup.notes[0];
-  const { boards } = useNotebookBoards(row.notebookId, notebooks);
-  const holding = boards ? boardsContaining(note, boards, listed ? [listed] : []) : [];
+  // The boards of the board's notebook, and of the note's own when it lies in another notebook of the repository.
+  const own = useNotebookBoards(row.notebookId, notebooks).boards;
+  const theirs = useNotebookBoards(note.notebookId === row.notebookId ? null : note.notebookId, notebooks).boards;
+  const holding = boardsContaining(note, [...own ?? [], ...theirs ?? []], listed ? [listed] : []);
   const otherNotebook = note.notebookId !== actions.focusNotebook;
   const resize = (next: number) => {
     const value = clampPanelWidth(next);
@@ -99,7 +101,7 @@ export function BoardSidePanel({ note, row, notebooks, actions, onClose }: { not
         <p className='board-panel-boards'>
           {t('board.onBoards', { count: String(holding.length) })}
           {holding.map((board, index) => (
-            <Fragment key={board.path}>
+            <Fragment key={`${board.notebookId}:${board.path}`}>
               {index > 0 && <span aria-hidden='true'>・</span>}
               <button
                 type='button'
