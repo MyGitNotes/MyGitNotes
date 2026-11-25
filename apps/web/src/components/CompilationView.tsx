@@ -89,7 +89,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const phone = usePhone();
   // The 白板 page draws any compilation it lists as a board, whatever its arrangement.
   const page = frame === 'page';
-  const host = useBoardHost({ frame, notebookId, path, row, notebooks, sidePanel, flushEditors: () => editing.flushEditors(), change: next => compilation.change({ rows: [next] }), save: compilation.save });
+  const host = useBoardHost({ frame, notebookId, path, row, notebooks, sidePanel, flushEditors: () => editing.flushEditors(), change: next => compilation.change({ rows: [next] }), save: compilation.save, capture: compilation.capture });
   const writable = compilation.writable && !(phone && row !== undefined && (page || shownView(row.view) === 'board'));
   const disabled = !writable || compilation.loading;
   // A folder source includes assets, so an incomplete asset read must not become a saved manual order.
@@ -132,8 +132,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     const loss = compilation.upgradeLoss.get(row.path);
     if (loss) return compilation.setError(loss);
     // Nor while a held write may yet be taken back (the 卡片 tool's new card): the copy would keep it.
-    const waiting = compilation.held();
-    if (waiting) return compilation.setError(waiting);
+    if (!compilation.capture()) return;
     try {
       const next = await planCompilationCopy(row, initialCompilationStatus(notebooks, notebookId, facets.facets));
       await actions.create(notebookId, next.path, next.content, next.metadata);
@@ -143,8 +142,8 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     }
   };
   const remove = async () => {
-    // Deleting closes the view, and the note of its side panel with it.
-    if (!compilation.note || !await host.saved()) return;
+    // Deleting closes the view, and the note of its side panel with it; not while a held write is out, which would write the file again.
+    if (!compilation.note || !compilation.capture() || !await host.saved() || !compilation.capture()) return;
     setDialog(null);
     try {
       await actions.remove(compilation.note);
@@ -194,13 +193,25 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   // A change of arrangement unmounts the slot being edited, so its note is saved first and a failed save keeps everything as it is (E8).
   const rearrange = (current: CompilationRow, next: CompilationRow) => {
     if (next.view === current.view) return void change(next);
-    // A board's side panel goes with the board, so its note is saved too.
-    void host.saved().then(saved => saved && slots.finish()).then(saved => saved && change(next));
+    // A board's side panel goes with the board, so its note is saved too. The rows read now are not written past a hold taken meanwhile.
+    const fresh = compilation.capture();
+    if (!fresh) return;
+    void host.saved().then(saved => saved && slots.finish()).then(saved => saved && fresh() && change(next));
   };
   const addToFocus = compilation.note ? editing.addToFocus({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
-  const move = writable && compilation.note ? editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
-  // Renaming retitles the compilation through its own row, then the file follows the new name.
-  const rename = (current: CompilationRow) => writable && compilation.note ? editing.renameNote?.({ ...compilation.note, content: compilation.note.content ?? '', title: current.name }, title => change({ ...current, name: title })) : undefined;
+  // Moving and renaming relocate the file, so neither opens while a held write is out.
+  const opener = (open: (() => void) | undefined) => open && (() => void (compilation.capture() && open()));
+  const move = writable && compilation.note ? opener(editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' })) : undefined;
+  // Renaming retitles the compilation through its own row, then the file follows the new name; a refused title keeps the file where it is.
+  const rename = (current: CompilationRow) => {
+    if (!writable || !compilation.note) return undefined;
+    let fresh: (() => boolean) | undefined;
+    const open = editing.renameNote?.({ ...compilation.note, content: compilation.note.content ?? '', title: current.name }, title => Boolean(fresh?.()) && change({ ...current, name: title }));
+    return open && (() => {
+      fresh = compilation.capture();
+      if (fresh) open();
+    });
+  };
 
   const view = (current: CompilationRow) => {
     const common = {

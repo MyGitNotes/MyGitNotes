@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { compilationChapters, type CompilationFile, parseCompilation } from '@mygitnotes/core/compilation';
@@ -324,6 +324,53 @@ describe('the 卡片 tool', () => {
     await waitFor(() => expect(rollback).toHaveBeenCalledOnce(), SLOW);
     await new Promise(resolve => setTimeout(resolve, 600));
     expect(save.mock.calls.slice(1).map(call => call[1])).not.toContainEqual(expect.stringContaining('untitled.md'));
+  });
+
+  it('writes no arrangement chosen in 編輯合輯 during the new card’s write past its rollback, though the panel note saves slowly', async () => {
+    const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
+    const rollback = vi.fn(async () => {});
+    // jsdom has no modal dialogs, and Radix Select measures and captures the pointer, which jsdom does not implement.
+    HTMLDialogElement.prototype.showModal ??= function(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    Element.prototype.scrollIntoView ??= () => {};
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => {};
+    await ready({ actions: { createBoardNote: vi.fn(async () => ({ note: created, rollback })), newNotesLive: () => false } });
+    // A note open beside the board, which a change of arrangement saves first.
+    fireEvent.click(at('n1'));
+    await screen.findByRole('complementary', { name: 'Note beside the whiteboard' }, SLOW);
+    let fail!: (error: Error) => void;
+    save.mockImplementationOnce(() => new Promise((_, reject) => fail = reject));
+    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
+    press(region(), 800, 300);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce(), SLOW);
+    let saved: ((value: boolean) => void) | undefined;
+    const flush = vi.spyOn(editing, 'flushEditors').mockImplementationOnce(() => new Promise<boolean>(resolve => saved = resolve));
+    try {
+      fireEvent.keyDown(screen.getByRole('button', { name: 'More compilation actions: 第三章：德性與依據' }), { key: 'ArrowDown' });
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit compilation' }));
+      const dialog = screen.getByRole('dialog', { name: 'Edit compilation' });
+      const view = within(dialog).getByRole('combobox', { name: 'View size' });
+      act(() => view.focus());
+      fireEvent.keyDown(view, { key: 'Enter' });
+      const book = await within(dialog).findByRole('option', { name: 'Book' });
+      act(() => book.focus());
+      fireEvent.keyDown(book, { key: 'Enter' });
+      await waitFor(() => expect(view).toHaveTextContent('Book'));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+      // The card's write fails and is rolled back before the panel note's save ends.
+      fail(new Error('The disk is full.'));
+      await waitFor(() => expect(rollback).toHaveBeenCalledOnce(), SLOW);
+      saved?.(true);
+      await new Promise(resolve => setTimeout(resolve, 600));
+      expect(save.mock.calls.slice(1).map(call => call[1])).not.toContainEqual(expect.stringContaining('untitled.md'));
+    } finally {
+      flush.mockRestore();
+    }
   });
 
   it('refuses 複製合輯 while the new card is written, so no copy keeps a card the rollback deletes', async () => {

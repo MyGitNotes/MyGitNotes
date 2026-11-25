@@ -61,7 +61,7 @@ function setup({ draft, focusTabs = [] as string[], remote = true, retargets }: 
     act(() => hook.result.current.moveNote(note)?.());
     await act(() => hook.result.current.confirmMove(folder));
   };
-  const rename = async (title: string, target: NoteItem = note, applyTitle?: (title: string) => void) => {
+  const rename = async (title: string, target: NoteItem = note, applyTitle?: (title: string) => boolean | void) => {
     act(() => hook.result.current.renameNote(target, applyTitle)?.());
     await act(() => hook.result.current.confirmRename(title));
   };
@@ -271,6 +271,16 @@ describe('useNoteMove', () => {
     expect(files.mutateFile).toHaveBeenCalledWith(expect.objectContaining({ destination: 'notes/reading-list.compilation.yml' }));
     expect(files.mutateFile.mock.calls[0][0]).not.toHaveProperty('title');
     expect(params.saveNote).not.toHaveBeenCalled();
+  });
+
+  it('keeps a compilation’s file where it is when the compilation refuses the new name', async () => {
+    const applyTitle = vi.fn(() => false);
+    const compilation = { ...note, path: 'notes/untitled.compilation.yml', title: 'Untitled compilation' };
+    const { params, rename } = setup({ remote: false });
+    await rename('Reading list', compilation, applyTitle);
+    expect(applyTitle).toHaveBeenCalledWith('Reading list');
+    expect(files.mutateFile).not.toHaveBeenCalled();
+    expect(params.flushEditors).not.toHaveBeenCalled();
   });
 
   it('refuses a name with nothing to name a file after', async () => {

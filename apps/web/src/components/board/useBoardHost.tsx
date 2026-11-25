@@ -25,6 +25,8 @@ interface Params {
   change: (row: CompilationRow) => boolean;
   /** False when a write failed; the view shows why. */
   save: () => Promise<boolean>;
+  /** Reads the rows for a write after an await, refused while a hold is taken (`CompilationController.capture`). */
+  capture: () => (() => boolean) | undefined;
 }
 
 /**
@@ -32,7 +34,7 @@ interface Params {
  * centre and select (`&card=`, on the 白板 page), and the 白板 page's arrangement switch, which leaves the page for
  * the book or a lane.
  */
-export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePanel, flushEditors, change, save }: Params) {
+export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePanel, flushEditors, change, save, capture }: Params) {
   const location = useLocation();
   const navigate = useNavigate();
   const phone = usePhone();
@@ -50,10 +52,11 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
   const leave = async (current: CompilationRow, view: CompilationRow['view']) => {
     if (shownView(view) === 'board') return;
     const notebook = notebooks.find(candidate => candidate.id === notebookId);
-    if (!notebook || !await flushEditors()) return;
+    const fresh = notebook ? capture() : undefined;
+    if (!notebook || !fresh || !await flushEditors()) return;
     // The file keeps a board section, empty when it had none, so the compilation stays on the 白板 page's list. A
-    // refused or failed write stays on the board, where its error shows.
-    if ((view !== current.view || !current.board) && (!change({ ...current, view, board: current.board ?? {} }) || !await save())) return;
+    // refused or failed write stays on the board, where its error shows, and so do rows read before a hold taken since.
+    if ((view !== current.view || !current.board) && (!fresh() || !change({ ...current, view, board: current.board ?? {} }) || !await save())) return;
     navigate(`${noteRoute(notebookId, path.slice(notebook.root.replace(/\/$/, '').length + 1))}?${new URLSearchParams({ returnTo: boardsRoute(notebookId) })}`);
   };
   /**

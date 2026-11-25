@@ -23,11 +23,16 @@ export interface CompilationController {
   /**
    * Holds every other caller's writes off until `release`: while held, `change` and `save` are refused with `reason`
    * as the error, so a write the holder may yet take back (the 卡片 tool's new card, rolled back when its write fails)
-   * reaches no file through another edit. One hold at a time.
+   * reaches no file through another edit, nor does anything that waits for the writes (the editors' save before a
+   * move or leaving the page) go on. One hold at a time.
    */
   hold: (reason: string) => CompilationHold;
-  /** Why the rows shown may not be written anywhere just now (a hold is taken: a copy would keep the holder's write too), or nothing. */
-  held: () => string | undefined;
+  /**
+   * For an edit that reads the rows now and writes or moves the file later (after saving editors, a dialog's answer):
+   * refused while a hold is taken (undefined, the error says why), else a check to make before that write, false (the
+   * error says why) once a hold was taken since, whose write the rows read may lack or still hold.
+   */
+  capture: () => (() => boolean) | undefined;
   loading: boolean;
   saving: boolean;
   error: string;
@@ -91,6 +96,8 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   const held = useRef<{ reason: string; admitting: boolean; }>(undefined);
   /** Why a write of a caller other than the holder is refused just now, or nothing. */
   const refusal = useCallback(() => held.current && !held.current.admitting ? held.current.reason : undefined, []);
+  // How many holds were taken, and the last one's reason: rows read before a hold are not written after it.
+  const holds = useRef({ count: 0, reason: '' });
 
   // A pending edit ends once the stored file shows it.
   useEffect(() => {
@@ -199,6 +206,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     if (held.current) throw new Error('The compilation writes are already held.');
     const token = { reason, admitting: false };
     held.current = token;
+    holds.current = { count: holds.current.count + 1, reason };
     return {
       admit: edit => {
         token.admitting = true;
@@ -214,20 +222,39 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       },
     };
   }, [flush]);
+  const capture = useCallback(() => {
+    const waiting = refusal();
+    if (waiting) {
+      setError(waiting);
+      return undefined;
+    }
+    const at = holds.current.count;
+    return () => {
+      if (holds.current.count === at) return true;
+      setError(holds.current.reason);
+      return false;
+    };
+  }, [refusal]);
 
-  // Edits waiting for the pause are written before the view goes away, and before the app saves its editors.
+  // Edits waiting for the pause are written before the view goes away, and before the app saves its editors; while a
+  // held write may yet be taken back, what waits for the writes (a move of the file, leaving the page) does not go on.
   useEffect(() =>
     register(registryKey, async () => {
+      const waiting = refusal();
+      if (waiting) {
+        setError(waiting);
+        return false;
+      }
       if (!queued.current.size) return true;
       await flush();
       return !queued.current.size;
-    }), [register, registryKey, flush]);
+    }), [register, registryKey, flush, refusal]);
   useEffect(() => () => {
     if (queued.current.size) void flush();
   }, [flush]);
 
   const writable = rows.length > 0 ? rows.every(row => actions.canWrite(row.notebookId)) : false;
-  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, hold, held: refusal, loading, saving, error: error || loadError, setError, writable, upgradeLoss: lossy };
+  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, hold, capture, loading, saving, error: error || loadError, setError, writable, upgradeLoss: lossy };
 }
 
 /**

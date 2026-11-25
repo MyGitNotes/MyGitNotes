@@ -98,9 +98,10 @@ interface NoteEditingValue {
   moveNote?: (note: NoteItem) => (() => void) | undefined;
   /**
    * The Rename action for `note`, or undefined when its notebook is read-only. The dialog names the note by its `title`;
-   * `name`, a title already typed, prefills the field, else the title does. A compilation passes `applyTitle` to rename itself.
+   * `name`, a title already typed, prefills the field, else the title does. A compilation passes `applyTitle` to rename
+   * itself; when it returns false (the title was refused) the file stays where it is.
    */
-  renameNote?: (note: NoteItem, applyTitle?: (title: string) => void, name?: string) => (() => void) | undefined;
+  renameNote?: (note: NoteItem, applyTitle?: (title: string) => boolean | void, name?: string) => (() => void) | undefined;
   /** Renames `note` to the typed title, its file name following, without the dialog; absent where renaming is unavailable. */
   renameNoteTo?: (note: NoteItem, title: string) => Promise<void>;
 }

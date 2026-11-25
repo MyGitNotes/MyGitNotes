@@ -84,6 +84,12 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
     const refused = custom ? addRefusal(latest.current.row, 1) : undefined;
     if (refused) return void editor.current?.apply({ row: latest.current.row, refused });
     creating.current = true;
+    // The hold ends once the note is rolled back, or once the card is written, before the note opens (which may save the editors).
+    const settle = () => {
+      hold.current?.release();
+      hold.current = undefined;
+      if (mounted.current) setHolding(false);
+    };
     try {
       const { note, rollback } = await cardNote.create();
       // A dynamic board's new member is auto-placed once its query takes it.
@@ -92,14 +98,13 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
         await rollback();
         return;
       }
+      settle();
       if (mounted.current) cardNote.open(note);
     } catch (caught) {
       if (mounted.current) editor.current?.setNotice(caught instanceof Error ? caught.message : String(caught));
     } finally {
       creating.current = false;
-      hold.current?.release();
-      hold.current = undefined;
-      if (mounted.current) setHolding(false);
+      settle();
     }
   };
   /** Places the 卡片 tool's note where it was clicked, holding other edits off until it is written; false when the board did not take it. */

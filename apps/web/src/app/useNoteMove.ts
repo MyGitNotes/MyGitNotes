@@ -48,8 +48,8 @@ interface Params {
  */
 export type MovedNote = Pick<NoteItem, 'notebookId' | 'path' | 'title'> & { live?: NoteItem['live']; editing?: boolean; };
 
-/** What the Move or Rename dialog acts on. A compilation keeps its name in its own file, so it applies the new name itself. */
-export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rename'; note: MovedNote; applyTitle?: (title: string) => void; name?: string; };
+/** What the Move or Rename dialog acts on. A compilation keeps its name in its own file, so it applies the new name itself; false keeps the file where it is. */
+export type NoteMoveRequest = { mode: 'move'; note: MovedNote; } | { mode: 'rename'; note: MovedNote; applyTitle?: (title: string) => boolean | void; name?: string; };
 
 const isCompilation = (path: string) => noteSuffix(path) === '.compilation.yml';
 
@@ -69,7 +69,7 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
   };
   const moveNote = (note: MovedNote) => movable(note) ? () => setRequest({ mode: 'move', note }) : undefined;
   /** The Rename dialog for `note`, named after its title until confirmed; `name`, a title already typed, starts its field. */
-  const renameNote = (note: MovedNote, applyTitle?: (title: string) => void, name?: string) => movable(note) ? () => setRequest({ mode: 'rename', note, applyTitle, ...(name !== undefined ? { name } : {}) }) : undefined;
+  const renameNote = (note: MovedNote, applyTitle?: (title: string) => boolean | void, name?: string) => movable(note) ? () => setRequest({ mode: 'rename', note, applyTitle, ...(name !== undefined ? { name } : {}) }) : undefined;
 
   /** The error a refused move shows: a taken destination reads as the dialog's own message. */
   const moveError = (error: unknown, destination: string) => {
@@ -183,12 +183,13 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       if (destination) await relocate(note, destination);
     });
 
-  const rename = async (note: MovedNote, name: string, applyTitle?: (title: string) => void) => {
+  const rename = async (note: MovedNote, name: string, applyTitle?: (title: string) => boolean | void) => {
     const title = name.trim();
     if (!noteStem(title)) throw new Error(t('files.renameInvalid'));
     // A pending note's rename fixes the file name its check-in files it as; its title is the live text's.
     if (pendingDraft(note)) return retarget(note, { name: title });
-    applyTitle?.(title);
+    // A compilation that refused the title (its view says why) keeps its file where it is.
+    if (applyTitle?.(title) === false) return;
     await relocate(note, renamedPath(note.path, title), title);
   };
 
