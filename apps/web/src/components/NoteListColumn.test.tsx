@@ -8,6 +8,7 @@ import type { FilterControls } from '../lib/filter-controls.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { listFacets } from '../lib/list-facets.js';
 import { NoteListColumn, type NoteListColumnProps } from './NoteListColumn.js';
+import { KanbanFilters } from './kanban/KanbanToolbar.js';
 import { ListFilterButtons, type ListFilterButtonsProps } from './ListFilterButtons.js';
 
 const kind = { total: 0, statuses: {}, tags: {} };
@@ -76,6 +77,20 @@ describe('the list header', () => {
   it('shows no mark for a notebook without one', () => {
     column({ notebook: { title: 'Life' } });
     expect(document.querySelector('.browse-list-path .notebook-mark')).toBeNull();
+  });
+
+  it('places board filters in the view-switch row, including status, tags and clear', () => {
+    const onClear = vi.fn();
+    const filters = controls({ tags: ['work'] }, vi.fn(), { onClear });
+    column({ presentation: 'kanban', chips: <KanbanFilters filters={filters} counts={listFacets(filters, facets)} notebookId='life' /> });
+    const header = within(document.querySelector('header')!);
+    expect(document.querySelector('.browse-list-filters')).toBeNull();
+    fireEvent.click(header.getByRole('button', { name: 'Filters (1)' }));
+    const panel = within(header.getByRole('dialog', { name: 'Filters' }));
+    expect(panel.getByRole('button', { name: /todo/ })).toBeVisible();
+    expect(panel.getByRole('searchbox')).toBeVisible();
+    fireEvent.click(panel.getByRole('button', { name: /clear all/i }));
+    expect(onClear).toHaveBeenCalledOnce();
   });
 
   it('folds the list away from the right end of its header', () => {

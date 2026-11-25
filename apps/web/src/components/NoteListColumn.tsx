@@ -52,7 +52,7 @@ export function NoteListColumn({ columnId, notebookTitle, notebook, path, count,
   const [collapseKeys] = bindingsFor(keymapEntry('browse.toggleList'), keyEnvironment);
   return (
     <>
-      <header className='browse-list-header'>
+      <header className='browse-list-header' data-board-toolbar={presentation === 'kanban' || undefined}>
         <Tooltip label={[notebookTitle, ...path].join(' › ')}>
           <h2 className='browse-list-path' data-browse-content=''>
             {notebook && <NotebookMark notebook={notebook} size='inline' />}
@@ -84,6 +84,7 @@ export function NoteListColumn({ columnId, notebookTitle, notebook, path, count,
             </Tooltip>
           ))}
         </div>
+        {presentation === 'kanban' && chips}
         {expandBoard && (
           // Kept focusable while it cannot expand, so its tooltip still says why.
           <Tooltip label={t('kanban.expandBoard')} detail={expandBoard.onExpand ? undefined : t('kanban.expandBoardPanes')}>
@@ -100,7 +101,7 @@ export function NoteListColumn({ columnId, notebookTitle, notebook, path, count,
           </Tooltip>
         )}
       </header>
-      <div className='browse-list-filters'>{chips}</div>
+      {presentation !== 'kanban' && <div className='browse-list-filters'>{chips}</div>}
       <div className='workspace-scroll browse-list-body' data-browse-content=''>{children}</div>
     </>
   );

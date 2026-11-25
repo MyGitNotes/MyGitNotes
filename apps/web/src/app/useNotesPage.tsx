@@ -10,6 +10,10 @@ import { FoldedNoteDots } from '../components/FoldedNoteDots.js';
 import { FolderIndex } from '../components/FolderIndex.js';
 import { FolderLinks } from '../components/FolderLinks.js';
 import { HeaderUtilities } from '../components/Header.js';
+import { KanbanDisplay, KanbanFilters } from '../components/kanban/KanbanToolbar.js';
+import { noteSortOptions } from '../components/note-list-search.js';
+import { Select } from '../components/Select.js';
+import type { SortField, SortOrder } from '../lib/note-sort.js';
 import { KanbanView } from '../components/KanbanView.js';
 import { KanbanStatusList } from '../components/kanban/KanbanStatusList.js';
 import { LegacySchemaNotice } from '../components/LegacySchemaNotice.js';
@@ -35,7 +39,7 @@ import { listFacets } from '../lib/list-facets.js';
 import type { DraggedNote } from '../lib/note-drag.js';
 import { noteFolderGrouping } from '../lib/note-groups.js';
 import type { WorkspaceTab } from '../lib/routes.js';
-import type { NotebookConfig } from '../lib/types.js';
+import type { NotebookConfig, ViewMode } from '../lib/types.js';
 import type { useBrowseFacets } from './useBrowseFacets.js';
 import type { BrowseColumns as BrowseColumnsState } from './useBrowseColumns.js';
 import type { BoardPlacementState } from './useBoardPlacement.js';
@@ -138,6 +142,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
   const focusEmpty = Boolean(noteFocus.layout && isEmptyFocus(noteFocus.layout));
   // Beside a Focus of several panes, or by the person's choice, the board folds into the list column as a status list.
   const boardFolded = board.placement === 'folded';
+  const [boardToolbarHost, setBoardToolbarHost] = useState<HTMLDivElement | null>(null);
   const browseFocusMode = noteFocus.layout || phone || presentation === 'list' ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, rowMeta: !phone && presentation === 'list', openPath: activeNotePath, readNote: readNoteForChange } : undefined;
   // A phone's list screen beside a Focus shows the path line over the list, and the chips of the filters in force where the filters are out of sight.
   const layout = phoneBrowseLayout({ phone, focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, viewMode });
@@ -162,6 +167,45 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
       return next;
     });
   const noteGroupOf = useMemo(() => groupedByFolder ? noteFolderGrouping({ notebookRoot: folderRoot ?? '', selectedFolder, folders, notebookId: selectedNotebookId, selectedLabel: indexFolderName }) : undefined, [groupedByFolder, folderRoot, selectedFolder, folders, selectedNotebookId, indexFolderName]);
+  const displayOptions = (
+    <>
+      {folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}
+      {phone && (
+        <div className='board-display-field'>
+          <span>{t('filters.noteView')}</span>
+          <Select aria-label={t('filters.noteView')} value={viewMode} onValueChange={next => setViewMode(next as ViewMode)} options={[{ value: 'flat', label: t('view.flat') }, { value: 'list', label: t('layout.list') }, { value: 'kanban', label: t('layout.kanban') }]} />
+        </div>
+      )}
+      <label className='list-display-option'>
+        <input type='checkbox' checked={showHidden} onChange={event => changeFilters({ showHidden: event.target.checked })} />
+        <span>{t('filters.hidden')}{' ('}{facetsQuery.facets ? notebookFacets.hidden : '—'})</span>
+      </label>
+    </>
+  );
+  const boardTools = (
+    <div className='board-toolbar-tools'>
+      {!phone && <KanbanFilters filters={filterProps} counts={listFacets(filterProps, facetsQuery.facets)} notebookId={selectedNotebookId} tagManagement={canWriteFiles ? { workspaceTagNames, onPreviewUsage: previewTagUsage, onRename: handleRenameTag, onMerge: handleMergeTag, onDelete: handleDeleteTag } : undefined} />}
+      {boardFolded
+        ? (
+          <KanbanDisplay>
+            {displayOptions}
+            <div className='board-display-field'>
+              <span>{t('kanban.sortBy')}</span>
+              <Select
+                aria-label={t('kanban.sortBy')}
+                value={`${sortField}:${sortOrder}`}
+                onValueChange={value => {
+                  const [field, order] = value.split(':') as [SortField, SortOrder];
+                  handleSortChange(field, order);
+                }}
+                options={noteSortOptions(t, metadataSortFields)}
+              />
+            </div>
+          </KanbanDisplay>
+        )
+        : <div ref={setBoardToolbarHost} />}
+    </div>
+  );
   const browseRegion = () => (
     <>
       {layout.chips === 'list' && <FilterChips filters={filterProps} onAdd={openFilters} />}
@@ -189,7 +233,6 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
       )}
       {viewMode === 'kanban' && boardFolded && (
         <>
-          {folderIndex && <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />}
           <KanbanStatusList focusMode={browseFocusMode} statuses={notebookStatuses} readOnly={!canWrite} query={baseQuery} hiddenNote={folderIndex} onOpenNote={note => void openFromBrowse(note)} onUpdateNoteStatus={handleUpdateNoteStatus} sortField={sortField} sortOrder={sortOrder} selectedKeys={selectedKeys} onToggleSelect={toggleSelect} />
         </>
       )}
@@ -202,9 +245,8 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
           confirmDelete={remote}
           query={baseQuery}
           hiddenNote={folderIndex}
-          leading={folderIndex
-            ? <FolderIndex note={folderIndex} folder={indexFolderName} onOpenNote={note => void openFromBrowse(note)} />
-            : undefined}
+          toolbarHost={boardToolbarHost}
+          displayOptions={displayOptions}
           onOpenNote={note => void openFromBrowse(note)}
           onUpdateNoteStatus={handleUpdateNoteStatus}
           onDeleteNote={handleDeleteNote}
@@ -251,7 +293,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
   };
   const dropNoteOnFolder = (note: DraggedNote, folder: string | null) => void noteMove.moveTo({ ...note, title: '' }, folder);
   /** A phone's drawer of notebooks and filters on two tabs; its filter sheet shows only the status and tags. */
-  const renderSidebar = (filtersOnly = false) => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} tabbed={!filtersOnly} />;
+  const renderSidebar = (filtersOnly = false) => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} tabbed={!filtersOnly} showActiveChips={viewMode === 'kanban'} />;
   /** The Notes page below the header: a phone's list or note screen with its drawer, or the three columns. */
   const renderNotesPage = (focusArea: React.ReactNode) => {
     // Column 1: every notebook, the open one unfolded into its folders, outlines and compilations, or the rail of their initials.
@@ -277,7 +319,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
         folderMenu={columns.layout.notebooks !== 'open' && route.kind === 'note'
           ? { folders: folderChoices, value: selectedFolder ?? '', onChange: folder => setSelectedFolder(folder || null) }
           : undefined}
-        chips={
+        chips={presentation === 'kanban' ? boardTools : (
           <ListFilterButtons
             filters={filterProps}
             counts={listFacets(filterProps, facetsQuery.facets)}
@@ -287,16 +329,16 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
             sortOrder={sortOrder}
             onSortChange={handleSortChange}
             metadataSortFields={metadataSortFields}
-            sortable={presentation !== 'kanban' || boardFolded}
+            sortable
             showHidden={showHidden}
             hiddenNoteCount={facetsQuery.facets ? notebookFacets.hidden : null}
             onShowHiddenChange={value => changeFilters({ showHidden: value })}
             groupByFolder={groupable ? { value: route.groupByFolder, onChange: setGroupByFolder } : undefined}
-            subfolders={presentation !== 'kanban' && route.kind === 'note'
+            subfolders={route.kind === 'note'
               ? { value: viewMode !== 'list', onChange: value => setViewMode(value ? 'flat' : 'list') }
               : undefined}
           />
-        }
+        )}
       >
         {browseRegion()}
       </NoteListColumn>
@@ -325,8 +367,8 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
     /** A phone's list screen: its bar, the chips of the filters in force, and the list; without `searchRef` it is the one under a note pulled back. */
     const phoneListScreen = (searchRef?: typeof noteSearch) => (
       <>
-        <PhoneListBar searchRef={searchRef} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} unavailableNotebooks={unavailableNotebooks} notebookGroups={notebookGroups} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} />
-        {layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
+        <PhoneListBar boardTools={viewMode === 'kanban' ? boardTools : undefined} searchRef={searchRef} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} unavailableNotebooks={unavailableNotebooks} notebookGroups={notebookGroups} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} />
+        {viewMode !== 'kanban' && layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
         {noteFocus.layout && !focusEmpty ? <div className='phone-notes-screen'>{phoneList(layout.path)}</div> : phoneList(false)}
       </>
     );

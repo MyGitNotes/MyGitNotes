@@ -18,6 +18,7 @@ import { SidebarLinks } from './SidebarLinks.js';
 import { useSidebarLinks } from '../lib/web-features.js';
 import { NotebookTree } from './NotebookTree.js';
 import { StatusFilterBody, TagFilterBody } from './ListFilters.js';
+import { FilterChips } from './FilterChips.js';
 import { SidebarTabs } from './SidebarTabs.js';
 
 interface SidebarProps {
@@ -46,11 +47,12 @@ interface SidebarProps {
   onDeleteTag?: (tag: string) => Promise<void>;
   /** A phone's drawer: the notebook tree (目錄) and the filters (篩選) on two tabs, both kept mounted so each keeps its state. */
   tabbed?: boolean;
+  showActiveChips?: boolean;
   /** Only the filters that narrow the list (status and tags): a phone's filter sheet, where the drawer already holds the notebook tree. */
   filtersOnly?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, filtersOnly = false, tabbed = false }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, filtersOnly = false, tabbed = false, showActiveChips = false }) => {
   const { t } = useTranslation();
   const { value, onChange } = filters;
   const sections = useSidebarSections();
@@ -162,6 +164,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
           filters={
             <>
               <section className='sidebar-search' aria-label={t('filters.title')}>{filterSummary}</section>
+              {showActiveChips && <FilterChips filters={filters} />}
               {statusSection}
               {tagsSection}
             </>

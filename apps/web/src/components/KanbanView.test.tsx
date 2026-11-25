@@ -83,6 +83,7 @@ it.each([['zh-TW', ['收件匣', '審核中', '進行中', 'later']], ['en', ['i
 it('counts each column and the board from the server totals', async () => {
   render(board(), { wrapper });
   await waitFor(() => expect(screen.getByText('notes/life/loose.md')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Display' }));
   const counts = [...document.querySelectorAll('.rounded-full')].map(node => node.textContent);
   expect(counts).toContain('3');
   expect(counts).toContain('7');
@@ -178,6 +179,7 @@ it('keeps a read-only board from changing status on drop even when focusMode all
 it("lists the notebook's metadata sort field on the board and asks for the columns in that order", async () => {
   render(createElement(KanbanView, { query: { notebookId: 'life' }, statuses: ['inbox'], onOpenNote: () => {}, onUpdateNoteStatus: () => {}, onDeleteNote: () => {}, onNewNoteWithStatus: () => {}, sortField: 'metadata.date', sortOrder: 'desc', onSortChange: () => {}, metadataSortFields: ['metadata.date'] }), { wrapper });
   await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Display' }));
   expect(screen.getByRole('combobox', { name: 'Sort' })).toHaveTextContent('date (descending)');
   expect(screen.getByRole('combobox', { name: /^Sort column/ })).toHaveTextContent('date (descending)');
   expect(requests.some(url => url.includes('status=inbox') && url.includes('sort=metadata.date'))).toBe(true);
@@ -267,6 +269,7 @@ it('switches the cards to compact, a title and one line, and keeps the density f
   });
   const { unmount } = render(twoColumnBoard({ onUpdateNoteStatus: () => {} }), { wrapper });
   await waitFor(() => expect(screen.getByText('notes/life/a.md')).toBeInTheDocument());
+  fireEvent.click(screen.getByRole('button', { name: 'Display' }));
   const normal = screen.getByRole('button', { name: 'Normal' });
   expect(normal).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByText('notes/life/a.md').closest('[data-notepath]')).not.toHaveAttribute('data-density');
@@ -278,6 +281,7 @@ it('switches the cards to compact, a title and one line, and keeps the density f
   unmount();
   render(twoColumnBoard({ onUpdateNoteStatus: () => {} }), { wrapper });
   await waitFor(() => expect(screen.getByText('notes/life/a.md').closest('[data-notepath]')).toHaveAttribute('data-density', 'compact'));
+  fireEvent.click(screen.getByRole('button', { name: 'Display' }));
   expect(screen.getByRole('button', { name: 'Compact' })).toHaveAttribute('aria-pressed', 'true');
   window.localStorage.removeItem('mygitnotes:kanban');
 });

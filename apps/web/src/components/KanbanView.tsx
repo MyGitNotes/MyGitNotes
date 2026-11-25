@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FoldHorizontal, Kanban as KanbanIcon, Plus } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { FoldHorizontal, Plus } from 'lucide-react';
 import type { NoteListItem, NoteQuery } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { SortField, SortOrder } from '../lib/note-sort.js';
@@ -24,6 +25,7 @@ import { Tooltip } from './Tooltip.js';
 import { type BoardContext, cardDragProps, type Column, statusQuery, useColumnDrag } from './kanban/board.js';
 import { KanbanCard } from './kanban/KanbanCard.js';
 import { KanbanStrip } from './kanban/KanbanStrip.js';
+import { KanbanDisplay } from './kanban/KanbanToolbar.js';
 import './kanban/kanban.css';
 
 interface KanbanViewProps {
@@ -31,8 +33,9 @@ interface KanbanViewProps {
   query: Partial<NoteQuery>;
   /** The folder index, which the board shows in the toolbar instead of as a card. */
   hiddenNote?: NoteListItem;
-  /** An entry at the start of the board's header row, such as the folder index. */
-  leading?: React.ReactNode;
+  /** The open board owns its column totals and sort overrides, but its display menu belongs in the surrounding toolbar. */
+  toolbarHost?: HTMLElement | null;
+  displayOptions?: React.ReactNode;
   statuses: string[];
   readOnly?: boolean;
   canDelete?: boolean;
@@ -182,7 +185,7 @@ function FoldButton({ title, onFold }: { title: string; onFold: () => void; }) {
   );
 }
 
-export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leading, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, sortField = 'updated', sortOrder = 'desc', onSortChange, metadataSortFields, focusMode, selectedKeys, onToggleSelect }) => {
+export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, toolbarHost, displayOptions, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onUpdateNoteStatus, onDeleteNote, onMoveNote, onNewNoteWithStatus, sortField = 'updated', sortOrder = 'desc', onSortChange, metadataSortFields, focusMode, selectedKeys, onToggleSelect }) => {
   const liveLock = useLiveLock();
   const { t } = useTranslation();
   const dotClass = useStatusDotClass();
@@ -211,39 +214,35 @@ export const KanbanView: React.FC<KanbanViewProps> = ({ query, hiddenNote, leadi
   // Only the columns on the board count, so a status that disappeared leaves no stale total.
   const boardTotal = [...columns.map(col => col.id), ''].reduce((sum, id) => sum + (totals[id] || 0), 0);
 
+  const display = (
+    <KanbanDisplay>
+      <p className='text-xs text-muted'>{t('kanban.columns', { count: columns.length })}{' · '}{t('kanban.notes', { count: boardTotal })}</p>
+      {displayOptions}
+      <div className='board-display-field'>
+        <span>{t('kanban.density')}</span>
+        <div className='kanban-density' role='group' aria-label={t('kanban.density')}>{DENSITIES.map(({ value, label }) => <button key={value} type='button' aria-pressed={prefs.density === value} onClick={() => updatePrefs({ density: value })}>{t(label)}</button>)}</div>
+      </div>
+      {onSortChange && (
+        <div className='board-display-field'>
+          <span className='text-muted font-medium whitespace-nowrap'>{t('kanban.sortBy')}</span>
+          <Select
+            aria-label={t('kanban.sortBy')}
+            value={boardSortKey}
+            onValueChange={(val) => {
+              const [f, o] = val.split(':') as [SortField, SortOrder];
+              setColumnSorts({});
+              onSortChange(f, o);
+            }}
+            options={boardSortOptions}
+            className='font-medium'
+          />
+        </div>
+      )}
+    </KanbanDisplay>
+  );
   return (
     <div className='kanban-view flex flex-col h-full select-none'>
-      {/* Kanban Top Toolbar */}
-      <div className='flex items-center justify-between px-2 mb-3 flex-wrap gap-2 text-xs shrink-0'>
-        <div className='kanban-leading flex items-center gap-3 min-w-0'>
-          {leading}
-          <div className='flex items-center gap-2 text-muted font-medium'>
-            <KanbanIcon className='w-4 h-4 text-primary shrink-0' />
-            <span>{t('kanban.columns', { count: columns.length })}</span>
-            <span>·</span>
-            <span>{t('kanban.notes', { count: boardTotal })}</span>
-          </div>
-        </div>
-        <div className='flex items-center gap-3 flex-wrap'>
-          <div className='kanban-density' role='group' aria-label={t('kanban.density')}>{DENSITIES.map(({ value, label }) => <button key={value} type='button' aria-pressed={prefs.density === value} onClick={() => updatePrefs({ density: value })}>{t(label)}</button>)}</div>
-          {onSortChange && (
-            <div className='flex items-center gap-2'>
-              <span className='text-muted font-medium whitespace-nowrap'>{t('kanban.sortBy')}</span>
-              <Select
-                aria-label={t('kanban.sortBy')}
-                value={boardSortKey}
-                onValueChange={(val) => {
-                  const [f, o] = val.split(':') as [SortField, SortOrder];
-                  setColumnSorts({});
-                  onSortChange(f, o);
-                }}
-                options={boardSortOptions}
-                className='font-medium'
-              />
-            </div>
-          )}
-        </div>
-      </div>
+      {toolbarHost ? createPortal(display, toolbarHost) : toolbarHost === undefined ? display : null}
       {/* Kanban Columns List */}
       <div ref={columnsRef} data-kanban-columns='' className='kanban-columns flex gap-3 overflow-x-auto pt-1 px-1 pb-6 flex-1 items-start'>
         {columns.map((col, index) => <KanbanColumn key={col.id} col={col} index={index} board={board} query={query} hiddenNote={hiddenNote} sort={columnSorts[col.id] || { field: effectiveBoardSortField, order: sortOrder }} onSort={value => setColumnSorts(previous => ({ ...previous, [col.id]: value }))} />)}
