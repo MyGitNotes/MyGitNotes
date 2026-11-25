@@ -275,6 +275,28 @@ describe('the 卡片 tool', () => {
     expect(renaming).not.toHaveBeenCalled();
   });
 
+  it('takes no other edit while the new card is written, so a failed write leaves nothing to carry it', async () => {
+    const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
+    const rollback = vi.fn(async () => {});
+    await ready({ actions: { createBoardNote: vi.fn(async () => ({ note: created, rollback })), newNotesLive: () => false } });
+    let fail!: (error: Error) => void;
+    save.mockImplementationOnce(() => new Promise((_, reject) => fail = reject));
+    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
+    press(region(), 800, 300);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce(), SLOW);
+    // 「加到白板」 while the write is out is refused, and says why.
+    fireEvent.click(within(drawer()).getByRole('button', { name: 'Add to the whiteboard: 待讀：Greco 2010' }));
+    expect(await screen.findByText(/being written to the whiteboard/)).toBeInTheDocument();
+    fail(new Error('The disk is full.'));
+    await waitFor(() => expect(rollback).toHaveBeenCalledOnce(), SLOW);
+    await new Promise(resolve => setTimeout(resolve, 600));
+    expect(save).toHaveBeenCalledOnce();
+    // Once settled the board takes edits again.
+    fireEvent.click(within(drawer()).getByRole('button', { name: 'Add to the whiteboard: 待讀：Greco 2010' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2), SLOW);
+    expect(chapters(written())).not.toContainEqual(expect.stringContaining('untitled.md'));
+  });
+
   it('rolls the new note back when the board went away while it was created', async () => {
     const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
     const rollback = vi.fn(async () => {});

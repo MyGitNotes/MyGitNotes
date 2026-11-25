@@ -57,7 +57,7 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
   const camera = useBoardCamera({ board: `${row.notebookId}:${row.path}`, bounds: placed.bounds, loaded });
   const editable = Boolean(onChange) && !phone && !header.readOnly && !header.disabled;
   const adding = useBoardAdding({ row, placed, camera, ...(editable && cardNote ? { cardNote } : {}) });
-  const editor = useBoardEditor({ row, placed, place, editable, onChange, camera, ...(adding.card ? { card: adding.card } : {}) });
+  const editor = useBoardEditor({ row, placed, place, editable, onChange, camera, held: adding.held, ...(adding.card ? { card: adding.card } : {}) });
   useLayoutEffect(() => {
     adding.bind(editor);
   });
@@ -115,7 +115,7 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
   const linked = editable && row.kind === 'custom' && !editor.draft && !editor.preview ? board.cards.find(card => `card:${card.key}` === only && card.item.kind === 'note') : undefined;
   const section = (
     <section id={`screen-lane-${row.id}`} className={`screen-lane screen-view-board board-arrangement ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`}>
-      <CompilationHeader {...header} row={row} count={board.cards.length} notebooks={notebooks} facets={facets} extra={phone ? undefined : extra} hideArrangement={phone} />
+      <CompilationHeader {...header} disabled={header.disabled || adding.holding} row={row} count={board.cards.length} notebooks={notebooks} facets={facets} extra={phone ? undefined : extra} hideArrangement={phone} />
       {lane.error && <p role='alert' className='screen-error'>{lane.error}</p>}
       {graph.error && showNoteLinks && <p role='alert' className='screen-error'>{graph.error}</p>}
       <BoardCanvas title={row.name} board={board} arrows={arrows} noteLinks={noteLinks} views={views} descriptions={descriptions} arrowTexts={arrowTexts} phone={phone} showNoteLinks={showNoteLinks} onNoteLinks={changeNoteLinks} onOpen={onOpen} camera={camera} editor={editor} dynamic={row.kind === 'dynamic'} labels={usedLabels(row)} titleOf={titleOf} onDropNote={drawer && editable ? adding.dropAt : undefined} overlay={linked?.item.kind === 'note' && <BoardLinked key={linked.key} card={linked} note={linked.item} camera={camera.camera} shown={onBoard} onAdd={notes => adding.addLinked(linked.key, notes)} />} />

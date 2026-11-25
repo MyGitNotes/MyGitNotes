@@ -859,6 +859,7 @@ export const en = {
   'board.linkedTitle': 'Check the linked notes to add',
   'board.linkedAdd': 'Add ({count})',
   'board.pendingNote': 'This note has no lasting path until it is checked in; check it in, then add it to the whiteboard.',
+  'board.cardSaving': 'The new card is being written to the whiteboard; edit again in a moment.',
   'board.drawerMore': 'Load more notes',
   'boards.list': 'Whiteboards of this notebook',
   'boards.new': 'New whiteboard',

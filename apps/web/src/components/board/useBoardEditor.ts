@@ -35,6 +35,8 @@ export interface BoardEditorInput {
   camera: BoardCamera;
   /** The 卡片 tool: what a click with it does (creates a note there), or why it is off; without it the board has no 卡片. */
   card?: { create: (at: Point) => void; off?: string; };
+  /** Why the board takes no edit just now (the 卡片 tool's card waits for its write), or nothing. */
+  held?: () => string | undefined;
 }
 
 /**
@@ -43,7 +45,7 @@ export interface BoardEditorInput {
  * for confirmation, and the undo stack. Each gesture becomes one `onChange`, so the compilation file is written
  * once per gesture. Without `editable` it only passes the camera's pointer handlers through.
  */
-export function useBoardEditor({ row, placed, place, editable, onChange, camera, card }: BoardEditorInput) {
+export function useBoardEditor({ row, placed, place, editable, onChange, camera, card, held }: BoardEditorInput) {
   const { t } = useTranslation();
   const [tool, setToolState] = useState<{ tool: BoardTool; sticky: boolean; }>({ tool: 'select', sticky: false });
   const [selection, setSelection] = useState<ReadonlySet<BoardSelectionKey>>(new Set());
@@ -103,6 +105,11 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera,
   };
   /** Writes one gesture's edit and records it as one undo step; a refusal is said. Returns whether the row changed. */
   const apply = (edit: BoardEdit): boolean => {
+    const waiting = held?.();
+    if (waiting) {
+      setNotice(waiting);
+      return false;
+    }
     setNotice(edit.refused ? refusal(edit.refused) : '');
     const current = latest.current.row;
     if (edit.row === current || !onChange) return false;
@@ -119,6 +126,8 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera,
   };
   const travel = (direction: 'undo' | 'redo') => {
     const current = latest.current.row;
+    const waiting = held?.();
+    if (waiting) return setNotice(waiting);
     const step = (direction === 'undo' ? undoStep : redoStep)(latest.current.steps, current);
     if (!step || !onChange) return;
     if ('stale' in step) {
