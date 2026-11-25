@@ -1,6 +1,6 @@
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, relocateFocusLayout, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
+import { closePane, closeTab, emptyFocusLayout, findFocusPane, findFocusTabInPane, FOCUS_MAX_FOCUSES, FOCUS_MAX_TABS, type FocusEdge, FocusError, type FocusLayout, focusPanes, type FocusTab, focusTabCount, focusTabKey, mergePanes, moveTab as moveFocusTab, moveTabToSplit, nameFocus, notebookFocuses, placeTab, placeTabs, pruneFocus, relocateFocusLayout, relocateFocusPaths, removeFocus, renameFocus, splitPane, updateFocus } from '@mygitnotes/core/focus-page';
 import type { FocusPageController } from './use-focus-page.js';
 import { noteDemoViewWriteIn, noteDemoWriteIn } from './demo-storage.js';
 import { useNoteLookup } from './use-note-queries.js';
@@ -140,7 +140,7 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
     if (!editable(target)) return false;
     try {
       if (target === CURRENT_FOCUS) update(current => ({ ...current, current: change(pruneFocus(followed(current.current), present)) }), true);
-      else page.change(updateFocus(page.page, target, focus => ({ ...focus, ...change(pruneFocus(followed(focus), present)) })));
+      else if (!page.change(updateFocus(page.page, target, focus => ({ ...focus, ...change(pruneFocus(followed(focus), present)) })), page.page)) return false;
       setMutationError(null);
       return true;
     } catch (caught) {
@@ -329,11 +329,35 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
     return true;
   };
 
+  // The moves this device's named Focuses have yet to follow, in order: a move heard while the layout loads waits for it.
+  const deviceMoves = useRef<{ notebookId: string; move: (path: string) => string; }[]>([]);
+  const relocateDevice = () => {
+    if (!page.device || !page.writable || deviceMoves.current.length === 0) return;
+    // On the layout last written, not this render's page: a second move in one render follows the first. A move stays
+    // queued until a write that holds it succeeds.
+    const from = page.latest(), next = structuredClone(from);
+    let moved = false;
+    for (const { notebookId: movedNotebookId, move } of deviceMoves.current) moved = relocateFocusPaths(next, movedNotebookId, move) || moved;
+    if (!moved || page.change(next, from)) deviceMoves.current = [];
+  };
+  const pendingDevice = useRef(relocateDevice);
+  useEffect(() => {
+    pendingDevice.current = relocateDevice;
+  });
+  useEffect(() => {
+    pendingDevice.current();
+  }, [page.device, page.writable]);
   /**
    * Points the tabs of this browser's (current) Focus at the path `move` gives them, as a file move does for the named
    * Focus it rewrites in the workspace, and the tab each pane of any Focus shows with them, so a moved note stays shown.
    */
   const relocatePaths = (movedNotebookId: string, move: (path: string) => string) => {
+    // Online, the named Focuses are this device's layout, which no server rewrites: they follow the files here, once
+    // the layout can be written if it is still loading.
+    if (page.device) {
+      deviceMoves.current.push({ notebookId: movedNotebookId, move });
+      relocateDevice();
+    }
     if (movedNotebookId !== notebookId) return;
     const layout = structuredClone(viewRef.current.current);
     const moved = relocateFocusLayout(layout, move);
@@ -354,10 +378,11 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
   }, [movedKey, notebookId]);
 
   const canName = namedWritable && page.page.focuses.length < FOCUS_MAX_FOCUSES;
-  /** Names (current): it becomes a named Focus with the same view, and (current) starts empty. Throws FocusError. */
-  const name = (label: string): string => {
+  /** Names (current): it becomes a named Focus with the same view, and (current) starts empty; undefined when the name could not be stored. Throws FocusError. */
+  const name = (label: string): string | undefined => {
     const { page: next, focus } = nameFocus(page.page, pruneFocus(followed(viewRef.current.current), present), notebookId, label);
-    page.change(next);
+    // A refused write names nothing: (current) keeps its layout.
+    if (!page.change(next, page.page)) return;
     update(current => {
       const { [CURRENT_FOCUS]: moved, ...entries } = current.entries;
       return { ...current, current: emptyFocusLayout(), entries: moved ? { ...entries, [focus.id]: moved } : entries, last: focus.id };
@@ -365,10 +390,11 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
     return focus.id;
   };
   /** Throws FocusError for a duplicate name. */
-  const rename = (id: string, label: string) => page.change(renameFocus(page.page, id, label));
+  const rename = (id: string, label: string) => page.change(renameFocus(page.page, id, label), page.page);
   const remove = async (id: string) => {
     if (id === shown && entry && !await flushEditors(noteKeys(notebookId, Object.values(entry.shown)))) return false;
-    page.change(removeFocus(page.page, id));
+    const from = page.page;
+    if (!page.change(removeFocus(from, id), from)) return false;
     update(current => {
       const { [id]: _removed, ...entries } = current.entries;
       return { ...current, entries, last: current.last === id ? CURRENT_FOCUS : current.last };

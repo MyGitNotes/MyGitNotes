@@ -40,6 +40,12 @@ export function useChangeDialog({ activeTab, agentSystemRef, remote, documents, 
       ...pendingDocuments.map(document => ({ path: document.file, repository: document.repository, kind: 'modified' as const, tracked: true, revision: document.diff, available: !document.error && !documentError(document.repository, document.file), staged: false, unstaged: true })),
     ]
     : undefined;
+  /**
+   * Whether leaving the page leaves something behind that no commit holds: a note draft of this browser. A workspace
+   * document's draft (the Focus layout) is how this device arranges notes, not note text, so it does not count; typing a
+   * live note's server has not stored is the live editor's own guard (`useLiveLeave`).
+   */
+  const leaveLoses = Boolean(remote) && Object.keys(activeWorkingNotes).length > 0;
   const draftOf = (file: FileChange) => Object.values(activeWorkingNotes).find(entry => entry.note.path === file.path && repositoryFor(entry.note.notebookId)?.id === file.repository);
   const panelGetPreview = remote
     ? (file: FileChange) => {
@@ -63,5 +69,5 @@ export function useChangeDialog({ activeTab, agentSystemRef, remote, documents, 
     }
     : undefined;
 
-  return { commitRequest, isCommitOpen, setIsCommitOpen, openCommitModal, panelRemoteChanges, panelGetPreview, panelDescribeChanges };
+  return { commitRequest, isCommitOpen, setIsCommitOpen, openCommitModal, panelRemoteChanges, panelGetPreview, panelDescribeChanges, leaveLoses };
 }

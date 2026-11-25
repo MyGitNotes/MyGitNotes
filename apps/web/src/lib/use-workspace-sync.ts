@@ -6,12 +6,12 @@ import type { RepositoryId } from '@mygitnotes/core/repository';
 import { useFocusPage } from './use-focus-page.js';
 import { legacyBookmarkRecoveries } from './legacy-bookmark-recovery.js';
 import { useTranslation } from './i18n/index.js';
-import { pendingDocumentDrafts } from './use-workspace-document.js';
-import { WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
+import { adoptDeviceDrafts, pendingDocumentDrafts } from './use-workspace-document.js';
+import { CHANGES_DOCUMENT_CLIENTS, WORKSPACE_DOCUMENT_CLIENTS } from './workspace-document-clients.js';
 import { AssetItem, FolderItem, GitStatus, NoteItem, WorkspaceConfig } from './types.js';
 import { fetchAssets, fetchFolders, fetchGitStatus, fetchWorkspace, openWorkspaceEvents } from './api.js';
 import { followPage } from './page-events.js';
-import { clearCommittedNotes, LIVE_MERGE_CONFLICT, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
+import { clearCommittedNotes, discardShownWorkingNote, LIVE_MERGE_CONFLICT, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
 import { isNotebookKey, resolveBareId } from './notebook-keys.js';
 import { sameValue } from './merge-note.js';
 import { invalidateNoteQueries, NOTE_QUERY_KEY } from './use-note-queries.js';
@@ -133,6 +133,16 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     const entries = updateWorkingNote(store, path, entry);
     setWorkingNotes(previous => ({ ...previous, [repository.id]: entries }));
   };
+  /**
+   * Drops the draft at a path only while storage still holds `shown`, the version the person saw; without one it drops
+   * nothing. Either way the drafts are read again, so what the page offers next is what storage keeps.
+   */
+  const discardShownDraft = (notebookId: string, path: string, shown?: WorkingNote): boolean => {
+    const { repository, store } = draftStoreFor(notebookId);
+    const { entries, dropped } = shown ? discardShownWorkingNote(store, path, shown) : { entries: readWorkingNotes(store), dropped: false };
+    setWorkingNotes(previous => ({ ...previous, [repository.id]: entries }));
+    return dropped;
+  };
   /** Clears the drafts a commit to `repository` sent, keeping any edit made meanwhile. */
   const clearCommittedDrafts = (repository: WorkspaceRepository, sent: WorkingNotes) => {
     const entries = clearCommittedNotes(draftStore(repository), sent);
@@ -162,8 +172,14 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return strandedDrafts({ notebookId, paths: [...paths], carried: [...carried] }, drafts, pages);
   };
   // Remote drafts wait in Changes until committed, whichever notebook is open; local ones autosave to the working tree.
-  const pendingDocuments = remote ? pendingDocumentDrafts(WORKSPACE_DOCUMENT_CLIENTS, repositories.filter(editable)) : [];
+  // The Focus layout is no such draft online: it stays on this device (`deviceKey`).
+  const pendingDocuments = remote ? pendingDocumentDrafts(CHANGES_DOCUMENT_CLIENTS, repositories.filter(editable)) : [];
   const writable = repositories.filter(editable).map(repository => repository.id).join('\n');
+  const writableOwners = repositories.filter(editable).map(repository => `${repository.id}\t${repository.alias}`).join('\n');
+  // Focus drafts an earlier version left in Changes become this device's layouts, the closed repositories' included.
+  useEffect(() => {
+    if (remote) adoptDeviceDrafts(WORKSPACE_DOCUMENT_CLIENTS, writableOwners.split('\n').filter(Boolean).map(line => line.split('\t')).map(([id, alias]) => ({ id, alias })));
+  }, [remote, writableOwners]);
   /** Drafts of the repositories this requester may commit to, by `noteRefKey`: two repositories can hold the same path. */
   const activeWorkingNotes = useMemo<WorkingNotes>(() => (remote ? Object.fromEntries(writable.split('\n').filter(Boolean).flatMap(id => Object.values(workingNotes[id] ?? {})).map(entry => [noteRefKey(entry.note), entry])) : {}), [remote, writable, workingNotes]);
 
@@ -315,5 +331,5 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return note;
   };
 
-  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
+  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, discardShownDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
 }

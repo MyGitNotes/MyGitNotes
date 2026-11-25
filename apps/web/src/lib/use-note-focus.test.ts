@@ -2,20 +2,44 @@
 import { createElement, type ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyFocusPage, FOCUS_MAX_TABS, FocusError, type FocusLayout, focusPanes, type FocusTab, nameFocus } from '@mygitnotes/core/focus-page';
 import { useNoteFocus } from './use-note-focus.js';
 import { CURRENT_FOCUS } from './focus-view.js';
-import { focusDocumentClient, type FocusPageController } from './use-focus-page.js';
-import type { WorkspaceDocumentClient } from './use-workspace-document.js';
+import { focusDocumentClient, type FocusPageController, useFocusPage } from './use-focus-page.js';
+import { deviceDocumentKey, type WorkspaceDocumentClient } from './use-workspace-document.js';
 import { DEMO_TTL_MS, expireDemoData, readDemoRecord, registerDemoRepositories } from './demo-storage.js';
 import { draftScope } from './workspace-repositories.js';
+vi.mock('./i18n/index.js', () => {
+  const t = (key: string) => key;
+  return { useTranslation: () => ({ t }) };
+});
 
 const SCOPE = 'use-note-focus-test', REPOSITORY = 'github:owner/kb@main', NOTEBOOK = 'kb~life';
 const storageKey = `github-notes:focus-view:${REPOSITORY}:${NOTEBOOK}`;
 
 function fakeController(): FocusPageController {
-  return { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: 'local:/workspace', file: '.github-notes-focus.yaml', page: emptyFocusPage(), change: () => {}, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
+  return {
+    client: focusDocumentClient as WorkspaceDocumentClient<unknown>,
+    repository: 'local:/workspace',
+    file: '.github-notes-focus.yaml',
+    device: false,
+    page: emptyFocusPage(),
+    latest() {
+      return this.page;
+    },
+    change: () => true,
+    save: async () => {},
+    reload: async () => {},
+    refresh: async () => {},
+    loading: false,
+    saving: false,
+    dirty: false,
+    error: '',
+    writable: true,
+    setError: () => {},
+    diff: '',
+  };
 }
 /** The tabs of the `index`-th pane in pane order. */
 const tabsAt = (layout: FocusLayout | null | undefined, index: number) => layout ? focusPanes(layout)[index]?.tabs : undefined;
@@ -452,6 +476,71 @@ describe('useNoteFocus relocatePaths', () => {
     expect(JSON.parse(localStorage.getItem(storageKey)!).current.root.tabs.map((entry: { path: string; }) => entry.path)).toEqual(['notes/new.md', 'notes/other.md']);
   });
 
+  it("moves the tabs of this device's named Focuses with the files online, and leaves a committed Focus to the server", async () => {
+    const named = { version: 2 as const, focuses: [{ id: 'f1', notebookId: NOTEBOOK, name: 'Reading', root: { kind: 'pane' as const, id: 'p1', tabs: [{ kind: 'note' as const, path: 'notes/old.md' }] } }] };
+    const move = (path: string) => path === 'notes/old.md' ? 'notes/new.md' : path;
+    for (const device of [true, false]) {
+      const changes: unknown[] = [];
+      const page: FocusPageController = { ...fakeController(), device, page: named, change: next => Boolean(changes.push(next)) };
+      const { result, unmount } = renderHook(() => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+      await waitFor(() => expect(result.current.layout).not.toBeNull());
+      act(() => result.current.relocatePaths(NOTEBOOK, move));
+      expect(changes).toEqual(device ? [{ ...named, focuses: [{ ...named.focuses[0], root: { ...named.focuses[0].root, tabs: [{ kind: 'note', path: 'notes/new.md' }] } }] }] : []);
+      // The page given stays as it was: the move works on a copy.
+      expect(named.focuses[0].root.tabs[0].path).toBe('notes/old.md');
+      unmount();
+    }
+  });
+
+  it("moves this device's named Focuses once their layout has loaded, when the move was heard while it loaded", async () => {
+    const named = { version: 2 as const, focuses: [{ id: 'f1', notebookId: NOTEBOOK, name: 'Reading', root: { kind: 'pane' as const, id: 'p1', tabs: [{ kind: 'note' as const, path: 'notes/old.md' }] } }] };
+    const changes: unknown[] = [];
+    const loaded = (writable: boolean): FocusPageController => ({ ...fakeController(), device: true, writable, loading: !writable, page: named, change: next => Boolean(changes.push(next)) });
+    const { result, rerender } = renderHook(({ page }) => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper, initialProps: { page: loaded(false) } });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/mid.md' : path));
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/mid.md' ? 'notes/new.md' : path));
+    expect(changes).toEqual([]);
+    rerender({ page: loaded(true) });
+    expect(changes).toEqual([{ ...named, focuses: [{ ...named.focuses[0], root: { ...named.focuses[0].root, tabs: [{ kind: 'note', path: 'notes/new.md' }] } }] }]);
+    // Nothing is left to apply again.
+    rerender({ page: loaded(false) });
+    rerender({ page: loaded(true) });
+    expect(changes).toHaveLength(1);
+  });
+
+  it('follows two moves heard in one render on the layout last written, and keeps a move whose write failed queued', async () => {
+    const named = { version: 2 as const, focuses: [{ id: 'f1', notebookId: NOTEBOOK, name: 'Reading', root: { kind: 'pane' as const, id: 'p1', tabs: [{ kind: 'note' as const, path: 'notes/old.md' }] } }] };
+    const at = (path: string) => ({ ...named, focuses: [{ ...named.focuses[0], root: { ...named.focuses[0].root, tabs: [{ kind: 'note' as const, path }] } }] });
+    let written: typeof named = named, refuse = false;
+    const changes: unknown[] = [];
+    // The page this render shows stays `named`; `latest` is what the controller last wrote.
+    const page: FocusPageController = {
+      ...fakeController(),
+      device: true,
+      page: named,
+      latest: () => written,
+      change: next => {
+        if (refuse) return false;
+        changes.push(next);
+        written = next as typeof named;
+        return true;
+      },
+    };
+    const { result } = renderHook(() => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => {
+      result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/mid.md' : path);
+      result.current.relocatePaths(NOTEBOOK, path => path === 'notes/mid.md' ? 'notes/new.md' : path);
+    });
+    expect(changes).toEqual([at('notes/mid.md'), at('notes/new.md')]);
+    refuse = true;
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/new.md' ? 'notes/last.md' : path));
+    refuse = false;
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path));
+    expect(changes.at(-1)).toEqual(at('notes/last.md'));
+  });
+
   it('keeps the moved note the shown tab of its pane, in the (current) Focus and a named one, instead of showing another tab', async () => {
     const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/ideas.md' }, { kind: 'note', path: 'notes/big.md' }] } };
     const entry = { activePane: 'p1', shown: { p1: 'note:notes/big.md' }, recent: ['p1'], history: { p1: ['note:notes/big.md', 'note:notes/ideas.md'] }, ratios: {}, hideToolbar: { p1: false } };
@@ -526,5 +615,53 @@ describe('useNoteFocus in a demo repository', () => {
     });
     expect(focusKeys()).toEqual([]);
     expect(Object.keys(localStorage).filter(key => key.includes('focus-view'))).toEqual([]);
+  });
+});
+
+describe("useNoteFocus on this device's layout", () => {
+  const owner = { id: REPOSITORY, alias: 'kb' };
+  const deviceKey = deviceDocumentKey(focusDocumentClient, REPOSITORY);
+  const focus = (id: string, name: string, notebookId: string, tabs: FocusTab[] = []) => ({ id, notebookId, name, root: { kind: 'pane' as const, id: 'p1', tabs } });
+  afterEach(() => vi.unstubAllGlobals());
+  const serve = () => vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ page: { version: 2, focuses: [focus('f1', 'Reading', NOTEBOOK)] }, revision: 'r1', writable: true, path: '.github-notes-focus.yaml' }))));
+
+  it('merges an edit derived before an await into a layout another tab stored while this tab reloaded', async () => {
+    serve();
+    let release!: () => void;
+    const held = new Promise<boolean>(resolve => release = () => resolve(true));
+    const { result } = renderHook(() => {
+      const page = useFocusPage(owner, () => {}, true);
+      return { page, focus: useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: 'f1', writable: true, flushEditors: () => held }) };
+    }, { wrapper });
+    await waitFor(() => expect(result.current.focus.shown).toBe('f1'));
+    let placed!: Promise<boolean>;
+    act(() => {
+      placed = result.current.focus.place('f1', tab('a'), 'p1');
+    });
+    // While this tab saves its editors, another tab adds a Focus to the device layout and this tab reloads from it.
+    localStorage.setItem(deviceKey, JSON.stringify({ page: { version: 2, focuses: [focus('f1', 'Reading', 'life'), focus('f3', 'Other tab', 'life')] } }));
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: deviceKey })));
+    await waitFor(() => expect(result.current.page.page.focuses).toHaveLength(2));
+    await waitFor(() => expect(result.current.page.loading).toBe(false));
+    release();
+    await act(async () => expect(await placed).toBe(true));
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page.focuses).toEqual([focus('f1', 'Reading', 'life', [tab('a')]), focus('f3', 'Other tab', 'life')]);
+  });
+
+  it('names nothing and keeps (current) when the write is refused', async () => {
+    const page: FocusPageController = { ...fakeController(), change: () => false };
+    const { result } = renderHook(() => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await result.current.place(CURRENT_FOCUS, tab('a'), 'p1');
+    });
+    let id: string | undefined = 'unset';
+    act(() => {
+      id = result.current.name('Reading');
+    });
+    expect(id).toBeUndefined();
+    expect(tabsAt(result.current.view.current, 0)).toEqual([tab('a')]);
+    expect(result.current.view.last).toBe(CURRENT_FOCUS);
+    await act(async () => expect(await result.current.remove('f1')).toBe(false));
   });
 });

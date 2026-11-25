@@ -55,6 +55,11 @@ describe('browser working notes', () => {
     const current = readWorkingNotes(main);
     expect(clearCommittedNotes(main, current)).toEqual({});
   });
+  it('drops a blocked draft that holds nothing but its base, and keeps one that holds text of its own', () => {
+    expect(updateWorkingNote(main, base.path, { base, note: base, blocked: 'editor.remoteNoteMovedOrDeleted' })).toEqual({});
+    const typed = { base, note: { ...base, content: '# Typed\n' }, blocked: 'editor.remoteNoteMovedOrDeleted' };
+    expect(updateWorkingNote(main, base.path, typed)[base.path]).toEqual(typed);
+  });
   it('treats a return to baseline as clean and reports storage failure', () => {
     updateWorkingNote(main, base.path, { base, note: { ...base, content: 'changed' } });
     expect(updateWorkingNote(main, base.path, { base, note: base })).toEqual({});

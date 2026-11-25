@@ -14,6 +14,7 @@ import type { NoteItem } from '../../lib/types.js';
 import { EditorNotice } from '../EditorNotice.js';
 import { Button } from '../Button.js';
 import { LoadingStatus } from '../LoadingStatus.js';
+import { LiveStaleDraftNotice } from './LiveStaleDraftNotice.js';
 
 /** The app's light or dark mode now, which the framed editor follows. */
 export function useLiveTheme(): LiveTheme {
@@ -328,11 +329,24 @@ export function useLiveEdit({ note, live, frame, refetch, hasDraft }: { note: No
       {comparing && <pre className='live-merge-diff' aria-label={t('live.mergeDiff')}>{createUnifiedDiff(note.path, note.path, noteFileText(note), mergeConflict.mine)}</pre>}
     </EditorNotice>
   );
+  // A draft this browser kept from before the live editor held the note: said once beside the live editor, which shows the
+  // note's text; one that holds nothing of the person's own is dropped instead.
+  const staleDraft = live?.staleDraft;
+  const editorShown = Boolean(edits && active && (state.checkout || state.busy));
+  const dropUntouched = Boolean(staleDraft && !staleDraft.differs && editorShown);
+  const discardStale = useRef(staleDraft?.discard);
+  useEffect(() => {
+    discardStale.current = staleDraft?.discard;
+  });
+  useEffect(() => {
+    if (dropUntouched) discardStale.current?.();
+  }, [dropUntouched]);
+  const staleNotice = staleDraft?.differs && edits && active && state.checkout && <LiveStaleDraftNotice draft={staleDraft} fileName={note.path.split('/').pop() ?? note.path} />;
   const conflict = note.live?.conflict;
   const conflictShown = active && conflict && !state.checkout;
-  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.releasing && <LoadingStatus className='editor-notice'>{t('live.checkingIn')}</LoadingStatus>}{offline && <EditorNotice>{t('live.offlineDraft')}</EditorNotice>}{refusal && <EditorNotice actions={<Button size='small' onClick={() => setRefusal(null)}>{t('common.close')}</Button>}>{refusal}</EditorNotice>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice tone='success' actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{state.stillOpen !== undefined && <EditorNotice actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{stillOpenText(t, state.stillOpen)}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}{mergeNotice}</>;
-  const hasNotices = Boolean(state.busy || state.releasing || offline || refusal || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown || mergeNotice);
+  const notices = <>{state.busy && <LoadingStatus className='editor-notice'>{t('live.checkingOut')}</LoadingStatus>}{state.releasing && <LoadingStatus className='editor-notice'>{t('live.checkingIn')}</LoadingStatus>}{offline && <EditorNotice>{t('live.offlineDraft')}</EditorNotice>}{refusal && <EditorNotice actions={<Button size='small' onClick={() => setRefusal(null)}>{t('common.close')}</Button>}>{refusal}</EditorNotice>}{state.error && <EditorNotice tone='error'>{state.error}</EditorNotice>}{state.direct && <EditorNotice>{state.direct}</EditorNotice>}{state.checkedIn && <EditorNotice tone='success' actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{t('live.checkedIn')}</EditorNotice>}{state.stillOpen !== undefined && <EditorNotice actions={<Button size='small' onClick={close}>{t('common.close')}</Button>}>{stillOpenText(t, state.stillOpen)}</EditorNotice>}{conflictShown && <EditorNotice>{t('live.conflict', { commit: conflict.overwritten.slice(0, 7) })}</EditorNotice>}{mergeNotice}{staleNotice}</>;
+  const hasNotices = Boolean(state.busy || state.releasing || offline || refusal || state.error || state.direct || state.checkedIn || state.stillOpen !== undefined || conflictShown || mergeNotice || staleNotice);
   // While the editor shows, its bar counts the editors; once the note is checked in it is no longer 編輯中.
   const badgeShown = !(edits && state.checkout) && !state.checkedIn;
-  return { active, checkout: edits ? state.checkout : undefined, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch(), conflictHold: offline && Boolean(mergeConflict), unsavedChange: (unsaved: boolean) => void (unsavedTyping.current = unsaved) };
+  return { active, checkout: edits ? state.checkout : undefined, editorShown, edit, close, checkedIn, released, discarded, notices, hasNotices, badgeShown, fileActions, refetch: () => latest.current.refetch(), conflictHold: offline && Boolean(mergeConflict), unsavedChange: (unsaved: boolean) => void (unsavedTyping.current = unsaved) };
 }

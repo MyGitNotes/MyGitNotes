@@ -3,7 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { emptyFocusPage, type FocusPage } from '@mygitnotes/core/focus-page';
 import { focusDocumentClient, useFocusPage } from './use-focus-page.js';
-import { documentDraftKey, readDocumentDraft, settleDocumentDraft } from './use-workspace-document.js';
+import { documentDraftKey, readDocumentDraft, settleDocumentDraft, useWorkspaceDocument } from './use-workspace-document.js';
 vi.mock('./i18n/index.js', () => {
   const t = (key: string) => key;
   return { useTranslation: () => ({ t }) };
@@ -13,6 +13,8 @@ const empty = emptyFocusPage();
 const page: FocusPage = { version: 2, focuses: [{ id: 'a', notebookId: 'n', name: 'A', root: { kind: 'pane', id: 'p1', tabs: [] } }] };
 const keyed: FocusPage = { ...page, focuses: page.focuses.map(focus => ({ ...focus, notebookId: 'kb~n' })) };
 const repo = { id: 'repo', alias: 'kb' };
+/** The Focus page as a document whose online drafts wait in Changes: the draft machinery any such document shares, since the Focus layout itself stays on the device. */
+const committed = { ...focusDocumentClient, deviceKey: undefined };
 const record = (page: unknown, revision: string) => new Response(JSON.stringify({ page, revision, writable: true, path: '.github-notes-focus.yaml' }));
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.unstubAllGlobals());
@@ -52,7 +54,7 @@ it('carries only proven descendants onto the committed page', () => {
 it('does not rebase a pending page on an unrelated refreshed remote head', async () => {
   vi.stubGlobal('fetch', vi.fn(async () => record(keyed, 'fresh')));
   localStorage.setItem(documentDraftKey(focusDocumentClient, 'repo'), JSON.stringify({ page, base: empty, revision: 'old', id: 'draft' }));
-  const hook = renderHook(() => useFocusPage(repo, () => {}, true));
+  const hook = renderHook(() => useWorkspaceDocument(committed, repo, () => {}, true));
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   expect(hook.result.current.error).toBe('focus.conflict');
   expect(hook.result.current.writable).toBe(false);
@@ -62,12 +64,12 @@ it('loads a document draft saved before notebook keys under keys, stores edits w
   vi.stubGlobal('fetch', vi.fn(async () => record(empty, 'old')));
   const key = documentDraftKey(focusDocumentClient, 'repo');
   localStorage.setItem(key, JSON.stringify({ page, base: empty, revision: 'old', id: 'draft', ancestors: [] }));
-  const hook = renderHook(() => useFocusPage(repo, () => {}, true));
+  const hook = renderHook(() => useWorkspaceDocument(committed, repo, () => {}, true));
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   expect(hook.result.current.error).toBe('');
   expect(hook.result.current.page).toEqual(keyed);
   const renamed = { ...keyed, focuses: keyed.focuses.map(focus => ({ ...focus, name: 'B' })) };
-  act(() => hook.result.current.change(renamed));
+  act(() => hook.result.current.change(renamed, hook.result.current.page));
   const stored = JSON.parse(localStorage.getItem(key)!);
   expect(stored.page.focuses[0]).toMatchObject({ notebookId: 'n', name: 'B' });
   const sent = readDocumentDraft(focusDocumentClient, repo, empty)!;

@@ -43,6 +43,16 @@ describe('draft rows over a loaded page', () => {
     expect(result.uncommitted).toEqual([]);
   });
 
+  it('shows a live note as the server lists it, not as a draft this browser kept from before it went live', () => {
+    const live = { since: '2026-11-25T12:21:01.000Z', activeEditors: 1, editorUrl: 'http://localhost/live/a' };
+    const pages = [row('notes/life/a.md', { title: 'Moved', status: 'deprecated', live })];
+    const stale = note('notes/life/a.md', { title: 'Weekly meeting', status: 'inbox' });
+    const result = overlayDraftRows(pages, query(), drafts({ note: stale, base: note('notes/life/a.md', { title: 'Weekly meeting', status: 'inbox' }) }));
+    expect(result.notes).toEqual(pages);
+    expect(result.uncommitted).toEqual([]);
+    expect(result.removed).toBe(0);
+  });
+
   it('drops the hidden path, which the folder index shows on its own', () => {
     const result = overlayDraftRows([row('notes/life/index.md'), row('notes/life/a.md')], query(), {}, { hide: 'notes/life/index.md' });
     expect(result.notes.map(item => item.path)).toEqual(['notes/life/a.md']);

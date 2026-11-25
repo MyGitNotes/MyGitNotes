@@ -38,6 +38,9 @@ it("shows the note as it reads with one line of save state, and none of the full
 
 it("keeps the editor's own notices: a conflict still shows above the note, and the note cannot be edited meanwhile", () => {
   const { container } = render(editor({ conflictReason: 'editor.remoteConflict', onMarkConflict: vi.fn() }));
-  expect(container.querySelector('.editor-notice-error')).toHaveTextContent('Remote changes conflict with your draft.');
+  // One calm notice: the draft is kept, so nothing is at risk that an alarm would warn of.
+  expect(container.querySelectorAll('.editor-notice')).toHaveLength(1);
+  expect(container.querySelector('.editor-notice')).toHaveTextContent('Remote changes conflict with your draft.');
+  expect(container.querySelector('.editor-notice-error')).toBeNull();
   expect(screen.getByLabelText('Note content')).toHaveAttribute('readonly');
 });

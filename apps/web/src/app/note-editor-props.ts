@@ -9,6 +9,7 @@ import { noteRoute } from '../lib/routes.js';
 import type { NoteItem } from '../lib/types.js';
 import { workingDiff } from '../lib/working-notes.js';
 import { draftScope, editable } from '../lib/workspace-repositories.js';
+import { liveStaleDraft } from './live-stale-draft.js';
 import type { useAssetOperations } from './useAssetOperations.js';
 import type { useBrowseFacets } from './useBrowseFacets.js';
 import type { useDeletionUndo } from './useDeletionUndo.js';
@@ -38,6 +39,7 @@ export interface NoteEditorPropsContext {
   refreshWorkspace: WorkspaceState['refreshWorkspace'];
   stageWorkingNote: WorkspaceState['stageWorkingNote'];
   updateDraft: WorkspaceState['updateDraft'];
+  discardShownDraft: WorkspaceState['discardShownDraft'];
   setActionError: WorkspaceState['setActionError'];
   navigate: ReturnType<typeof useNavigate>;
   search: string;
@@ -68,7 +70,7 @@ export interface NoteEditorPropsContext {
 
 /** Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state. */
 export function noteEditorProps(context: NoteEditorPropsContext) {
-  const { config, remote, sourceId, gitStatus, assets, activeWorkingNotes, repositoryFor, refreshWorkspace, stageWorkingNote, updateDraft, setActionError, navigate, search, facets, availableTags, invalidateNotes, isTemplate, handleOpenNote, closeZoom, handleSaveNote, handleRestoreNoteFile, handleDeleteNote, commitNoteFile, handleUploadAsset, handleDeleteAsset, handleMoveAsset, beforeFileChange, onFilesChanged, returnToFocus, frameSelection, liveHandover, noteMove, templateActions, followMoved, routedPath } = context;
+  const { config, remote, sourceId, gitStatus, assets, activeWorkingNotes, repositoryFor, refreshWorkspace, stageWorkingNote, updateDraft, discardShownDraft, setActionError, navigate, search, facets, availableTags, invalidateNotes, isTemplate, handleOpenNote, closeZoom, handleSaveNote, handleRestoreNoteFile, handleDeleteNote, commitNoteFile, handleUploadAsset, handleDeleteAsset, handleMoveAsset, beforeFileChange, onFilesChanged, returnToFocus, frameSelection, liveHandover, noteMove, templateActions, followMoved, routedPath } = context;
   return (note: NoteItem, committed?: NoteItem): NoteEditorSharedProps => {
     // The note's repository decides whether it may be written and where its drafts are kept.
     const repository = repositoryFor(note.notebookId);
@@ -81,7 +83,10 @@ export function noteEditorProps(context: NoteEditorPropsContext) {
     const draft = liveConflict ? undefined : stored;
     const repositoryStatus = repository?.id === sourceId ? gitStatus : repository?.gitStatus ?? null;
     // A repository with a live editor opens its Markdown notes read-only, edited there; outlines and templates keep the direct editor.
-    const live: LiveNoteEditing | undefined = repository?.live && repository.write && liveEditableKind(note.path) && !isTemplate(note)
+    const liveNote = Boolean(repository?.live && repository.write && liveEditableKind(note.path) && !isTemplate(note));
+    // What the live editor offers of a draft from before it held the note; nothing beside a conflict draft, offered on its own.
+    const staleDraft = liveNote && repository && !liveConflict ? liveStaleDraft({ note, draft, conflictScope: `${draftScope(repository) || repository.branch}:conflict`, discardShown: shown => discardShownDraft(note.notebookId, note.path, shown) }) : undefined;
+    const live: LiveNoteEditing | undefined = liveNote && repository?.live
       ? {
         editor: repository.live,
         onRefetch: invalidateNotes,
@@ -116,6 +121,7 @@ export function noteEditorProps(context: NoteEditorPropsContext) {
           }
         },
         ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
+        ...(staleDraft ? { staleDraft } : {}),
         fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined, editing: true })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, live: undefined, editing: true }, undefined, title || undefined)?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;

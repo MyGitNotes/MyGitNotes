@@ -2,8 +2,8 @@ import { useEffect } from 'react';
 
 /**
  * Asks the browser to confirm leaving the page while `pending` holds; the browser shows its own wording.
- * An online workspace keeps edits as drafts in this browser until they are committed, so this reminds the
- * visitor before they walk away from work that has not reached the repository.
+ * An online workspace keeps note edits as drafts in this browser until they are committed, so this reminds the
+ * visitor before they walk away from note text that has not reached the repository (`useChangeDialog`'s `leaveLoses`).
  */
 export function useLeaveWarning(pending: boolean) {
   useEffect(() => {

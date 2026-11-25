@@ -90,7 +90,7 @@ it('leaves a real notebook’s Focus view alone when a demo tab changes its own'
   const layout = (path: string): FocusLayout => ({ root: { kind: 'pane', id: 'p1', tabs: [tab(path)] } });
   const view = (path: string) => JSON.stringify({ current: layout(path), entries: {}, last: null });
   localStorage.setItem(key, view('notes/mine.md'));
-  const controller: FocusPageController = { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: own.id, file: '.github-notes-focus.yaml', page: emptyFocusPage(), change: () => {}, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
+  const controller: FocusPageController = { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: own.id, file: '.github-notes-focus.yaml', device: false, page: emptyFocusPage(), latest: emptyFocusPage, change: () => true, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
   const { result } = renderHook(() => useNoteFocus({ page: controller, notebookId: notebook, repository: own.id, scope: 'main', focusKey: 'current', writable: true, flushEditors: async () => true }), { wrapper });
   await waitFor(() => expect(result.current.layout).not.toBeNull());
   const before = result.current.layout;

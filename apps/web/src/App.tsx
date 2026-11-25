@@ -128,7 +128,7 @@ export const AppContent: React.FC = () => {
   const navigate = useNavigate();
   const editorRoute = useMemo(() => parseWorkspaceRoute(location.pathname, location.search), [location.pathname, location.search]);
 
-  const { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, gitStatus, setGitStatus, assets, setAssets, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus: focusPage, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote } = useWorkspaceSync({ routeNotebook: editorRoute.notebook || undefined, onStageNote: note => setEditingNote(current => current && sameNote(current, note) && !sameValue(current, note) ? note : current) });
+  const { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, gitStatus, setGitStatus, assets, setAssets, activeWorkingNotes, readDraft, readDraftIn, updateDraft, discardShownDraft, clearCommittedDrafts, draftsUnder, focus: focusPage, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote } = useWorkspaceSync({ routeNotebook: editorRoute.notebook || undefined, onStageNote: note => setEditingNote(current => current && sameNote(current, note) && !sameValue(current, note) ? note : current) });
   // A refusal is said where it happened: moving on to another note, folder, filter or search clears it.
   useActionErrorReset(location.pathname + location.search, setActionError);
   const noteLink = useNoteLinkLoad(location, editorRoute);
@@ -171,14 +171,14 @@ export const AppContent: React.FC = () => {
   const { changeFilters, clearFilters, changeAllNotebooks, setActiveTab, agentSystemRef, resourceNavigationBusy, setResourceNavigationBusy, notebookSwitchBusy, setSelectedNotebookId, setSelectedFolder } = navigation;
 
   const changeDialog = useChangeDialog({ activeTab, agentSystemRef, remote, documents, setActionError, activeWorkingNotes, pendingDocuments, canWriteNotebook, repositoryFor });
-  const { isCommitOpen, openCommitModal, panelRemoteChanges } = changeDialog;
+  const { isCommitOpen, openCommitModal, leaveLoses } = changeDialog;
   // With every repository hidden or unavailable there is no notebook to show, and Settings is where the person
   // recovers: it opens there (decision C8).
   const nothingToShow = !loading && !loadError && !config?.notebooks.length;
   useEffect(() => {
     if (nothingToShow && activeTab !== 'settings') navigate('/settings#settings-repositories', { replace: true });
   }, [nothingToShow, activeTab, navigate]);
-  useLeaveWarning(Boolean(panelRemoteChanges?.length));
+  useLeaveWarning(leaveLoses);
 
   // Aggregated tags across the workspace for autocomplete
   const availableTags = useMemo(() => Array.from(new Set(workspaceTagNames.map(tag => tag.trim()))).filter(Boolean).sort(), [workspaceTagNames]);
@@ -264,7 +264,7 @@ export const AppContent: React.FC = () => {
   const liveEditTarget = liveEditLinkTarget({ search: location.search, state: location.state, routedNote, zoomOpen: noteEditorOpen, inFocus: noteLink.inFocus, focusPending: noteLink.pending, activeNotePath });
 
   // Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state.
-  const editorProps = noteEditorProps({ config, remote, sourceId, gitStatus, assets, activeWorkingNotes, repositoryFor, refreshWorkspace, stageWorkingNote, updateDraft, setActionError, navigate, search: location.search, facets: facetsQuery.facets, availableTags, invalidateNotes, isTemplate, handleOpenNote, closeZoom, handleSaveNote, handleRestoreNoteFile, handleDeleteNote, commitNoteFile, handleUploadAsset, handleDeleteAsset, handleMoveAsset, beforeFileChange, onFilesChanged, returnToFocus, frameSelection, liveHandover, noteMove, templateActions, followMoved, routedPath });
+  const editorProps = noteEditorProps({ config, remote, sourceId, gitStatus, assets, activeWorkingNotes, repositoryFor, refreshWorkspace, stageWorkingNote, updateDraft, discardShownDraft, setActionError, navigate, search: location.search, facets: facetsQuery.facets, availableTags, invalidateNotes, isTemplate, handleOpenNote, closeZoom, handleSaveNote, handleRestoreNoteFile, handleDeleteNote, commitNoteFile, handleUploadAsset, handleDeleteAsset, handleMoveAsset, beforeFileChange, onFilesChanged, returnToFocus, frameSelection, liveHandover, noteMove, templateActions, followMoved, routedPath });
 
   const phoneNotes = phone && activeTab === 'notes' && !route.study;
   const phoneNoteScreen = phoneNotes && phoneNotesScreen({ hasFocus: Boolean(noteFocus.layout), hasActiveTab, view: focusNarrowView }) === 'note';

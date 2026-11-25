@@ -255,7 +255,7 @@ describe('a check-in that committed while others are still editing', () => {
 });
 
 describe('a read-only note deleted elsewhere, without a live editor', () => {
-  it('still says it was moved or deleted', async () => {
+  it('still says it was deleted', async () => {
     const onReadRemote = vi.fn(async () => {
       throw await responseError(json({ error: 'Note not found.' }, 404), 'Failed');
     });
@@ -263,7 +263,7 @@ describe('a read-only note deleted elsewhere, without a live editor', () => {
       render(noteEditor({ frame: 'pane', onClose: undefined, readOnly: true, draftMode: true, onReadRemote, onMarkConflict: vi.fn() }));
     });
     expect(onReadRemote).toHaveBeenCalled();
-    expect(screen.getByText(/moved or deleted remotely/)).toBeInTheDocument();
+    expect(screen.getByText('This note was deleted remotely.')).toBeInTheDocument();
   });
 });
 

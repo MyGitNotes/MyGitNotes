@@ -140,6 +140,8 @@ describe('useNoteEditorSession when the check of the remote note fails', () => {
     await vi.waitFor(() => expect(hook.result.current.blocked).toBe(true));
     expect(onMarkConflict).toHaveBeenCalledOnce();
     expect(localStorage.getItem('gh_notes_draft:repo:conflict:notes/idea.md')).not.toBeNull();
+    expect(hook.result.current.blockReason).toEqual({ kind: 'deleted' });
+    expect(hook.result.current.saveError).toBe('');
   });
 
   it('shows another failure without a conflict draft, so a note nobody edited is not listed as a conflict', async () => {
@@ -184,6 +186,48 @@ describe('useNoteEditorSession and a note the remote says moved, holding text of
     await vi.waitFor(() => expect(hook.result.current.blocked).toBe(true));
     expect(onMarkConflict).toHaveBeenCalledOnce();
     expect(localStorage.getItem('gh_notes_draft:repo:conflict:notes/idea.md')).not.toBeNull();
+    // It says where the note went, once, instead of a second banner, and offers to go there.
+    expect(hook.result.current.blockReason).toEqual({ kind: 'moved', to: 'notes/archive/idea.md' });
+    expect(hook.result.current.saveError).toBe('');
+    act(() => hook.result.current.openMoved?.());
+    expect(onMoved).toHaveBeenCalledWith('notes/archive/idea.md');
+  });
+});
+
+describe('useNoteEditorSession opened on a draft kept because its note was moved or deleted', () => {
+  function open(read: () => Promise<NoteItem>) {
+    const base = { readOnly: false, autoSave: true, draftMode: true, propIsDirty: true, branch: 'main', draftScope: 'repo', onSave: vi.fn() as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote: vi.fn(read), onRestoreFile: vi.fn(), onCommitFile: undefined, remoteBase: note('Contract'), conflictReason: 'editor.remoteNoteMovedOrDeleted', onMarkConflict: vi.fn(), onMoved: vi.fn() } satisfies Omit<UseNoteEditorSessionParams, 'note'>;
+    return renderHook(() => useNoteEditorSession({ ...base, note: note('Contract', '# Contract\n\nTyped.\n') }));
+  }
+
+  it('reads the note once to say where it lies now', async () => {
+    const hook = open(async () => Promise.reject(new ApiError('Moved.', 404, undefined, undefined, false, { movedTo: 'notes/archive/idea.md' })));
+    expect(hook.result.current.blocked).toBe(true);
+    expect(hook.result.current.saveError).toBe('');
+    await vi.waitFor(() => expect(hook.result.current.blockReason).toEqual({ kind: 'moved', to: 'notes/archive/idea.md' }));
+  });
+
+  it('says it was deleted when the note is nowhere', async () => {
+    const hook = open(async () => Promise.reject(new ApiError('Not found', 404)));
+    await vi.waitFor(() => expect(hook.result.current.blockReason).toEqual({ kind: 'deleted' }));
+    expect(hook.result.current.blocked).toBe(true);
+  });
+
+  it('says the draft and the remote differ when the note is back where it was', async () => {
+    const hook = open(async () => note('Contract'));
+    await vi.waitFor(() => expect(hook.result.current.blockReason).toEqual({ kind: 'conflict' }));
+    expect(hook.result.current.blocked).toBe(true);
+  });
+
+  it('takes the note as it is once the draft that blocked it is discarded', async () => {
+    const server = note('Contract');
+    const base = { readOnly: false, autoSave: true, draftMode: true, propIsDirty: true, branch: 'main', draftScope: 'repo', onSave: vi.fn() as unknown as UseNoteEditorSessionParams['onSave'], onReadRemote: vi.fn(async () => server), onRestoreFile: vi.fn(), onCommitFile: undefined, remoteBase: server, onMarkConflict: vi.fn() } satisfies Omit<UseNoteEditorSessionParams, 'note' | 'conflictReason'>;
+    const hook = renderHook(({ current, conflictReason }: { current: NoteItem; conflictReason?: string; }) => useNoteEditorSession({ ...base, note: current, conflictReason }), { initialProps: { current: note('Contract', '# Contract\n\nTyped.\n'), conflictReason: 'editor.remoteNoteMovedOrDeleted' as string | undefined } });
+    await vi.waitFor(() => expect(hook.result.current.blockReason).toEqual({ kind: 'conflict' }));
+    hook.rerender({ current: server, conflictReason: undefined });
+    expect(hook.result.current.blocked).toBe(false);
+    expect(hook.result.current.blockReason).toBeNull();
+    expect(hook.result.current.content).toBe(server.content);
   });
 });
 

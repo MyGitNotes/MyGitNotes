@@ -14,6 +14,17 @@ export interface WorkspaceDocumentClient<T> {
   /** Local storage key prefix for the device draft, scoped by repository. */
   draftKey: string;
   messages: Record<'load' | 'conflict' | 'limit' | 'draft' | 'save' | 'loading', TranslationKey>;
+  /**
+   * Set for a document that, in an online workspace, is how this device arranges notes rather than repository content:
+   * it is kept in this browser under this key prefix, scoped by repository, never listed in Changes nor committed, and
+   * the repository's committed file is where it starts while the device keeps none. A local workspace still saves it.
+   */
+  deviceKey?: string;
+  /**
+   * This device's copy with the changes a draft of an earlier version made from its `base`, or undefined when the two
+   * changed the same thing differently: a device document's draft is adopted only so, never written over the copy.
+   */
+  mergeDevice?(device: T, draft: T, base: T): T | undefined;
 }
 interface Snapshot<T> {
   page: T;
@@ -61,6 +72,55 @@ function writeDocumentDraft<T>(client: WorkspaceDocumentClient<T>, repository: D
   const stored = (page: T) => client.document.mapNotebookIds(page, toLocal);
   if (!noteDemoWriteIn(repository.id)) return;
   localStorage.setItem(documentDraftKey(client, repository.id), JSON.stringify({ ...draft, page: stored(draft.page), base: stored(draft.base) }));
+}
+
+/** Where this device keeps its own copy of a device document of one repository (`deviceKey`). */
+export const deviceDocumentKey = (client: Pick<WorkspaceDocumentClient<unknown>, 'deviceKey'>, repository: string) => `github-notes:${client.deviceKey}:${storageOwner(repository)}`;
+
+/** This device's copy of a device document, its notebooks named by key; undefined while the device keeps none. */
+function readDeviceDocument<T>(client: WorkspaceDocumentClient<T>, repository: DocumentRepository): T | undefined {
+  const raw = localStorage.getItem(deviceDocumentKey(client, repository.id));
+  if (!raw) return;
+  const { toKey } = notebookIdCodec(repository.alias);
+  return client.document.mapNotebookIds(client.document.read(JSON.parse(raw).page), toKey);
+}
+
+/** Stores this device's copy of a device document with the repository's local notebook ids; false when a demo refuses the write. */
+function writeDeviceDocument<T>(client: WorkspaceDocumentClient<T>, repository: DocumentRepository, page: T): boolean {
+  if (!noteDemoWriteIn(repository.id)) return false;
+  const { toLocal } = notebookIdCodec(repository.alias);
+  localStorage.setItem(deviceDocumentKey(client, repository.id), JSON.stringify({ page: client.document.mapNotebookIds(page, toLocal) }));
+  return true;
+}
+
+/**
+ * Turns the drafts of device documents an earlier version left waiting in Changes into this device's copies, so they
+ * leave Changes. While the device keeps no copy, the draft becomes it; a copy that differs takes the draft's changes
+ * only where `mergeDevice` finds none of its own in their way (a tab of the earlier version still open writes such
+ * drafts from what it read before). A draft that cannot be read or merged, or one beside a copy that cannot be read,
+ * stays where it is, for Settings to discard with the repository's other drafts.
+ */
+export function adoptDeviceDrafts(clients: WorkspaceDocumentClient<unknown>[], repositories: DocumentRepository[]): void {
+  for (const client of clients) {
+    if (!client.deviceKey) continue;
+    for (const repository of repositories) {
+      let draft, kept;
+      try {
+        draft = readDocumentDraft(client, repository, client.document.empty());
+      } catch {
+        continue;
+      }
+      if (!draft) continue;
+      try {
+        kept = readDeviceDocument(client, repository);
+      } catch {
+        continue;
+      }
+      const next = kept === undefined ? draft.page : same(kept, draft.page) ? kept : client.mergeDevice?.(kept, draft.page, draft.base);
+      if (next === undefined) continue;
+      if (next === kept || writeDeviceDocument(client, repository, next)) localStorage.removeItem(documentDraftKey(client, repository.id));
+    }
+  }
 }
 
 /** A document draft of one repository, waiting in Changes for a remote commit. */
@@ -125,6 +185,8 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   saved.current = onSaved;
   /* eslint-enable react/refs */
   const key = documentDraftKey(client, repository ?? '');
+  // Online, a device document is this device's own copy: no draft, nothing to commit (`deviceKey`).
+  const device = remote && client.deviceKey ? deviceDocumentKey(client, repository ?? '') : undefined;
   const target = repository ? `${endpoint}?repository=${encodeURIComponent(repository)}` : endpoint;
   const currentKey = useRef(key);
   /* eslint-disable react/refs -- Document callbacks and the saved comparison baseline remain current without restarting loads. */
@@ -154,6 +216,28 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
         record.writable = true;
       }
       if (currentKey.current !== key || request !== loadRequest.current) return;
+      if (device) {
+        const owned = { id: repository, alias };
+        // Reloading drops a copy that cannot be read, and the device starts again from the committed file, or a draft.
+        if (discard) {
+          try {
+            readDeviceDocument(client, owned);
+          } catch {
+            localStorage.removeItem(device);
+          }
+        }
+        adoptDeviceDrafts([client as WorkspaceDocumentClient<unknown>], [owned]);
+        const kept = readDeviceDocument(client, owned);
+        base.current = record.page;
+        current.current = kept ?? record.page;
+        draftIdentity.current = undefined;
+        revision.current = record.revision;
+        setSnapshotKey(key);
+        setSnapshot(record);
+        setPage(current.current);
+        setDirty(false);
+        return;
+      }
       if (discard) localStorage.removeItem(key);
       base.current = record.page;
       const draft = readDraft();
@@ -174,7 +258,7 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
     } finally {
       if (currentKey.current === key && request === loadRequest.current) setLoading(false);
     }
-  }, [key, enabled, repository, remote, readDraft, t, target, messages, document, demo]);
+  }, [key, device, client, alias, enabled, repository, remote, readDraft, t, target, messages, document, demo]);
   useEffect(() => {
     /* eslint-disable react/set-state-in-effect -- Loading synchronizes a persisted workspace document and its recovery draft; the request lifecycle owns loading, error and conflict state. */
     void load();
@@ -182,23 +266,62 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   }, [load]);
   useEffect(() => {
     const refresh = (event: StorageEvent) => {
-      if (event.key === key) void load();
+      // A tab of an earlier version still writes drafts; this one adopts them as the device's copy.
+      if (event.key === key || (device && event.key === device)) void load();
     };
     window.addEventListener('storage', refresh);
     return () => window.removeEventListener('storage', refresh);
-  }, [key, load]);
-  const change = (next: T) => {
-    if (!snapshot?.writable || loading || error || snapshotKey !== key || !repository) return;
+  }, [key, device, load]);
+  /**
+   * Writes `next`, derived from `base`, the exact page the caller read and changed; true when it was stored (merged with
+   * another tab's copy, for a device document).
+   */
+  const change = (next: T, from: T): boolean => {
+    if (!snapshot?.writable || loading || error || snapshotKey !== key || !repository) return false;
     const result = document.schema.safeParse(next);
     if (!result.success) {
       setError(t(messages.limit));
-      return;
+      return false;
+    }
+    if (device) {
+      const owned = { id: repository, alias };
+      // Browsers apply another tab's localStorage writes between tasks, so this read, compare and write, done in one task
+      // with no await or callback between them, is a compare-and-swap no other tab can interleave. The edit is a change
+      // from `from`, the page the caller derived it from (it may have been read before an await, and the view reloaded
+      // since): a stored copy that differs from it takes the edit as a three-way merge on that base; one the edit cannot
+      // merge into is not written over: the edit waits as a draft for adoption or Settings, and the view shows the copy.
+      try {
+        const theirs = readDeviceDocument(client, owned);
+        let next = result.data;
+        if (theirs !== undefined && !same(theirs, from)) {
+          const merged = client.mergeDevice?.(theirs, next, from);
+          if (merged === undefined) {
+            if (localStorage.getItem(key) === null) writeDocumentDraft(client, owned, { page: next, base: from, revision: revision.current, id: crypto.randomUUID(), ancestors: [] });
+            else {
+              setError(t(messages.conflict));
+              return false;
+            }
+            current.current = theirs;
+            setPage(current.current);
+            setError(t(messages.conflict));
+            return false;
+          }
+          next = merged;
+        }
+        if (!writeDeviceDocument(client, owned, next)) return false;
+        current.current = next;
+        setPage(next);
+        return true;
+      } catch {
+        setError(t(messages.draft));
+        return false;
+      }
     }
     try {
       const previous = readDraft();
       if (previous && previous.id !== draftIdentity.current) {
         setError(t(messages.conflict));
-        return;
+        return false;
       }
       const id = crypto.randomUUID();
       writeDocumentDraft(client, { id: repository, alias }, { page: result.data, base: base.current, revision: revision.current, id, ancestors: [...(previous?.ancestors ?? []), ...(previous?.id ? [previous.id] : [])].slice(-100) });
@@ -206,8 +329,10 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
       current.current = result.data;
       setPage(result.data);
       setDirty(true);
+      return true;
     } catch {
       setError(t(messages.draft));
+      return false;
     }
   };
   const save = useCallback(async () => {
@@ -262,6 +387,6 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   /* eslint-disable react/refs -- Document callbacks and the saved comparison baseline remain current without restarting loads. */
   const diff = dirty ? documentDiff(document.file, base.current, page) : '';
   /* eslint-enable react/refs */
-  return { client: client as WorkspaceDocumentClient<unknown>, repository, file: document.file, page: snapshotKey === key ? page : document.empty(), change, save, reload: () => load(true), refresh: () => load(), loading: loading || snapshotKey !== key, saving, dirty: snapshotKey === key && dirty, error, writable: Boolean(enabled && repository && snapshotKey === key && !loading && !error && snapshot?.writable), setError, diff };
+  return { client: client as WorkspaceDocumentClient<unknown>, repository, file: document.file, device: Boolean(device), page: snapshotKey === key ? page : document.empty(), latest: () => snapshotKey === key ? current.current : document.empty(), change, save, reload: () => load(true), refresh: () => load(), loading: loading || snapshotKey !== key, saving, dirty: snapshotKey === key && dirty, error, writable: Boolean(enabled && repository && snapshotKey === key && !loading && !error && snapshot?.writable), setError, diff };
 }
 export type WorkspaceDocumentController<T> = ReturnType<typeof useWorkspaceDocument<T>>;
