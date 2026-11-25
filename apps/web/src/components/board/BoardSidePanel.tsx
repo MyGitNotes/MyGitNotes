@@ -84,7 +84,9 @@ export function BoardSidePanel({ note, row, notebooks, actions, leaving = false,
     <aside ref={aside} className='board-side-panel' style={{ width }} aria-label={t('board.panel')} aria-busy={leaving || undefined} data-board-panel={note.path}>
       <div className='board-panel-divider' role='separator' tabIndex={0} aria-orientation='vertical' aria-label={t('board.panelResize')} aria-valuenow={width} aria-valuemin={clampPanelWidth(0)} aria-valuemax={clampPanelWidth(Infinity)} {...divider} />
       <header className='board-panel-head'>
-        <span className='board-panel-path' title={note.path}>{note.path}</span>
+        <Tooltip label={note.path}>
+          <span className='board-panel-path'>{note.path}</span>
+        </Tooltip>
         {otherNotebook
           ? (
             <Tooltip label={t('board.openInFocusOther')}>
