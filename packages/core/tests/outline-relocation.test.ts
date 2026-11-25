@@ -18,6 +18,22 @@ describe('source-preserving outline relocation', () => {
   it.each(['`[literal](a.md)`', '``[literal](a.md) ` still code``', '```md\n[literal](a.md)\n```\n', '~~~md\r\n[literal](a.md)\r\n~~~~\r\n', '```md\n[literal](a.md)\n', '  ~~~md\n  [literal](a.md)\n', '    [literal](a.md)\n', '- Parent\n\n      [literal](a.md)\n', '> ```\n> [literal](a.md)\n> ```\n', '- Parent\n  ```\n  [literal](a.md)\n  ```\n', '- [incomplete](a.md', '- [incomplete label a.md'])('keeps code/incomplete Markdown bytes: %j', literal => {
     expect(relocateLinks(literal, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(literal);
   });
+  // Marked hands back a lone space or tab that ends a block as the newline it expected there, so the token text differs
+  // from the note in that one character; the note's own bytes must still be found and kept.
+  it.each(['- a\n  - b \n- c\n', '- a ', '1. a ', '- a\t', '> - a\n>   - b \n> - c\n', '- a\n  - b \n  - c \n- d\n'])('keeps a list whose line ends in a space Marked drops: %j', literal => {
+    expect(relocateLinks(literal, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(literal);
+  });
+  it('rebases links around such a list and still keeps the code after it', () => {
+    const raw = '- [a](a.md)\n  - [b](a.md) \n- c\n\n  ```\n  [literal](a.md)\n  ```\n\n[after](a.md)\n';
+    expect(relocateLinks(raw, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(raw.replace('[a](a.md)', '[a](../a.md)').replace('[b](a.md)', '[b](../a.md)').replace('[after](a.md)', '[after](../a.md)'));
+  });
+  it('moves a meeting note whose nested agenda item ends in a space, as a check-in move does', () => {
+    const note = ['---', 'title: 2026-11-23 週會', 'status: inbox', '---', '', '# 2026-11-23 週會', '', '- 時間：10:00–12:00，上次見 [11-16](2026-11-16.md)', '', '## 上週進度', '', '1. 專案甲', '   - 確認時程', '   - 指派負責人 ', '2. 專案乙', '   - 整理需求，參考 [需求](../需求/總覽.md) ', '   ```text', '   [literal](2026-11-16.md)', '   ```', '3. 專案丙', '', '## 本週', ''].join('\n');
+    const snapshot: FolderSnapshot = { notebooks: [{ id: 'm', title: '會議', root: '會議' }], directories: ['會議', '會議/週會'], protectedPaths: [], files: new Map([['會議/2026-11-23 週會.md', Buffer.from(note)], ['會議/2026-11-16.md', Buffer.from('下週見 [11-23](2026-11-23%20週會.md)\n')]]) };
+    const moved = planFileChange(snapshot, { kind: 'move', notebookId: 'm', path: '會議/2026-11-23 週會.md', destination: '會議/週會/2026-11-23 週會.md' });
+    expect(moved.files.get('會議/週會/2026-11-23 週會.md')?.toString()).toBe(note.replace('[11-16](2026-11-16.md)', '[11-16](../2026-11-16.md)').replace('[需求](../需求/總覽.md)', '[需求](../../%E9%9C%80%E6%B1%82/%E7%B8%BD%E8%A6%BD.md)'));
+    expect(moved.files.get('會議/2026-11-16.md')?.toString()).toBe('下週見 [11-23](%E9%80%B1%E6%9C%83/2026-11-23%20%E9%80%B1%E6%9C%83.md)\n');
+  });
   it('distinguishes nested indented code from sibling links with identical text', () => {
     const raw = '- Parent\r\n\r\n      [same](a.md)\r\n\r\n  - [same](a.md)\r\n';
     expect(relocateLinks(raw, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(raw.replace('- [same](a.md)', '- [same](../a.md)'));

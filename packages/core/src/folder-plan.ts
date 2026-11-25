@@ -21,6 +21,20 @@ export interface FolderSnapshot {
 const inside = (file: string, dir: string) => file === dir || file.startsWith(dir + '/');
 const parentOf = (file: string) => path.posix.dirname(file) === '.' ? '' : path.posix.dirname(file);
 
+/**
+ * Where `raw` sits in `source` at or after `from`, as [start, end). Marked turns a lone space or tab that ends the text
+ * it lexes into the newline it expected there, so a token can differ from the source in the blanks that end its lines.
+ */
+function locate(source: string, raw: string, from: number): [number, number] | undefined {
+  const exact = source.indexOf(raw, from);
+  if (exact >= 0) return [exact, exact + raw.length];
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(raw.split('\n').map(line => escape(line.replace(/[ \t]+$/, ''))).join('[ \\t]*(?:\\n|$)'), 'g');
+  pattern.lastIndex = from;
+  const match = pattern.exec(source);
+  return match ? [match.index, match.index + match[0].length] : undefined;
+}
+
 /** Block token line ranges survive list/quote prefix removal and CRLF normalization. */
 function markdownCodeRanges(raw: string): [number, number][] {
   const lineOffsets = [0];
@@ -30,30 +44,32 @@ function markdownCodeRanges(raw: string): [number, number][] {
   const visit = (source: string, tokens: Token[], firstLine: number) => {
     let cursor = 0, line = firstLine;
     for (const token of tokens) {
-      const offset = source.indexOf(token.raw, cursor);
-      if (offset < 0) throw new Error('Markdown block could not be located in the source.');
+      const span = locate(source, token.raw, cursor);
+      if (!span) throw new Error('Markdown block could not be located in the source.');
+      const [offset, end] = span, block = source.slice(offset, end);
       line += lines(source.slice(cursor, offset));
       if (token.type === 'code') {
-        const endLine = line + lines(token.raw) + (token.raw.endsWith('\n') ? 0 : 1);
+        const endLine = line + lines(block) + (block.endsWith('\n') ? 0 : 1);
         ranges.push([lineOffsets[line], lineOffsets[endLine] ?? raw.length]);
       } else if (token.type === 'list') {
         let itemCursor = 0, itemLine = line;
         for (const item of token.items) {
-          const itemOffset = token.raw.indexOf(item.raw, itemCursor);
-          if (itemOffset < 0) throw new Error('Markdown list item could not be located in the source.');
-          itemLine += lines(token.raw.slice(itemCursor, itemOffset));
+          const itemSpan = locate(block, item.raw, itemCursor);
+          if (!itemSpan) throw new Error('Markdown list item could not be located in the source.');
+          const [itemOffset, itemEnd] = itemSpan;
+          itemLine += lines(block.slice(itemCursor, itemOffset));
           // Preserve Marked's original block semantics: removing a checkbox can
           // turn ordinary text into a fence. Pair those tokens with the original
           // checkbox prefix instead of re-lexing the stripped item.text.
           const first = item.tokens[0];
           const checkbox = first?.type === 'checkbox' ? first : first?.type === 'paragraph' && first.tokens[0]?.type === 'checkbox' ? first.tokens[0] : undefined;
           visit((checkbox?.raw ?? '') + item.text, item.tokens, itemLine);
-          itemCursor = itemOffset + item.raw.length;
-          itemLine += lines(item.raw);
+          itemCursor = itemEnd;
+          itemLine += lines(block.slice(itemOffset, itemEnd));
         }
       } else if (token.type === 'blockquote') visit(token.text, token.tokens ?? Lexer.lex(token.text), line);
-      cursor = offset + token.raw.length;
-      line += lines(token.raw);
+      cursor = end;
+      line += lines(block);
     }
   };
   const source = raw.replace(/\r\n?/g, '\n');
