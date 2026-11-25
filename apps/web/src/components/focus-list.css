@@ -8,7 +8,7 @@
 .focus-list-rows > .note-group-toggle { width: calc(100% - 16px); }
 
 .focus-row { display: flex; align-items: flex-start; gap: 4px; min-width: 0; padding: 9px 10px 9px 6px; border-radius: var(--radius-panel); color: var(--color-text); cursor: pointer; transition: background-color 120ms ease; }
-.focus-row:hover, .focus-row[data-hovered] { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+@media (hover: hover) { .focus-row:hover, .focus-row[data-hovered] { background: color-mix(in srgb, var(--color-text) 6%, transparent); } }
 .focus-row[data-open] { background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
 .focus-row[data-selected] { background: color-mix(in srgb, var(--color-primary) 10%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 45%, transparent); }
 .focus-row[data-open][data-selected] { background: color-mix(in srgb, var(--color-primary) 18%, transparent); }

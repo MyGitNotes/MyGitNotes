@@ -29,6 +29,7 @@ export function PhoneBrowseList({ path, onRefresh, children }: { path?: ReactNod
   useEffect(() => {
     const element = scroll.current;
     if (!element || !enabled) return;
+    let disposed = false;
     let syncing = false;
     let pull: { x: number; y: number; pulling: boolean; distance: number; } | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -77,9 +78,11 @@ export function PhoneBrowseList({ path, onRefresh, children }: { path?: ReactNod
         });
       }
       syncing = true;
-      setPhase('syncing');
-      show(PULL_SYNC_PX);
-      void Promise.resolve().then(() => refresh.current?.()).catch(() => {}).finally(() => {
+      // A local refresh can finish before the list has even settled on the spinner.
+      const settled = new Promise<void>(resolve => settle('syncing', PULL_SYNC_PX, PULL_SETTLE_MS, resolve));
+      const refreshed = Promise.resolve().then(() => refresh.current?.()).catch(() => {});
+      void Promise.all([settled, refreshed]).then(() => {
+        if (disposed) return;
         syncing = false;
         settle('closing', 0, PULL_CLOSE_MS, () => {
           timer = undefined;
@@ -102,6 +105,7 @@ export function PhoneBrowseList({ path, onRefresh, children }: { path?: ReactNod
     element.addEventListener('touchend', onEnd);
     element.addEventListener('touchcancel', onCancel);
     return () => {
+      disposed = true;
       clearTimeout(timer);
       element.removeEventListener('touchstart', onStart);
       element.removeEventListener('touchmove', onMove);
@@ -110,7 +114,7 @@ export function PhoneBrowseList({ path, onRefresh, children }: { path?: ReactNod
     };
   }, [enabled]);
 
-  const label: PullLabel | null = phase === 'syncing' ? 'syncing' : phase === 'pulling' ? (armed ? 'release' : 'pull') : null;
+  const label: PullLabel | null = phase === 'syncing' || phase === 'closing' ? 'syncing' : phase === 'pulling' ? (armed ? 'release' : 'pull') : null;
   return (
     <div className='phone-browse-list'>
       {path && (

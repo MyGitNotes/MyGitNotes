@@ -81,12 +81,32 @@ describe("pulling a phone's list down from its top", () => {
     await settle(0);
     expect(onRefresh).toHaveBeenCalledTimes(1);
 
+    await settle(5000);
+    expect(scroll).toHaveAttribute('data-pull', 'syncing');
+    expect(screen.getByRole('status')).toHaveTextContent('Syncing…');
+    expect(screen.getByRole('status').querySelector('.pull-refresh-spin')).not.toBeNull();
     answer();
     await settle(0);
     expect(scroll).toHaveAttribute('data-pull', 'closing');
+    expect(screen.getByRole('status')).toHaveTextContent('Syncing…');
     await settle(PULL_CLOSE_MS);
     expect(scroll).not.toHaveAttribute('data-pull');
     expect(screen.getByRole('status')).toHaveTextContent('');
+  });
+
+  it('settles on the spinner even for a fast sync, then closes over it instead of a blank gap', async () => {
+    const scroll = list(async () => {});
+    pullBy(PULL_TRIGGER_PX);
+    fire('touchend');
+    await settle(PULL_SETTLE_MS - 1);
+    expect(scroll).toHaveAttribute('data-pull', 'syncing');
+    expect(screen.getByRole('status')).toHaveTextContent('Syncing…');
+    await settle(1);
+    expect(scroll).toHaveAttribute('data-pull', 'closing');
+    expect(screen.getByRole('status').querySelector('.pull-refresh-spin')).not.toBeNull();
+    await settle(PULL_CLOSE_MS);
+    expect(scroll).not.toHaveAttribute('data-pull');
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('returns without syncing when let go short of 64 px', async () => {
