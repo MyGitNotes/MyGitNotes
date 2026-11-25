@@ -22,7 +22,7 @@ export function NoteInlineFrame({ note, session, editorRef, onCaret, carry }: No
         <MarkdownEditor ref={editorRef} compact continuous content={session.content} path={note.path} notebookId={note.notebookId} mode='live' readOnly={session.locked} onChange={session.setContent} onCaret={onCaret} ariaLabel='Note content' showLineNumbers={false} carry={carry} slides={isSlideNote(session.metadata)} noteLang={noteLanguageTag(session.metadata)} />
       </div>
       <p role='status' className='note-inline-status' data-state={session.editorState}>
-        <span className={`note-compact-dot ${session.editorState === 'saving' ? 'animate-pulse' : ''}`} aria-hidden='true' />
+        <span className={`note-inline-dot ${session.editorState === 'saving' ? 'animate-pulse' : ''}`} aria-hidden='true' />
         {session.editorStatus}
       </p>
     </>

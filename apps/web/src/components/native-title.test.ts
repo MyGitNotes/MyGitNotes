@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 
 // These props supply the heading/content of a component or feed its T1 trigger, not a native DOM title.
-const contentProps = new Set(['BoardCanvas', 'BookFolder', 'DiffPreview', 'FilterPopover', 'FocusNameDialog', 'FolderActions', 'FolderPickerDialog', 'FoldButton', 'InlineNoteSlot', 'KanbanStrip', 'LiveBadge', 'LiveCollabEditor', 'LiveEditorFrame', 'NavTreeRow', 'NoteActionsMenu', 'NoteExportItems', 'NoteExportMenu', 'NoteSelectBox', 'NoteTitleEdit', 'PhoneBackBar', 'PhoneNoteSheet', 'PhoneSheet', 'RenameNoteDialog', 'RenameRow', 'SidebarLinkAnchor', 'SlideDeck', 'StatusGroup', 'WorkspaceDialog', 'YouTubeChapter']);
+const contentProps = new Set(['BoardCanvas', 'BookFolder', 'DiffPreview', 'FilterPopover', 'FocusNameDialog', 'FolderActions', 'FolderPickerDialog', 'FoldButton', 'InlineNoteSlot', 'KanbanStrip', 'LiveBadge', 'LiveCollabEditor', 'LiveEditorFrame', 'NavTreeRow', 'NoteActionsMenu', 'NoteExportItems', 'NoteSelectBox', 'NoteTitleEdit', 'PhoneBackBar', 'PhoneNoteSheet', 'PhoneSheet', 'RenameNoteDialog', 'RenameRow', 'SidebarLinkAnchor', 'SlideDeck', 'StatusGroup', 'WorkspaceDialog', 'YouTubeChapter']);
 
 function* files(directory: string): Generator<string> {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {

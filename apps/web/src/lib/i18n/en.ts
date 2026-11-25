@@ -1455,7 +1455,6 @@ export const en = {
   'editor.closeNote': 'Close note',
   'editor.zoomNote': 'Zoom note',
   'editor.returnToFocus': 'Return to Focus',
-  'editor.export': 'Export',
   'editor.exportCopy': 'Copy',
   'editor.exportMarkdown': 'Download (.md)',
   'editor.exportWithAssets': 'Download with images (.zip)',

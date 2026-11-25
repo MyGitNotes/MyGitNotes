@@ -49,7 +49,7 @@ beforeEach(() => {
 const provide = (...children: ReactNode[]) => createElement(NoteEditingProvider, { register: () => () => {}, flushEditors, refreshNotes: async () => {}, closeZoom: () => {}, addToFocus: () => undefined, editorProps: () => ({ statuses: [], onSave: async () => alpha, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main' }), children: createElement(Fragment, null, createElement(Probe), ...children) });
 /* eslint-enable react/no-children-prop */
 
-const twoHosts = () => provide(createElement('section', { 'data-testid': 'pane' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'pane', active: true })), createElement('section', { 'data-testid': 'card' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'compact', active: false })));
+const twoHosts = () => provide(createElement('section', { 'data-testid': 'pane' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'pane', active: true })), createElement('section', { 'data-testid': 'card' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'inline', active: false })));
 
 it('mounts one editor for a note shown in two hosts and lets the other host claim it', async () => {
   render(twoHosts());
@@ -63,7 +63,7 @@ it('mounts one editor for a note shown in two hosts and lets the other host clai
   });
   expect(flushEditors).toHaveBeenCalledWith(['a:notes/a.md']);
   expect(screen.getAllByTestId('editor')).toHaveLength(1);
-  expect(screen.getByTestId('card').querySelector('[data-testid="editor"]')).toHaveAttribute('data-frame', 'compact');
+  expect(screen.getByTestId('card').querySelector('[data-testid="editor"]')).toHaveAttribute('data-frame', 'inline');
   expect(screen.getByTestId('pane')).toHaveTextContent('This note is open for editing elsewhere.');
 });
 
@@ -103,11 +103,11 @@ it('shows every host as open in zoom while zoom runs its own editor', () => {
   expect(screen.getByTestId('card')).toHaveTextContent('This note is open in zoom.');
 });
 
-const claimingCard = () => provide(createElement('section', { 'data-testid': 'pane' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'pane', active: true })), createElement('section', { 'data-testid': 'card' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'compact', active: false, claim: true })));
+const claimingCard = () => provide(createElement('section', { 'data-testid': 'pane' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'pane', active: true })), createElement('section', { 'data-testid': 'card' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'inline', active: false, claim: true })));
 
 it('takes the editor from its owner when mounted to claim it, saving the owner first', async () => {
   render(claimingCard());
-  await waitFor(() => expect(screen.getByTestId('card').querySelector('[data-testid="editor"]')).toHaveAttribute('data-frame', 'compact'));
+  await waitFor(() => expect(screen.getByTestId('card').querySelector('[data-testid="editor"]')).toHaveAttribute('data-frame', 'inline'));
   expect(flushEditors).toHaveBeenCalledWith(['a:notes/a.md']);
   expect(screen.getAllByTestId('editor')).toHaveLength(1);
   expect(screen.getByTestId('pane')).toHaveTextContent('This note is open for editing elsewhere.');
@@ -115,7 +115,7 @@ it('takes the editor from its owner when mounted to claim it, saving the owner f
 });
 
 it('claims nothing when it is the first host of the note', async () => {
-  render(provide(createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'compact', active: false, claim: true })));
+  render(provide(createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'inline', active: false, claim: true })));
   await waitFor(() => expect(screen.getByTestId('editor')).toBeInTheDocument());
   expect(flushEditors).not.toHaveBeenCalled();
 });
@@ -129,7 +129,7 @@ it('falls back to the preview with its Edit here button when the claim fails', a
 });
 
 it('shows the preview with its Edit here button, not the loading status, once another host takes over a note it owned from the start', async () => {
-  render(provide(createElement('section', { 'data-testid': 'card' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'compact', active: false, claim: true })), createElement('section', { 'data-testid': 'pane' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'pane', active: true }))));
+  render(provide(createElement('section', { 'data-testid': 'card' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'inline', active: false, claim: true })), createElement('section', { 'data-testid': 'pane' }, createElement(HostedNoteEditor, { notebookId: 'a', path: 'notes/a.md', frame: 'pane', active: true }))));
   await waitFor(() => expect(screen.getByTestId('card').querySelector('[data-testid="editor"]')).toBeInTheDocument());
   expect(screen.getByTestId('pane')).toHaveTextContent('This note is open for editing elsewhere.');
   await act(async () => {
@@ -153,7 +153,7 @@ describe('a note the page followed to where it moved', () => {
   const MOVED = 'notes/archive/alpha.md';
   /** The page heard that the note lies elsewhere now (another person moved or renamed it), as an open editor hears it. */
   const follow = () => followMovedNote({ note: { notebookId: 'a', path: 'notes/a.md' }, to: MOVED, notebook: { id: 'a', root: 'notes' }, routedPath: null, search: '', relocatePaths: () => {}, navigate: () => {}, refresh: () => {} });
-  const host = (path: string, frame: 'pane' | 'compact' = 'pane') => createElement(HostedNoteEditor, { notebookId: 'a', path, frame, active: frame === 'pane' });
+  const host = (path: string, frame: 'pane' | 'inline' = 'pane') => createElement(HostedNoteEditor, { notebookId: 'a', path, frame, active: frame === 'pane' });
 
   it('keeps its editor and the focus in it, showing the note where it lies before the lists read it there', () => {
     const view = render(provide(host('notes/a.md')));
@@ -173,7 +173,7 @@ describe('a note the page followed to where it moved', () => {
   });
 
   it('keeps the editor in the host that had it when every host of the note follows it', async () => {
-    const both = (path: string) => provide(createElement('section', { 'data-testid': 'card' }, host(path, 'compact')), createElement('section', { 'data-testid': 'pane' }, host(path)));
+    const both = (path: string) => provide(createElement('section', { 'data-testid': 'card' }, host(path, 'inline')), createElement('section', { 'data-testid': 'pane' }, host(path)));
     const view = render(both('notes/a.md'));
     // The pane holds the editor, though the card came first.
     await act(async () => {

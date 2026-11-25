@@ -26,7 +26,7 @@ const view = async (container: HTMLElement) => {
 
 // Spec E4: a card or Book section that edits is opened in zoom on the same editing session, and closing zoom gives it back. The frames render
 // the editor in different trees, so each builds its own CodeMirror view; the caret and the undo history must still carry over.
-for (const [from, to] of [['inline', 'zoom'], ['zoom', 'inline'], ['compact', 'zoom']] as const) {
+for (const [from, to] of [['inline', 'zoom'], ['zoom', 'inline']] as const) {
   it(`keeps the caret and the undo history when the editor moves from the ${from} frame to the ${to} frame`, async () => {
     const { container, rerender } = render(editor(from));
     const first = await view(container);

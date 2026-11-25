@@ -121,7 +121,7 @@ it.each([{ name: 'clean' }, { name: 'read-only', isDirty: true, readOnly: true }
 
 it('leaves Ctrl+S to the browser outside an open zoom or Focus note', () => {
   expect(pressSave()).toBe(false);
-  render(editor({ frame: 'compact', isDirty: true }));
+  render(editor({ frame: 'inline', isDirty: true }));
   expect(pressSave(screen.getByLabelText('Note content'))).toBe(false);
 });
 

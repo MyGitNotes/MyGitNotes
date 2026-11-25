@@ -25,7 +25,7 @@ function sameNoteBody(a: NoteItem, b: NoteItem): boolean {
 export interface HostedNoteEditorProps {
   notebookId: string;
   path: string;
-  frame: 'pane' | 'compact' | 'inline';
+  frame: 'pane' | 'inline';
   active: boolean;
   documentPanel?: NoteEditorProps['documentPanel'];
   /** Where a pane's tab bar takes the editor's actions. */
@@ -38,7 +38,7 @@ export interface HostedNoteEditorProps {
 }
 
 /**
- * A place that shows a note's editor: a Focus pane, a graph card, or a compilation's card or Book section. A note has one mounted editor across
+ * A place that shows a note's editor: a Focus pane or a compilation's card or Book section. A note has one mounted editor across
  * these hosts and zoom. The owning host renders it into a stable element so zoom can borrow it without
  * remounting; while zoom shows the note the other hosts say so, and otherwise they show a preview with a
  * control that moves editing there. A host whose note the page followed to where it moved (another person moved or

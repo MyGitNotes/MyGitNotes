@@ -70,7 +70,7 @@ export const stillOpenText = (t: ReturnType<typeof useTranslation>['t'], count: 
  * Collab-first (docs/specs/2026-11-16-collab-first-self-host A1): where that editor is the built-in one, zoom and a Focus
  * pane (the phone's note screen is one) check the note out once per arrival and show the collab editor, with no 編輯;
  * unreachable, they open the direct editor on a browser draft instead. A framed editor keeps 0.19's way: 編輯 checks the
- * note out and frames the editor in zoom, and elsewhere opens zoom, which checks it out on arrival. A graph card or a
+ * note out and frames the editor in zoom, and elsewhere opens zoom, which checks it out on arrival. A
  * compilation's section keeps 編輯, which opens zoom. A pending note opens its editor at once. A note the editor refuses
  * (too large, or not a kind it takes) gets the direct editor. `refetch` reads the note again after the live text changed or
  * the note was checked in.

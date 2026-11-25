@@ -6,26 +6,9 @@ export interface GraphPlacement {
 }
 
 /** Separates overlapping rectangles, keyed by their centres; a collapsed node is a 32-unit dot. */
-export function arrangeGraphLayout(layout: GraphPlacement, { compact = false }: { compact?: boolean; } = {}): GraphPlacement {
+export function arrangeGraphLayout(layout: GraphPlacement): GraphPlacement {
   const nodes = layout.nodes.map(node => ({ ...node }));
   const dimensions = nodes.map(node => node.expanded ? [node.width || 360, node.height || 300] : [32, 32]);
-  if (compact && nodes.length) {
-    const center = nodes.reduce((sum, node) => ({ x: sum.x + node.x / nodes.length, y: sum.y + node.y / nodes.length }), { x: 0, y: 0 });
-    for (const node of nodes) {
-      if (!node.pinned) {
-        node.x = center.x + (node.x - center.x) * .88;
-        node.y = center.y + (node.y - center.y) * .88;
-      }
-    }
-    // Align only nearby card centers. Separate clusters keep their topology.
-    for (const axis of ['x', 'y'] as const) {
-      let anchor: number | undefined;
-      for (const node of nodes.filter(node => node.expanded).sort((a, b) => a[axis] - b[axis])) {
-        if (!node.pinned && anchor !== undefined && node[axis] - anchor <= 32) node[axis] = anchor;
-        else anchor = node[axis];
-      }
-    }
-  }
   // Resolve rectangles along their existing relative direction, rather than
   // stacking cards on one axis. Pinned positions are user-owned anchors.
   for (let pass = 0; pass < 120; pass++) {

@@ -36,10 +36,3 @@ it('leaves an already separated layout unchanged', () => {
   const layout = { nodes: [{ id: 'a.md', x: -500, y: 0, expanded: true }, { id: 'b.md', x: 500, y: 0 }] };
   expect(arrangeGraphLayout(layout)).toEqual(layout);
 });
-it('can compact spacing and align nearby card rows while preserving their left-right order', () => {
-  const layout = { nodes: [{ id: 'a.md', x: -500, y: 0, expanded: true }, { id: 'b.md', x: 500, y: 25, expanded: true }] };
-  const result = arrangeGraphLayout(layout, { compact: true });
-  expect(result.nodes[1].x - result.nodes[0].x).toBeLessThan(1000);
-  expect(result.nodes[1].x - result.nodes[0].x).toBeGreaterThan(380);
-  expect(result.nodes[0].y).toBe(result.nodes[1].y);
-});

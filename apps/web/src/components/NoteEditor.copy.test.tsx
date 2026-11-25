@@ -21,13 +21,13 @@ afterEach(() => {
 
 // Frontmatter lives in `metadata`, not `content`, so a correct copy carries only the body.
 const note = { id: 'a', path: 'notes/a/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: { title: 'Alpha', tags: ['x'] }, content: '# Alpha\n\nBody text.' };
-const editor = (props: Partial<NoteEditorProps>) => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'compact', active: false, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps));
+const editor = (props: Partial<NoteEditorProps>) => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'pane', active: false, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps));
 
 function stubClipboard(writeText: (text: string) => Promise<void>) {
   vi.stubGlobal('navigator', { ...globalThis.navigator, clipboard: { writeText: vi.fn(writeText) } });
 }
 
-async function copyFromExportMenu(menu = 'Export') {
+async function copyFromExportMenu(menu = 'More actions') {
   const trigger = screen.getByRole('button', { name: menu });
   trigger.focus();
   await act(async () => {
@@ -38,7 +38,7 @@ async function copyFromExportMenu(menu = 'Export') {
   });
 }
 
-it('copies the note body only from the Export menu, in compact mode, and reports success', async () => {
+it('copies the note body only from the Export menu, and reports success', async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   stubClipboard(writeText);
   render(editor({}));
@@ -48,22 +48,11 @@ it('copies the note body only from the Export menu, in compact mode, and reports
   expect(screen.getByRole('button', { name: 'Note copied' })).toBeInTheDocument();
 });
 
-it('reports failure when the clipboard write fails, in compact mode', async () => {
+it('reports failure when the clipboard write fails', async () => {
   stubClipboard(() => Promise.reject(new Error('denied')));
   document.execCommand = vi.fn().mockReturnValue(false);
   render(editor({}));
 
   await copyFromExportMenu();
   expect(screen.getByRole('button', { name: 'Copy failed' })).toBeInTheDocument();
-});
-
-it('copies the note body from the toolbar button outside compact mode', async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  stubClipboard(writeText);
-  render(editor({ frame: 'pane' }));
-
-  // A pane's export items sit in the "⋯" menu, with adding to an outline and moving.
-  await copyFromExportMenu('More actions');
-  expect(writeText).toHaveBeenCalledWith('# Alpha\n\nBody text.');
-  expect(screen.getByRole('button', { name: 'Note copied' })).toBeInTheDocument();
 });

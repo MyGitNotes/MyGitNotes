@@ -13,7 +13,7 @@ const NO_PLACES: readonly LineColumn[] = [];
  * live and source modes alike. `matches` are find's in `content`, passed while the find panel is open; `lineOffset` is how many lines
  * the editor holds before `content` (the collab editor's frontmatter).
  */
-export function useOverviewRail(frame: 'zoom' | 'pane' | 'compact' | 'inline', content: string, matches: readonly TextMatch[] | null, lineOffset = 0): OverviewRailOptions | undefined {
+export function useOverviewRail(frame: 'zoom' | 'pane' | 'inline', content: string, matches: readonly TextMatch[] | null, lineOffset = 0): OverviewRailOptions | undefined {
   const { overviewRail } = useNoteViewPreferences();
   const phone = usePhone();
   const shown = overviewRail && !phone && (frame === 'zoom' || frame === 'pane');

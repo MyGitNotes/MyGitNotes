@@ -1456,7 +1456,6 @@ export const zhTW: Record<TranslationKey, string> = {
   'editor.closeNote': '關閉筆記',
   'editor.zoomNote': '放大筆記',
   'editor.returnToFocus': '回到 Focus',
-  'editor.export': '匯出',
   'editor.exportCopy': '複製',
   'editor.exportMarkdown': '下載 (.md)',
   'editor.exportWithAssets': '連同圖片下載 (.zip)',

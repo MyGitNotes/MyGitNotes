@@ -49,7 +49,7 @@ export interface LiveNoteEditing {
   editor: LiveEditorAbilities;
   /** Reads the notes again: the live text changed, or the note was checked in. */
   onRefetch: () => void;
-  /** A Focus pane, a graph card or a compilation's section: opens the note in zoom, where its editor is framed. */
+  /** A Focus pane or a compilation's section: opens the note in zoom, where its editor is framed. */
   openZoom?: () => void;
   /** The note was checked in (`answer` when this page did it): the repository moved, and a pending note was filed at `answer.path`. */
   onCheckedIn?: (answer?: LiveCheckInAnswer) => void;

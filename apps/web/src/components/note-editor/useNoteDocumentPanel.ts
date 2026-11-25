@@ -11,7 +11,7 @@ import { vimOwnsEscape } from '../../lib/vim-mode.js';
 import { isPhoneViewport } from '../../lib/use-phone.js';
 
 export interface UseNoteDocumentPanelParams {
-  frame: 'zoom' | 'pane' | 'compact' | 'inline';
+  frame: 'zoom' | 'pane' | 'inline';
   active: boolean;
   isMarkdown: boolean;
   content: string;
@@ -156,7 +156,7 @@ export function useNoteDocumentPanel({ frame, active, isMarkdown, content, edito
   commitShortcut.current = onCommitShortcut;
   shortcutAction.current = event => {
     const slashKey = event.code === 'Slash' || event.key === '/';
-    // The leader (Mod+Shift+E in the table) opens the note commands in zoom and in a Focus pane, not in a graph card or an outline.
+    // The leader (Mod+Shift+E in the table) opens the note commands in zoom and in a Focus pane, not in an inline editor or an outline.
     if (matchesCommand(event, 'editor.leader')) {
       if (frame !== 'zoom' && frame !== 'pane') return false;
       setIsEditorLeaderOpen(open => !open);

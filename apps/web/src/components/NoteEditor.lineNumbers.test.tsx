@@ -28,9 +28,9 @@ afterEach(() => {
 });
 
 const note = { id: 'a', path: 'notes/a/a.md', notebookId: 'a', title: 'Alpha', tags: [], metadata: { title: 'Alpha' }, content: '# Alpha\n' };
-const editor = (props: Partial<NoteEditorProps>) => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'compact', active: false, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps));
+const editor = (props: Partial<NoteEditorProps>) => createElement(PanelProvider, null, createElement(NoteEditor, { note, frame: 'pane', active: false, statuses: [], onSave: async () => note, onRestoreFile: async () => null, branch: 'main', draftScope: 'src:main', ...props } as NoteEditorProps));
 
-for (const frame of ['compact', 'pane', 'zoom'] as const) {
+for (const frame of ['pane', 'zoom'] as const) {
   it(`starts with line numbers hidden, shows them on toggle, and keeps them shown across a mode switch (${frame})`, () => {
     render(editor({ frame }));
     const toggle = screen.getByRole('button', { name: 'Line Numbers' });
@@ -54,7 +54,7 @@ for (const frame of ['compact', 'pane', 'zoom'] as const) {
 
 it('starts shown when the workspace default is on and this device has not chosen yet', () => {
   setDefaultShowLineNumbers(true);
-  render(editor({ frame: 'compact' }));
+  render(editor({ frame: 'pane' }));
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-line-numbers', 'true');
   expect(screen.getByRole('button', { name: 'Line Numbers' })).toHaveAttribute('aria-pressed', 'true');
 });
@@ -62,16 +62,16 @@ it('starts shown when the workspace default is on and this device has not chosen
 it("keeps this device's own choice even when the workspace default disagrees", () => {
   localStorage.setItem(LINE_NUMBERS_STORAGE_KEY, 'false');
   setDefaultShowLineNumbers(true);
-  render(editor({ frame: 'compact' }));
+  render(editor({ frame: 'pane' }));
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-line-numbers', 'false');
 });
 
 it('persists a toggle across a remount', () => {
-  const { unmount } = render(editor({ frame: 'compact' }));
+  const { unmount } = render(editor({ frame: 'pane' }));
   fireEvent.click(screen.getByRole('button', { name: 'Line Numbers' }));
   unmount();
 
-  render(editor({ frame: 'compact' }));
+  render(editor({ frame: 'pane' }));
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-line-numbers', 'true');
   expect(localStorage.getItem(LINE_NUMBERS_STORAGE_KEY)).toBe('true');
 });

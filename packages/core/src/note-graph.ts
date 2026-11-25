@@ -7,7 +7,6 @@ export interface NoteGraphNode {
   /** `noteRefKey` of the note, since equal paths in two repositories are different notes. */
   id: string;
   path: string;
-  external?: boolean;
   title: string;
   notebookId: string;
   status?: string;

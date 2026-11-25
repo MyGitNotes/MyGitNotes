@@ -28,7 +28,7 @@ export function useNoteActions({ activeTab, editorRegistry, setEditingNote, conf
   // Note Handlers
   /** `mode` names the editor mode zoom opens in; without one the zoom keeps the mode the page's URL names. */
   const handleOpenNote = async (note: NoteListItem, anchor = '', { mode }: { mode?: EditorMode; } = {}) => {
-    // Zoom is a Notes route: leaving another tab unmounts its graph cards, so their edits are saved first.
+    // Zoom is a Notes route: leaving another tab unmounts its inline editors, so their edits are saved first.
     if (activeTab !== 'notes' && !await editorRegistry.flushEditors()) return false;
     setEditingNote(note);
 

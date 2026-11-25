@@ -14,7 +14,7 @@ export interface ZoomState {
 }
 
 /**
- * Places that can show a note's editor: Focus panes and graph cards. A note has one mounted editor,
+ * Places that can show a note's editor: Focus panes and inline compilation editors. A note has one mounted editor,
  * owned by the first registered host of its `noteRefKey`; the others show a preview until they claim it. A note the page
  * followed to where it moved (another person moved or renamed it, §20.4) keeps its owner there: until its hosts follow it,
  * the owner of the key it lay at owns it, and each host that follows keeps its place among them.

@@ -1,6 +1,5 @@
 import type { NotebookConfig, NoteItem } from './types.js';
 import { isNoteHidden } from './note-status.js';
-import type { NoteGraphData } from './note-graph.js';
 import { type LiveFilter, noteMatchesLive, noteSearchTerms, noteTextMatches } from './note-query.js';
 
 export interface NoteFilters {
@@ -43,23 +42,4 @@ export function filterNotes(notes: NoteItem[], filters: NoteFilters): NoteItem[]
 export function legacyFolderPaths(notebooks: NotebookConfig[], notebookId: string, folder: string | null): string[] {
   const notebook = notebooks.find(item => item.id === notebookId);
   return notebook && folder ? [notebook.root.replace(/\/$/, '') + '/' + folder] : [];
-}
-
-/** Expand from the original matches (node ids) once; external nodes never become new seeds. */
-export function selectFilteredGraph(graph: NoteGraphData, matchingIds: Set<string>, includeNeighbors: boolean): NoteGraphData {
-  const included = new Set(matchingIds);
-  if (includeNeighbors) {
-    for (const link of graph.links) {
-      if (matchingIds.has(link.source)) included.add(link.target);
-      if (matchingIds.has(link.target)) included.add(link.source);
-    }
-  }
-  const links = graph.links.filter(link => included.has(link.source) && included.has(link.target)).map(link => ({ ...link }));
-  const inbound = new Map<string, number>();
-  const outbound = new Map<string, number>();
-  for (const link of links) {
-    inbound.set(link.target, (inbound.get(link.target) || 0) + 1);
-    outbound.set(link.source, (outbound.get(link.source) || 0) + 1);
-  }
-  return { links, nodes: graph.nodes.filter(node => included.has(node.id)).map(node => ({ ...node, external: !matchingIds.has(node.id), inDegree: inbound.get(node.id) || 0, outDegree: outbound.get(node.id) || 0 })) };
 }

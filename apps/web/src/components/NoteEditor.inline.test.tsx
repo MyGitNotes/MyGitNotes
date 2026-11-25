@@ -26,7 +26,7 @@ it("shows the note as it reads with one line of save state, and none of the full
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-continuous', 'true');
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-mode', 'live');
   expect(screen.getByLabelText('Note content')).toHaveAttribute('data-line-numbers', 'false');
-  for (const chrome of ['.note-toolbar', '.note-footer', '.note-compact-bar', '.note-compact-path', '[data-mode-toggle]', '.note-document-panel', '.note-format-toolbar', 'button']) expect(container.querySelector(chrome)).toBeNull();
+  for (const chrome of ['.note-toolbar', '.note-footer', '[data-mode-toggle]', '.note-document-panel', '.note-format-toolbar', 'button']) expect(container.querySelector(chrome)).toBeNull();
   const status = container.querySelector('.note-inline-status');
   expect(status).toHaveAttribute('data-state', 'saved');
   expect(status).toHaveTextContent('Clean (Saved to disk)');

@@ -545,7 +545,7 @@ function useShownEditorKey(tabs: readonly string[], shown: string | undefined): 
   return next.key;
 }
 
-/** A note tab's editor: the pane is one host of the note, sharing its single editor with zoom and graph cards. */
+/** A note tab's editor: the pane is one host of the note, sharing its single editor with zoom and inline compilation editors. */
 /** A compilation has no editor to name itself to the agent panel, so its pane names the file, without a caret. */
 function CompilationAgentTarget({ notebookId, path, active }: { notebookId: string; path: string; active: boolean; }) {
   const target = useMemo(() => ({ notebookId, path }), [notebookId, path]);

@@ -225,7 +225,6 @@ tr:hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled
 /* A host lending its editor to zoom keeps an empty slot; the placeholder beside it takes the space. */
 .note-editor-slot:empty { display: none; }
 .note-editor-placeholder { display: flex; flex: 1; align-items: center; justify-content: center; padding: 24px; color: var(--color-muted); font-size: 13px; text-align: center; }
-/* Compact frame: the body with a status bar, inside a graph card. */
 .note-quick-action { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid var(--color-line-strong); border-radius: var(--radius-control); color: var(--color-text); background: var(--color-surface); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .note-quick-action > svg { width: 15px; height: 15px; }
 /* The footer is a status bar about 28px high; its quick actions shrink to fit it. */
@@ -238,13 +237,8 @@ tr:hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled
 .note-quick-action:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .note-quick-action[data-action='commit'][data-armed] { border-color: var(--color-primary); color: var(--color-on-primary); background: var(--color-primary); }
 .note-quick-action[data-action='restore'][data-armed] { border-color: var(--color-danger); color: var(--color-on-danger); background: var(--color-danger); }
-.note-compact-bar { display: flex; flex: none; align-items: center; gap: 8px; padding: 3px 20px 3px 6px; border-top: 1px solid var(--color-line); font-size: 11px; color: var(--color-muted); }
-.note-compact-bar .ui-icon-button { flex: none; width: 24px; height: 24px; min-height: 0; }
-.note-compact-bar .ui-icon-button[aria-pressed='true'] { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
-.note-compact-path { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.note-compact-status { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
-.note-compact-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); }
-.note-compact-status[data-state='pending'] .note-compact-dot, .note-compact-status[data-state='saving'] .note-compact-dot, .note-inline-status[data-state='pending'] .note-compact-dot, .note-inline-status[data-state='saving'] .note-compact-dot { background: var(--color-warning); }
+.note-inline-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--color-success); }
+.note-inline-status[data-state='pending'] .note-inline-dot, .note-inline-status[data-state='saving'] .note-inline-dot { background: var(--color-warning); }
 /* A card's or Book section's editor: one quiet line of save state under the note. */
 /* The phone rule that clears room under a full editor for its floating toolbar leaves an empty band here, where the editor has no toolbar. */
 .note-editor[data-frame='inline'] .note-editor-body { padding-bottom: 0; }
@@ -263,11 +257,7 @@ tr:hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled
 .note-split-sync[aria-pressed='true'] { color: var(--color-primary); border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-line-strong)); }
 .note-split-sync > svg { width: 15px; height: 15px; }
 .note-split-preview { flex: 1 1 0; min-width: 0; min-height: 0; overflow: auto; padding: 16px 28px 32px; background: var(--color-surface); }
-@container focus-pane (max-width: 599px) {
-  .note-editor[data-frame='pane'] .note-split-view { flex-direction: column; }
-  .note-editor[data-frame='pane'] .note-split-divider { width: auto; height: 1px; }
-  .note-editor[data-frame='pane'] .note-split-preview { padding-inline: 16px; }
-}
+@container focus-pane (max-width: 599px) { .note-editor[data-frame='pane'] .note-split-view { flex-direction: column; } .note-editor[data-frame='pane'] .note-split-divider { width: auto; height: 1px; } .note-editor[data-frame='pane'] .note-split-preview { padding-inline: 16px; } }
 /* The editor's mode: three icon buttons, the one in use pressed. */
 .note-mode-group { display: flex; align-items: center; gap: 1px; padding: 2px; border-radius: var(--radius-control); background: color-mix(in srgb, var(--color-line) 70%, transparent); }
 .note-mode-group > .toolbar-icon-button { width: 30px; height: 28px; }
@@ -553,7 +543,6 @@ tr:hover .status-cell:not(:disabled) .select-chevron, .status-cell:not(:disabled
 @media (max-width: 359px) { .note-controls { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; scrollbar-width: none; } }
 /* A short phone viewport (a landscape phone, or the keyboard open) stacks recovery notice, toolbar and tabs; tighter padding keeps at least 100px for the editor while the 44px targets stay. */
 @media (max-width: 767px) and (max-height: 480px) { .editor-notice { gap: 6px; padding: 6px 12px; } .note-toolbar { gap: 2px; padding: 4px 12px; } .note-save { top: 4px; } }
-
 
 @media (max-width: 767px) { .note-find-field { height: 44px; } .note-find-field input { font-size: 16px; } .note-find-navigation .ui-icon-button { width: 44px; } .note-metadata { padding: 12px; gap: 12px; } .note-panel-assets { padding: 10px; } }
 

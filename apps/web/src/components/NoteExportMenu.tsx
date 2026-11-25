@@ -1,25 +1,18 @@
-import { Tooltip } from './Tooltip.js';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { r2ReferenceKeys } from '@mygitnotes/core/r2-references';
-import { AlertTriangle, Check, Copy, Download, FileArchive, FileText, Printer } from 'lucide-react';
+import { Copy, FileArchive, FileText, Printer } from 'lucide-react';
 import { useTranslation } from '../lib/i18n/index.js';
 import { noteArchive } from '../lib/note-archive.js';
 import { downloadBlob, downloadTextFile, printNoteAsPdf } from '../lib/note-export.js';
 
-interface Props {
+interface ExportNote {
   path: string;
   notebookId?: string;
   noteLang?: string;
   title: string;
   content: string;
-  copyState: 'idle' | 'copied' | 'error';
   onCopy: () => void;
-  /** Icon size in pixels for the compact frame's bar; the toolbar sizes its icons with CSS. */
-  iconSize?: number;
-  className: string;
 }
-
-type ExportNote = Pick<Props, 'path' | 'notebookId' | 'noteLang' | 'title' | 'content' | 'onCopy'>;
 
 /** Saves the note and the private R2 objects it references as one ZIP; an object that cannot be fetched is listed inside it. */
 async function downloadWithAssets(path: string, content: string): Promise<void> {
@@ -55,26 +48,5 @@ export function NoteExportItems({ path, notebookId, noteLang, title, content, on
         <span>{t('editor.exportPdf')}</span>
       </DropdownMenu.Item>
     </>
-  );
-}
-
-/** The note editor's Export button: a menu of ways to take the note's content out of the editor. */
-export function NoteExportMenu({ path, notebookId, noteLang, title, content, copyState, onCopy, iconSize, className }: Props) {
-  const { t } = useTranslation();
-  const label = t(copyState === 'copied' ? 'editor.noteCopied' : copyState === 'error' ? 'editor.noteCopyFailed' : 'editor.export');
-  const Icon = copyState === 'copied' ? Check : copyState === 'error' ? AlertTriangle : Download;
-  return (
-    <DropdownMenu.Root>
-      <Tooltip label={label}>
-        <DropdownMenu.Trigger className={className} aria-label={label}>
-          <Icon size={iconSize} aria-hidden='true' />
-        </DropdownMenu.Trigger>
-      </Tooltip>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content className='focus-menu' align='end' sideOffset={4} collisionPadding={8} aria-label={t('editor.export')} onEscapeKeyDown={event => event.stopPropagation()}>
-          <NoteExportItems path={path} notebookId={notebookId} noteLang={noteLang} title={title} content={content} onCopy={onCopy} />
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
   );
 }

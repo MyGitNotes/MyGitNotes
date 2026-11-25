@@ -134,16 +134,14 @@ describe('a writer’s note of a repository with the built-in editor', () => {
     expect(calls('/api/live/checkout')).toHaveLength(1);
   });
 
-  it('keeps 編輯 in a graph card and a compilation section, where it opens zoom', async () => {
-    for (const frame of ['compact', 'inline'] as const) {
-      const openZoom = vi.fn();
-      await mount({ frame, onClose: undefined, live: live({ openZoom }) });
-      expect(calls('/api/live/checkout')).toHaveLength(0);
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-      expect(openZoom).toHaveBeenCalledTimes(1);
-      cleanup();
-      takeLiveEditRequest(noteRefKey(note));
-    }
+  it('keeps 編輯 in a compilation section, where it opens zoom', async () => {
+    const openZoom = vi.fn();
+    await mount({ frame: 'inline', onClose: undefined, live: live({ openZoom }) });
+    expect(calls('/api/live/checkout')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(openZoom).toHaveBeenCalledTimes(1);
+    cleanup();
+    takeLiveEditRequest(noteRefKey(note));
   });
 
   it('says 已簽回 and offers Edit, without checking out again, in an editor mounted just after this page checked it in', async () => {

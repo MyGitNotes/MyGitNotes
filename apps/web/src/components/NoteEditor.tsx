@@ -1,6 +1,5 @@
 import { Tooltip } from './Tooltip.js';
 import { EditorFooter } from './EditorFooter.js';
-import { ListTree } from 'lucide-react';
 import { useOutlineActions, useOutlineInsertion } from '../lib/outline-actions.js';
 import { useTranslation } from '../lib/i18n/index.js';
 import { NoteQuickActions } from './note-editor/NoteQuickActions.js';
@@ -17,7 +16,6 @@ import { usePhone } from '../lib/use-phone.js';
 import { useDoubleTap } from '../lib/double-tap.js';
 import { type NoteEditorSessionState, useNoteEditorSession } from './note-editor/useNoteEditorSession.js';
 import { useNoteDocumentPanel } from './note-editor/useNoteDocumentPanel.js';
-import { NoteCompactFrame } from './note-editor/NoteCompactFrame.js';
 import { NoteInlineFrame } from './note-editor/NoteInlineFrame.js';
 import { NoteEditorToolbar } from './note-editor/NoteEditorToolbar.js';
 import { NoteEditorDocumentPanel } from './note-editor/NoteEditorDocumentPanel.js';
@@ -58,10 +56,10 @@ export interface NoteEditorProps extends NoteEditorSharedProps {
   note: NoteItem;
   /**
    * `zoom` fills the full-screen dialog and keeps its own document panel; `pane` sits in a Focus pane;
-   * `compact` is the body alone with a status bar, for a graph card; `inline` is the note as it reads with one line of
+   * `inline` is the note as it reads with one line of
    * save state, for a compilation's card or Book section.
    */
-  frame: 'zoom' | 'pane' | 'compact' | 'inline';
+  frame: 'zoom' | 'pane' | 'inline';
   /** The active editor answers document-level shortcuts and Escape. */
   active: boolean;
   /** Pane frame: the right rail chooses the document panel section and hosts it. */
@@ -224,9 +222,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const outlines = useOutlineActions();
   const awaitingRecovery = useOutlineInsertion(note, session, editorRef);
   const addToOutline = !template && outlines?.canAdd(note.notebookId) && !session.locked ? () => outlines.add({ ...note, title: session.title, content: session.content }) : undefined;
-  // A graph card has no footer to show the counts in.
+  // An inline note has no footer to show the counts in.
   const { t } = useTranslation();
-  const changes = useNoteDiffStats(frame === 'compact' || frame === 'inline' ? undefined : readDiff, session.isDirty, !session.isSaving && !session.hasUnsavedChanges);
+  const changes = useNoteDiffStats(frame === 'inline' ? undefined : readDiff, session.isDirty, !session.isSaving && !session.hasUnsavedChanges);
   const refresh = onReadRemote && !session.blocked ? session.pullLatest : undefined;
   // The panel's find and outline speak in body positions and lines; the collab editor holds the whole file, frontmatter included.
   const liveOffsets = useRef({ on: false, bodyStart: 0, lines: 0 });
@@ -395,7 +393,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
   const barOverlay = phone && !hasEditorNotices(session) && !formatToolbarShown && !liveEdit.checkout && !liveEdit.hasNotices;
   const barHidden = usePhoneBarHidden(rootElement, barOverlay);
 
-  // A compilation's section and a graph card show the note as it reads; their 編輯 opens zoom.
+  // An inline compilation editor opens zoom for live editing.
   const liveEditButton = liveEdit.edit && (
     <div className='note-live-edit'>
       <Tooltip label={t('live.editor')}>
@@ -418,28 +416,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(({ note,
           </p>
         )}
         <NoteInlineFrame note={note} session={session} editorRef={editorRef} onCaret={onCaret} carry={carry} />
-      </div>
-    );
-  }
-
-  if (frame === 'compact') {
-    return (
-      <div className='note-editor' data-frame={frame} data-source-notebook={note.notebookId}>
-        <NoteEditorNotices session={session} notePath={note.path} />
-        {liveEditButton}
-        {addToOutline && (
-          <Tooltip label={t('outline.add')}>
-            <button type='button' className='ui-icon-button' aria-label={t('outline.add')} onClick={addToOutline}>
-              <ListTree aria-hidden='true' />
-            </button>
-          </Tooltip>
-        )}
-        {awaitingRecovery && (
-          <p role='status'>
-            {t('outline.recoveryPending')} <button type='button' className='ui-button' onClick={() => outlines?.cancel()}>{t('common.cancel')}</button>
-          </p>
-        )}
-        <NoteCompactFrame note={note} session={session} editorRef={editorRef} isMarkdown={isMarkdown} editorMode={editorMode} setEditorMode={setEditorMode} showLineNumbers={lineNumbersShown} toggleLineNumbers={toggleLineNumbers} onCaret={onCaret} carry={carry} />
       </div>
     );
   }

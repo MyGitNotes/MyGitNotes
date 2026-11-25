@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterNotes, type NoteFilters, selectFilteredGraph } from '../src/note-filters.js';
-import { buildNoteGraph } from '../src/note-graph.js';
+import { filterNotes, type NoteFilters } from '../src/note-filters.js';
 import type { NoteItem } from '../src/types.js';
 
 const base: NoteFilters = { notebookId: 'a', folders: [], descendants: true, tags: [], tagMode: 'any', q: '', status: null, showHidden: false };
@@ -22,21 +21,5 @@ describe('shared note filters', () => {
     expect(paths({ q: 'nested' })).toEqual([notes[1].path]);
     expect(paths({ q: 'archived' })).toEqual([notes[6].path]);
     expect(paths({ showHidden: true, q: 'archived' })).toEqual([notes[5].path, notes[6].path]);
-  });
-  it('keeps hidden eligibility separate from the graph expansion and expands only one hop', () => {
-    const eligible = filterNotes(notes, { ...base, notebookId: 'all' });
-    const graph = buildNoteGraph(eligible, { includeHidden: true });
-    const key = (item: NoteItem) => `${item.notebookId}:${item.path}`;
-    const matches = new Set([key(notes[1])]);
-    expect(selectFilteredGraph(graph, matches, false).nodes.map(n => n.id)).toEqual([key(notes[1])]);
-    const expanded = selectFilteredGraph(graph, matches, true);
-    expect(expanded.nodes.map(n => n.id)).toEqual(notes.slice(0, 3).map(key));
-    expect(expanded.nodes.map(n => n.external)).toEqual([true, false, true]);
-    expect(expanded.links).toHaveLength(2);
-    expect(expanded.links[0]).not.toBe(graph.links[0]);
-    expanded.links[0].source = 'mutated-by-renderer';
-    expect(selectFilteredGraph(graph, matches, true).links[0].source).toBe(key(notes[0]));
-    expect(selectFilteredGraph(graph, new Set(), true).nodes).toEqual([]);
-    expect(graph.nodes.every(n => n.external === undefined)).toBe(true);
   });
 });

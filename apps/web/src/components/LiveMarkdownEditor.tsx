@@ -78,7 +78,7 @@ export interface LiveMarkdownHandle {
 }
 /**
  * An editor's text, selection and undo history as it was when its view went away. A note's editor moves between frames (a card or a Book
- * section, zoom, a graph card) that render different trees, so each frame builds its own view; the one that leaves hands this to the next
+ * section, a pane, zoom) that render different trees, so each frame builds its own view; the one that leaves hands this to the next
  * so the caret and the history carry over.
  */
 export interface LiveEditorCarry {
