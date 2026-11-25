@@ -4,6 +4,9 @@
    way (the board's sort and dragging still do both). */
 @container (max-width: 239px) { .kanban-column-sort, .kanban-card-step { display: none; } }
 
+/* Give the heading the full first line without shrinking the actions' touch targets. */
+@container (max-width: 239px) { .kanban-column-header { display: grid; grid-template-columns: minmax(0, 1fr); } .kanban-column-header > :last-child { justify-self: end; } .kanban-column-count { padding: 0; background: none; font-size: 11px; font-weight: 400; } }
+
 /* A folded column: dot, name down the strip, count. It stays a drop target. */
 .kanban-strip { flex: none; width: 30px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); transition: border-color 120ms ease, background-color 120ms ease; }
 .kanban-strip[data-over] { border-color: var(--color-primary); background: var(--color-primary-light); box-shadow: 0 0 0 2px var(--color-primary); }
@@ -13,7 +16,22 @@
 .kanban-strip-title { max-height: 240px; overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; writing-mode: vertical-rl; }
 .kanban-strip-count { color: var(--color-muted); font-size: 11px; }
 
-/* The card density switch in the board's toolbar. */
+/* The board reuses the list header (the notebook bar on a phone). Size controls for the column, not the window. */
+.browse-column-list:has([data-board-toolbar]) { container-type: inline-size; }
+.browse-list-header[data-board-toolbar] { flex: none; padding: 8px 12px; border-bottom: 1px solid var(--workspace-divider); }
+.board-toolbar-tools { display: flex; flex: none; align-items: center; gap: 6px; }
+.board-toolbar-tools .list-filter-popover { right: 0; left: auto; gap: 8px; padding: 12px; }
+.board-toolbar-tools .list-filter-popover summary { padding: 4px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.board-display-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.board-display-field .select-trigger { min-width: 0; }
+.board-display-field > span { flex: none; }
+@container (max-width: 400px) { .browse-list-header[data-board-toolbar] { position: relative; } [data-board-toolbar] .board-toolbar-tools .list-filter-anchor { position: static; } [data-board-toolbar] .board-toolbar-tools .list-filter-popover { top: 100%; left: 0; right: auto; } [data-board-toolbar] .browse-list-count { display: none; } }
+/* At the divider's narrowest stop the view switch needs only its destination (List). */
+@container (max-width: 210px) { [data-board-toolbar] .browse-view-switch button[aria-pressed='true'] { display: none; } [data-board-toolbar] .browse-view-switch button { width: 22px; } .browse-list-header[data-board-toolbar] .list-filter-button { min-width: 24px; padding-inline: 2px; } }
+@container (max-width: 620px) { .browse-list-header[data-board-toolbar] { gap: 4px; padding-inline: 6px; } .board-toolbar-tools { gap: 2px; } .board-toolbar-tools .board-button-label, .board-toolbar-tools .list-filter-button > .lucide-chevron-down { display: none; } .board-toolbar-tools .list-filter-button { justify-content: center; min-width: 30px; padding: 0 6px; } }
+@media (max-width: 767px) { .phone-list-bar .board-button-label, .phone-list-bar .board-toolbar-tools .lucide-chevron-down { display: none; } .phone-list-bar .board-toolbar-tools .list-filter-button { justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--radius-control); } .phone-list-bar .board-toolbar-tools .list-filter-button > svg { width: 18px; height: 18px; } }
+
+/* The card density switch in the board's display menu. */
 .kanban-density { display: inline-flex; flex: none; gap: 2px; padding: 2px; border: 1px solid var(--color-line); border-radius: var(--radius-control); background: var(--color-bg); }
 .kanban-density button { height: 24px; padding: 0 8px; border-radius: 5px; color: var(--color-muted); font-size: 12px; }
 .kanban-density button:hover { color: var(--color-text); }

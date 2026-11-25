@@ -162,7 +162,8 @@ describe('tag and status edits', () => {
     expect(YAML.parse(next)).not.toHaveProperty('tags');
     expect(YAML.parse(next)).not.toHaveProperty('status');
     expect(applyCompilationMetadata(custom, { tags: ['reading'], status: 'working' })).toBe(custom);
-    expect(applyCompilationMetadata('not: [valid', { tags: ['x'] })).toBe('not: [valid');
+    expect(applyCompilationMetadata('not: [valid', { tags: [] })).toBe('not: [valid');
+    expect(() => applyCompilationMetadata('not: [valid', { tags: ['x'] })).toThrow('Tags and status not written: the compilation cannot be read');
   });
   it('keeps the legacy stack token when only tags or status change, so a tag edit is not a rewrite of the arrangement', () => {
     const next = applyCompilationMetadata(legacyStack, { tags: ['new'], status: 'done' });
@@ -281,14 +282,16 @@ describe('replaceFileTags', () => {
   it('removes the key when the tags become empty', () => {
     expect(YAML.parse(replaceFileTags(custom, 'notes/one/reading.compilation.yml', [])).tags).toBeUndefined();
   });
-  it('touches nothing but the tags, a status or field that does not validate included', () => {
-    const odd = 'version: 1\nid: odd\ntitle: Odd\nstatus: 3\nunknown: {a: 1}\nsource:\n  kind: tag\n  tag: x\ntags: [old]\n';
+  it('touches nothing but the tags, and refuses a file that would not open', () => {
+    const odd = 'version: 1\nid: odd\ntitle: Odd\narrangement: lane\nstatus: x\nunknown: {a: 1}\nsource:\n  kind: tag\n  tag: x\ntags: [old]\n';
     const next = replaceFileTags(odd, 'notes/one/odd.compilation.yml', ['new']);
-    expect(YAML.parse(next)).toMatchObject({ status: 3, unknown: { a: 1 }, tags: ['new'] });
+    expect(YAML.parse(next)).toMatchObject({ status: 'x', unknown: { a: 1 }, tags: ['new'] });
+    expect(() => replaceFileTags(odd.replace('status: x', 'status: 3'), 'notes/one/odd.compilation.yml', ['new'])).toThrow('notes/one/odd.compilation.yml: Tags not written: the compilation would not open (status: Expected string, received number)');
   });
-  it('returns the text itself when the tags already match or it is not a mapping', () => {
+  it('returns the text itself when the tags already match, and refuses tags for one that is not a mapping', () => {
     expect(replaceFileTags(custom, 'notes/one/reading.compilation.yml', ['reading'])).toBe(custom);
-    expect(replaceFileTags('- just\n- a list\n', 'notes/one/x.compilation.yml', ['a'])).toBe('- just\n- a list\n');
+    expect(replaceFileTags('- just\n- a list\n', 'notes/one/x.compilation.yml', [])).toBe('- just\n- a list\n');
+    expect(() => replaceFileTags('- just\n- a list\n', 'notes/one/x.compilation.yml', ['a'])).toThrow('notes/one/x.compilation.yml: Tags not written: the compilation cannot be read');
   });
   it('patches the frontmatter of a note', () => {
     expect(replaceFileTags('---\ntags: [a]\n---\nBody\n', 'notes/one/a.md', ['b'])).toBe('---\ntags: [b]\n---\nBody\n');

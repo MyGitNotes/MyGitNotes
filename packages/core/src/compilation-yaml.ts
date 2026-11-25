@@ -96,6 +96,101 @@ export function takeCompilationExtensions(document: Document, knownKeys: Readonl
   return { ...context, entries: extensions };
 }
 
+/**
+ * Whether two parsed YAML values are the same: mappings by their keys in any order, lists, `Map`s and `Set`s in order,
+ * dates by their time. A value an alias makes cyclic compares as far as it differs, without running on forever.
+ */
+export function sameYamlValue(a: unknown, b: unknown, seen = new Map<object, Set<object>>()): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
+  if (a instanceof Date) return a.getTime() === (b as Date).getTime();
+  // A pair already being compared is taken as equal here; the comparison in progress decides it.
+  const pairs = seen.get(a) ?? new Set<object>();
+  if (pairs.has(b)) return true;
+  seen.set(a, pairs.add(b));
+  if (a instanceof Map || a instanceof Set || Array.isArray(a)) {
+    const left = [...a as Iterable<unknown>], right = [...b as Iterable<unknown>];
+    return left.length === right.length && left.every((entry, index) => sameYamlValue(entry, right[index], seen));
+  }
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && sameYamlValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key], seen));
+}
+
+const lineStart = (raw: string, at: number) => raw.lastIndexOf('\n', at - 1) + 1;
+/** The end of the line `at` is on, after its line break; `at` itself when it already starts a line. */
+const lineEnd = (raw: string, at: number) => {
+  if (at > 0 && raw[at - 1] === '\n') return at;
+  const next = raw.indexOf('\n', at);
+  return next < 0 ? raw.length : next + 1;
+};
+
+/** Where a block mapping entry's plain key starts its line and where its `:` ends, or undefined for any other key. */
+function plainKey(raw: string, pair: Pair) {
+  const key = pair.key;
+  if (!YAML.isScalar(key) || key.type !== 'PLAIN' || key.anchor || key.tag || !key.range) return;
+  const start = lineStart(raw, key.range[0]);
+  const colon = /^[ \t]*:/.exec(raw.slice(key.range[1], key.range[1] + 64));
+  if (raw.slice(start, key.range[0]).trim() || !colon) return;
+  return { start, column: key.range[0] - start, colon: key.range[1] + colon[0].length };
+}
+
+/** The source of a node written on its own, in the YAML version of `document`, one line per scalar. */
+function nodeSource(document: Document, node: YAML.Node, flowPadding = true): string {
+  YAML.visit(node, {
+    Scalar(_key, scalar) {
+      if (typeof scalar.value === 'string' && /[\n\r]/.test(scalar.value)) scalar.type = 'QUOTE_DOUBLE';
+    },
+  });
+  const out = new YAML.Document(null, { version: document.directives?.yaml.version });
+  out.contents = node;
+  return out.toString({ lineWidth: 0, doubleQuotedMinMultiLineLength: Number.MAX_SAFE_INTEGER, flowCollectionPadding: flowPadding }).replace(/\n$/, '');
+}
+
+/**
+ * Sets (or, with `value` undefined, removes) one top-level field of a block mapping by replacing only that field's
+ * source: every other byte, comment and line ending stays. A list keeps its flow or block style, a scalar its quotes,
+ * while an explicit tag, an anchor and comments inside the old value go with it. A new field is written after the
+ * last of the `after` fields the text holds. Undefined when the text is not shaped for that: no block mapping, or a
+ * key that is not a plain scalar starting its line.
+ */
+export function spliceTopLevelField(raw: string, key: string, value: string | readonly string[] | undefined, after: readonly string[]): string | undefined {
+  const document = YAML.parseDocument(raw);
+  const map = document.contents;
+  if (document.errors.length || !YAML.isMap(map) || map.flow || !map.items.length) return;
+  const eol = raw.includes('\r\n') ? '\r\n' : '\n';
+  const named = (name: string) => (pair: Pair) => YAML.isScalar(pair.key) && pair.key.value === name;
+  const pair = map.items.find(named(key));
+  const old = pair && YAML.isNode(pair.value) ? pair.value : undefined;
+  const block = (column: number) => nodeSource(document, document.createNode([...value as readonly string[]])).split('\n').map(line => ' '.repeat(column) + line).join(eol);
+  if (pair) {
+    const at = plainKey(raw, pair);
+    if (!at) return;
+    if (value === undefined) return raw.slice(0, at.start) + raw.slice(lineEnd(raw, old?.range?.[2] ?? at.colon));
+    const end = old?.range ? old.range[1] : at.colon;
+    if (end < at.colon) return;
+    let source: string;
+    if (typeof value === 'string') {
+      const scalar = document.createNode(value) as YAML.Scalar;
+      if (YAML.isScalar(old) && (old.type === 'QUOTE_DOUBLE' || old.type === 'QUOTE_SINGLE')) scalar.type = old.type;
+      source = ` ${nodeSource(document, scalar)}`;
+    } else if (YAML.isSeq(old) && old.flow) {
+      const seq = document.createNode([...value], { flow: true });
+      source = ` ${nodeSource(document, seq, raw[old.range![0] + 1] === ' ')}`;
+    } else {
+      const column = YAML.isSeq(old) ? old.range![0] - lineStart(raw, old.range![0]) : at.column + 2;
+      source = eol + block(column) + (raw.slice(at.colon, end).endsWith('\n') ? eol : '');
+    }
+    return raw.slice(0, at.colon) + source + raw.slice(end);
+  }
+  if (value === undefined) return raw;
+  const previous = map.items.filter(item => after.some(name => named(name)(item))).at(-1);
+  const anchor = plainKey(raw, previous ?? map.items[0]);
+  if (!anchor) return;
+  const at = previous ? lineEnd(raw, YAML.isNode(previous.value) && previous.value.range ? previous.value.range[2] : anchor.colon) : anchor.start;
+  const source = typeof value === 'string' ? ` ${nodeSource(document, document.createNode(value))}` : eol + block(anchor.column + 2);
+  return raw.slice(0, at) + (at && raw[at - 1] !== '\n' ? eol : '') + ' '.repeat(anchor.column) + key + ':' + source + eol + raw.slice(at);
+}
+
 /** Writes the known fields first, then the external fields in source order. */
 export function stringifyCompilationYaml(document: Document, extensions?: CompilationYamlExtensions): string {
   if (extensions && YAML.isMap(document.contents)) document.contents.items.push(...extensions.entries);

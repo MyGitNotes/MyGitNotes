@@ -23,7 +23,7 @@ export * from './file-kind.js';
 export * from './notebook-exclude.js';
 export * from './path-guard.js';
 export * from './note-service.js';
-export { isNoteFile, keptNoteMetadata, replaceFileTags } from './note-file.js';
+export { isNoteFile, keptNoteMetadata, replaceFileTags, type SkippedFile, skipRefusedCompilation } from './note-file.js';
 export * from './templates.js';
 export * from './source-config.js';
 export { GITHUB_COM, type GitHubSite, githubSite, normalizeGitHubUrl } from './github-site.js';

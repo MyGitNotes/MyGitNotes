@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { invertTagOperationPlan, planTagDelete, planTagMerge, planTagRename } from '@mygitnotes/core/tag-ops';
 import { type TagOperationKind, type TagOperationLabel, useTagOperations } from '../lib/use-tag-operations.js';
-import { applyTagEntries, PartialTagChangeError } from '../lib/tag-changes.js';
+import { applyTagEntries, PartialTagChangeError, skippedTagNotice, wasSkipped } from '../lib/tag-changes.js';
 import { repositoryOf, type WorkspaceRepository } from '../lib/workspace-repositories.js';
 import { noteLookupOptions, notePathsOptions, type NoteQueryScope } from '../lib/use-note-queries.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
@@ -38,16 +38,23 @@ export function useTagWorkspaceOperations({ queryClient, queryScope, repositorie
   const runTagOperation = async (kind: TagOperationKind, plan: ReturnType<typeof planTagDelete>, label: TagOperationLabel) => {
     if (plan.affected.length === 0) throw new Error(t('sidebar.tagNoNotesAffected'));
     const entries = plan.affected.map(({ path, notebookId, nextTags }) => ({ path, notebookId, tags: nextTags }));
+    let skipped: Awaited<ReturnType<typeof applyEntries>>;
     try {
-      await applyEntries(entries, t(label.key, label.params));
+      skipped = await applyEntries(entries, t(label.key, label.params));
     } catch (error) {
       // Repositories committed before the failure keep their change, so their part stays undoable.
-      if (error instanceof PartialTagChangeError) tagOperations.record(kind, label, { ...plan, affected: plan.affected.filter(entry => error.committed.includes(repositoryOf(repositories, entry.notebookId)?.id ?? '')) });
+      if (error instanceof PartialTagChangeError) {
+        tagOperations.record(kind, label, { ...plan, affected: plan.affected.filter(entry => error.committed.includes(repositoryOf(repositories, entry.notebookId)?.id ?? '') && !wasSkipped(error.skipped, entry)) });
+        if (error.skipped.length) setActionError(skippedTagNotice(t, error.skipped));
+      }
       throw error;
     } finally {
       if (!remote) invalidateNotes();
     }
-    tagOperations.record(kind, label, plan);
+    // A compilation the server skipped kept its tags: the undo leaves it alone, and the page names it.
+    const written = plan.affected.filter(entry => !wasSkipped(skipped, entry));
+    if (written.length) tagOperations.record(kind, label, { ...plan, affected: written });
+    if (skipped.length) setActionError(skippedTagNotice(t, skipped));
   };
   const handleRenameTag = async (from: string, to: string) => {
     if (!canWrite) throw new Error(t('folder.readOnly'));
@@ -76,12 +83,14 @@ export function useTagWorkspaceOperations({ queryClient, queryScope, repositorie
         return;
       }
       const entries = validEntries.map(({ path, notebookId, nextTags }) => ({ path, notebookId, tags: nextTags }));
+      let skipped: Awaited<ReturnType<typeof applyEntries>>;
       try {
-        await applyEntries(entries, `${t('common.undo')}: ${t(record.label.key, record.label.params)}`);
+        skipped = await applyEntries(entries, `${t('common.undo')}: ${t(record.label.key, record.label.params)}`);
       } finally {
         if (!remote) invalidateNotes();
       }
       tagOperations.dismiss(id);
+      if (skipped.length) setActionError(skippedTagNotice(t, skipped));
     } catch (error) {
       // Keep the record so the user can retry; a silently vanished undo with no feedback
       // would leave them unable to tell whether the undo happened.

@@ -612,12 +612,6 @@
 .folder-link.folder-index { background: var(--color-surface); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--workspace-divider); }
 .folder-link.folder-index > svg { color: var(--color-muted); }
 .folder-link.folder-index:hover { background: var(--color-sidebar); }
-/* The folder index as the first row of the flat note list. */
-/* The folder index at the start of the Kanban header row. */
-.kanban-leading > .folder-index { flex: none; padding: 5px 10px; gap: 6px; }
-.kanban-leading > .folder-index > svg { width: 14px; height: 14px; }
-.kanban-leading .folder-link-title { font-size: 12px; }
-@media (max-width: 767px) { .kanban-leading > .folder-index { min-height: 44px; } }
 /* A card's delete rests at 0.4 and shows on hover. The global disabled rule pins a disabled button at 0.45, above that
    rest, so on a checked-out card the disabled delete dims its icon instead, to about 0.2. */
 .kanban-card-delete:disabled > svg { opacity: 0.45; }

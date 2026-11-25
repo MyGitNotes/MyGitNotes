@@ -177,8 +177,8 @@ export async function deleteNote(path: string, options?: { noCommit?: boolean; n
  * (see `@mygitnotes/core`'s `planTagRename`/`planTagMerge`/`planTagDelete`/
  * `invertTagOperationPlan`); this endpoint only writes and commits.
  */
-/** Rewrites the tags of notes in one repository as one commit on it. */
-export async function applyTagChange(repository: RepositoryId, entries: { path: string; notebookId: string; tags: string[]; }[], revision: string, message?: string): Promise<{ success: boolean; changedPaths: string[]; commit?: { commitHash: string; }; revision?: string; }> {
+/** Rewrites the tags of notes in one repository as one commit on it; `skipped` lists the compilations it left as they were. */
+export async function applyTagChange(repository: RepositoryId, entries: { path: string; notebookId: string; tags: string[]; }[], revision: string, message?: string): Promise<{ success: boolean; changedPaths: string[]; commit?: { commitHash: string; }; revision?: string; skipped?: { path: string; reason: string; }[]; }> {
   const res = await fetch(`${API_BASE}/tags/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository, entries, revision, message }) });
   if (!res.ok) throw await responseError(res, 'Failed to update tags');
   return res.json();

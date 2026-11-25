@@ -15,6 +15,7 @@ import { SidebarLinks } from './SidebarLinks.js';
 import { useSidebarLinks } from '../lib/web-features.js';
 
 export interface PhoneListBarProps {
+  boardTools?: ReactNode;
   notebooks: NotebookConfig[];
   selectedNotebookId: string;
   onSelectNotebook: (id: string) => void;
@@ -33,7 +34,7 @@ export interface PhoneListBarProps {
 }
 
 /** A phone's list screen top: the sidebar drawer, the notebook switcher and the note search, in one 44px bar. */
-export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, unavailableNotebooks = [], notebookGroups, query, onQueryChange, filtersOpen, onToggleFilters, searchRef }: PhoneListBarProps) {
+export function PhoneListBar({ boardTools, notebooks, selectedNotebookId, onSelectNotebook, notebookDisabled, unavailableNotebooks = [], notebookGroups, query, onQueryChange, filtersOpen, onToggleFilters, searchRef }: PhoneListBarProps) {
   const { t } = useTranslation();
   const [searchOpen, setSearchOpen] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
@@ -54,6 +55,7 @@ export function PhoneListBar({ notebooks, selectedNotebookId, onSelectNotebook, 
         </button>
       </Tooltip>
       {notebooks.length > 0 && <Select className='phone-list-notebook' aria-label={t('sidebar.notebooks')} value={selectedNotebookId} tooltip={notebooks.find(nb => nb.id === selectedNotebookId)?.title} disabled={notebookDisabled} onValueChange={onSelectNotebook} groups={notebookGroups?.map(group => ({ label: group.label, values: group.notebooks }))} options={notebooks.map(nb => ({ value: nb.id, label: unavailableNotebooks.includes(nb.id) ? `${nb.title} · ${t('notebook.unavailable')}` : nb.title, leading: <NotebookMark notebook={nb} size='tab' className='select-option-mark' /> }))} />}
+      {boardTools}
       <button ref={toggle} type='button' className='ui-icon-button note-search-toggle' aria-label={t('header.searchPlaceholder')} aria-expanded={searchOpen} aria-controls='note-toolbar-search' data-active={query.trim() ? true : undefined} onClick={() => setSearchOpen(true)}>
         <Search aria-hidden='true' />
       </button>

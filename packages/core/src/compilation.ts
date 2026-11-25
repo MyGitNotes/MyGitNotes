@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { NOTEBOOK_KEY_MAX_LENGTH, parseNotebookKey } from './notebook-key.js';
 import { type StudyProgression, StudyProgressionSchema } from './study-stages.js';
 import { isNoteHidden } from './note-status.js';
-import { compilationExtensions, type CompilationYamlExtensions, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
+import { compilationExtensions, type CompilationYamlExtensions, sameYamlValue, spliceTopLevelField, stringifyCompilationYaml, takeCompilationExtensions, writeCompilationYaml } from './compilation-yaml.js';
 import { boardCounts, BoardSchema, checkBoard, type CompilationBoard, fitBoard, orderedBoard, relocateBoard, remapBoardItems } from './compilation-board.js';
 import { COMPILATION_MAX_HEADINGS, COMPILATION_MAX_ORDER, compilationId as id, compilationRepoPath as repoPath } from './compilation-primitives.js';
 
@@ -163,9 +163,12 @@ function describeIssues(error: z.ZodError): string {
 }
 
 export class CompilationError extends Error {
-  constructor(message: string) {
+  /** The refusal without the file a caller's message names, for a caller that lists the file beside it. */
+  readonly reason: string;
+  constructor(message: string, reason = message) {
     super(message);
     this.name = 'CompilationError';
+    this.reason = reason;
   }
 }
 
@@ -280,37 +283,130 @@ export function compilationFields(raw: string, path: string, scope?: readonly st
   }
 }
 
-/** Carries the caller's `tags` and `status` into the stored file. Non-mappings are returned as they are. */
+/**
+ * Carries the caller's `tags` and `status` into the stored file; a blank or missing status removes it. A file already
+ * holding them is returned as it is. Refused with a `CompilationError` as `editCompilationFields` refuses, and when tags
+ * are not a list of strings or the status is not a string.
+ */
 export function applyCompilationMetadata(raw: string, metadata: { tags?: unknown; status?: unknown; }): string {
+  const what = 'Tags and status';
+  const { status } = metadata;
+  if (status !== undefined && status !== null && typeof status !== 'string') throw new CompilationError(`${what} not written: status must be a string`);
+  return editCompilationFields(raw, { tags: givenTags(metadata.tags, what), status: status || undefined }, what);
+}
+
+/** Replaces only the `tags` value of a compilation file, refused as `applyCompilationMetadata` refuses. */
+export function replaceCompilationTags(raw: string, tags: readonly string[]): string {
+  return editCompilationFields(raw, { tags: givenTags(tags, 'Tags') }, 'Tags');
+}
+
+function givenTags(tags: unknown, what: string): readonly string[] {
+  if (tags === undefined || tags === null) return [];
+  if (!Array.isArray(tags) || tags.some(tag => typeof tag !== 'string')) throw new CompilationError(`${what} not written: tags must be a list of strings`);
+  return tags;
+}
+
+/** The plain value of a YAML mapping, or undefined for text that is not one or cannot be resolved (an alias to no anchor). */
+function plainMapping(document: YAML.Document): Record<string, unknown> | undefined {
+  if (document.errors.length || !YAML.isMap(document.contents)) return undefined;
+  try {
+    return document.toJS({ maxAliasCount: 20 }) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Every field of a plain compilation value but those a tag and status write changes. */
+const untouchedFields = ({ tags: _tags, status: _status, ...rest }: Record<string, unknown>) => rest;
+
+const fieldOrder = Object.keys(knownCompilationFields.shape);
+const fieldsBefore = (key: string) => fieldOrder.slice(0, fieldOrder.indexOf(key));
+
+/**
+ * Whether a stored field already holds the requested value: as written, or, when both are valid, as the schema reads
+ * them (a status `" working "` holds `working`). A stored value the schema refuses is written over.
+ */
+function holds(schema: z.ZodTypeAny, stored: unknown, requested: unknown): boolean {
+  if (sameYamlValue(stored, requested)) return true;
+  const was = schema.safeParse(stored), wanted = schema.safeParse(requested);
+  return was.success && wanted.success && sameYamlValue(was.data, wanted.data);
+}
+
+/**
+ * The write of `tags` and `status` when their source cannot be replaced in place: the YAML is written out again, known
+ * fields first, each written field a fresh node, so nothing of the old value (an explicit type) stays.
+ */
+function rewriteCompilationFields(raw: string, tags: readonly string[] | false, status: string | undefined | false): string {
   const document = YAML.parseDocument(raw);
-  if (document.errors.length || !YAML.isMap(document.contents)) return raw;
-  const stored = document.toJS({ maxAliasCount: 20 }) as Record<string, unknown>;
-  const tags = Array.isArray(metadata.tags) ? metadata.tags.map(String) : [];
-  const status = typeof metadata.status === 'string' && metadata.status ? metadata.status : undefined;
-  const tagsChanged = JSON.stringify(stored.tags ?? []) !== JSON.stringify(tags);
-  if (!tagsChanged && stored.status === status) return raw;
   const extensions = takeCompilationExtensions(document, knownCompilationKeys);
-  if (tagsChanged) {
-    if (tags.length) document.set('tags', tags);
+  if (tags) {
+    if (tags.length) document.set('tags', document.createNode([...tags]));
     else document.delete('tags');
   }
-  if (stored.status !== status) {
-    if (status) document.set('status', status);
+  if (status !== false) {
+    if (status) document.set('status', document.createNode(status));
     else document.delete('status');
   }
   return stringifyCompilationYaml(document, extensions);
 }
 
-/** Replaces only the `tags` value of a compilation file. Non-mappings are returned as they are. */
-export function replaceCompilationTags(raw: string, tags: readonly string[]): string {
+/**
+ * Writes `tags`, and `status` when the edit names it, into the text of a compilation by replacing only their source
+ * (`spliceTopLevelField`), every other byte kept; text not shaped for that is written out again. Like every other
+ * compilation write, the result must open (a file that did not may be repaired by it) and must read back the values
+ * written. A result that would not, a write that would change another field (a board text aliasing the status), and
+ * tags or a status for text that is no YAML mapping are refused with a `CompilationError`, and nothing is written. A
+ * field that already holds its value is not written; a write that changes nothing returns `raw` itself.
+ */
+function editCompilationFields(raw: string, edit: { tags: readonly string[]; status?: string; }, what: string): string {
+  const refuse = (reason: string) => new CompilationError(`${what} not written: ${reason}`);
   const document = YAML.parseDocument(raw);
-  if (document.errors.length || !YAML.isMap(document.contents)) return raw;
-  const stored = (document.toJS({ maxAliasCount: 20 }) as { tags?: unknown; }).tags ?? [];
-  if (JSON.stringify(stored) === JSON.stringify(tags)) return raw;
-  const extensions = takeCompilationExtensions(document, knownCompilationKeys);
-  if (tags.length) document.set('tags', [...tags]);
-  else document.delete('tags');
-  return stringifyCompilationYaml(document, extensions);
+  const stored = plainMapping(document);
+  if (!stored) {
+    // Such text holds no tags or status, so a write that sets none changes nothing.
+    if (!edit.tags.length && !edit.status) return raw;
+    let reason = 'it is not a YAML mapping';
+    try {
+      parseCompilation(raw);
+    } catch (error) {
+      reason = (error as Error).message;
+    }
+    throw refuse(`the compilation cannot be read (${reason})`);
+  }
+  const { tags: tagsSchema, status: statusSchema } = knownCompilationFields.shape;
+  const writesTags = !holds(tagsSchema, stored.tags ?? [], edit.tags);
+  const writesStatus = Object.hasOwn(edit, 'status') && !holds(statusSchema, stored.status, edit.status);
+  if (!writesTags && !writesStatus) return raw;
+  let next: string | undefined = raw;
+  if (writesTags) next = spliceTopLevelField(next, 'tags', edit.tags.length ? edit.tags : undefined, fieldsBefore('tags'));
+  if (writesStatus && next !== undefined) next = spliceTopLevelField(next, 'status', edit.status, fieldsBefore('status'));
+  try {
+    next ??= rewriteCompilationFields(raw, writesTags && edit.tags, writesStatus && edit.status);
+  } catch (error) {
+    // Removing a field another one aliases leaves that alias without its anchor.
+    throw refuse(`the edit would change other fields (${(error as Error).message.split('\n')[0]})`);
+  }
+  let after: Record<string, unknown>;
+  try {
+    const reread = YAML.parseDocument(next);
+    if (reread.errors.length) throw reread.errors[0];
+    after = reread.toJS({ maxAliasCount: 20 }) as Record<string, unknown>;
+  } catch (error) {
+    // The text read before the edit, so a YAML error now is an alias whose anchor went with the old value.
+    throw refuse(`the edit would change other fields (${(error as Error).message.split('\n')[0]})`);
+  }
+  let file: CompilationFile;
+  try {
+    file = parseCompilation(next);
+  } catch (error) {
+    throw refuse(`the compilation would not open (${(error as Error).message})`);
+  }
+  // A field that aliases the tags or status, such as a board text, would change with them.
+  if (!sameYamlValue(untouchedFields(stored), untouchedFields(after))) throw refuse('the edit would change other fields of the compilation');
+  const wantedTags = tagsSchema.safeParse(edit.tags), wantedStatus = statusSchema.safeParse(edit.status);
+  if (writesTags && !(wantedTags.success && sameYamlValue(file.tags ?? [], wantedTags.data ?? []))) throw refuse('the compilation would not read back the tags written');
+  if (writesStatus && !(wantedStatus.success && file.status === wantedStatus.data)) throw refuse('the compilation would not read back the status written');
+  return next;
 }
 
 /**

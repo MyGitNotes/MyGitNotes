@@ -60,10 +60,36 @@ describe('local /api/tags/apply', () => {
     expect(res.status).toBe(200);
     expect((await res.json()).changedPaths).toEqual([file]);
     const stored = fs.readFileSync(path.join(root, file), 'utf8');
-    expect(stored).toContain('tags:\n  - doing');
+    // Only the tags' own source is replaced, in the flow style it had.
+    expect(stored).toBe('version: 1\nid: picks\ntitle: Picks\narrangement: lane\ntags: [doing]\nsource:\n  kind: tag\n  tag: todo\n');
     // The tag it collects stays: renaming a tag of the compilation itself does not rewrite its source.
     expect(stored).toContain('kind: tag\n  tag: todo');
     expect(git('log', '-1', '--format=%s').toString().trim()).toBe('docs(tags): rename todo');
+  });
+
+  it('skips a compilation that would not open with its new tags, renames and commits the rest, and lists what it skipped', async () => {
+    const file = 'notes/blog/broken.compilation.yml';
+    const raw = 'version: 1\nid: broken\ntitle: Broken\ntags: [todo]\nsource:\n  kind: tag\n  tag: todo\n';
+    const good = 'notes/blog/good.compilation.yml';
+    fs.writeFileSync(path.join(root, file), raw);
+    fs.writeFileSync(path.join(root, good), raw.replace('id: broken', 'id: good').replace('title: Broken', 'title: Good\narrangement: lane'));
+    git('add', '.');
+    git('commit', '-m', 'add compilations, one without an arrangement');
+    const commits = Number(git('rev-list', '--count', 'HEAD').toString().trim());
+    const res = await post({ entries: [{ path: 'notes/blog/a.md', notebookId: 'blog', tags: ['doing', 'x'] }, { path: file, notebookId: 'blog', tags: ['doing'] }, { path: good, notebookId: 'blog', tags: ['doing'] }] });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.changedPaths).toEqual(['notes/blog/a.md', good]);
+    expect(body.skipped).toEqual([{ path: file, reason: 'Tags not written: the compilation would not open (arrangement: Required)' }]);
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(raw);
+    expect(fs.readFileSync(path.join(root, good), 'utf8')).toContain('tags: [doing]');
+    expect(fs.readFileSync(path.join(root, 'notes/blog/a.md'), 'utf8')).toContain('tags: [doing, x]');
+    expect(Number(git('rev-list', '--count', 'HEAD').toString().trim())).toBe(commits + 1);
+    expect(git('status', '--porcelain').toString().trim()).toBe('');
+    // A batch of only such compilations commits nothing and still lists them.
+    const alone = await post({ entries: [{ path: file, notebookId: 'blog', tags: ['x'] }] });
+    expect(await alone.json()).toEqual({ success: true, changedPaths: [], skipped: [{ path: file, reason: 'Tags not written: the compilation would not open (arrangement: Required)' }] });
+    expect(Number(git('rev-list', '--count', 'HEAD').toString().trim())).toBe(commits + 1);
   });
 
   it('renames a tag across notebooks in one commit, preserving every other byte', async () => {
@@ -152,8 +178,9 @@ describe('local /api/tags/apply', () => {
 });
 
 describe.each(['github', 'gitlab'])('remote /api/tags/apply (%s)', provider => {
+  const brokenCompilation = 'version: 1\nid: broken\ntitle: Broken\ntags: [todo]\nsource:\n  kind: tag\n  tag: todo\n';
   it('applies one atomic commit across notebooks and preserves other frontmatter bytes', async () => {
-    const files = new Map([['.mygitnotes.yaml', Buffer.from('schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: blog\nnotebooks:\n  - id: blog\n    title: Blog\n    root: notes/blog\n  - id: thesis\n    title: Thesis\n    root: notes/thesis\n')], ['notes/blog/a.md', Buffer.from('---\nid: a\ncustom: {x: 1,y: 2}\ntags: [todo, x]\ntitle: A\n---\n\nBody A\n')], ['notes/thesis/c.md', Buffer.from('---\nid: c\ntags:\n  - todo\n---\n\nBody C\n')]]);
+    const files = new Map([['.mygitnotes.yaml', Buffer.from('schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: blog\nnotebooks:\n  - id: blog\n    title: Blog\n    root: notes/blog\n  - id: thesis\n    title: Thesis\n    root: notes/thesis\n')], ['notes/blog/a.md', Buffer.from('---\nid: a\ncustom: {x: 1,y: 2}\ntags: [todo, x]\ntitle: A\n---\n\nBody A\n')], ['notes/thesis/c.md', Buffer.from('---\nid: c\ntags:\n  - todo\n---\n\nBody C\n')], ['notes/blog/broken.compilation.yml', Buffer.from(brokenCompilation)]]);
     let revision = 'one';
     let canPush = true;
     const published: RemoteChange[][] = [];
@@ -189,8 +216,13 @@ describe.each(['github', 'gitlab'])('remote /api/tags/apply (%s)', provider => {
       return fetch(`${base}/api/tags/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository: defaultRepository, ...body }) });
     };
     try {
-      const res = await post({ entries: [{ path: 'notes/blog/a.md', notebookId: 'blog', tags: ['doing', 'x'] }, { path: 'notes/thesis/c.md', notebookId: 'thesis', tags: ['doing'] }], revision, message: 'rename todo to doing' });
+      const res = await post({ entries: [{ path: 'notes/blog/a.md', notebookId: 'blog', tags: ['doing', 'x'] }, { path: 'notes/blog/broken.compilation.yml', notebookId: 'blog', tags: ['doing'] }, { path: 'notes/thesis/c.md', notebookId: 'thesis', tags: ['doing'] }], revision, message: 'rename todo to doing' });
       expect(res.status).toBe(200);
+      // A compilation that would not open with its new tags is skipped and listed; the rest are committed.
+      const body = await res.json();
+      expect(body.changedPaths).toEqual(['notes/blog/a.md', 'notes/thesis/c.md']);
+      expect(body.skipped).toEqual([{ path: 'notes/blog/broken.compilation.yml', reason: 'Tags not written: the compilation would not open (arrangement: Required)' }]);
+      expect(files.get('notes/blog/broken.compilation.yml')!.toString()).toBe(brokenCompilation);
       expect(published).toHaveLength(1); // one atomic commit for both notebooks
       expect(published[0]).toHaveLength(2);
       const updatedA = files.get('notes/blog/a.md')!.toString();

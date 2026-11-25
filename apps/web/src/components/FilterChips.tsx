@@ -11,7 +11,7 @@ import './filter-chips.css';
  * with the sidebar in a drawer): each removable one has an ✕, "Clear all" drops them together, and "+ Filter" and the notebook's chip open
  * the filters.
  */
-export function FilterChips({ filters, onAdd }: { filters: FilterControls; onAdd: () => void; }) {
+export function FilterChips({ filters, onAdd }: { filters: FilterControls; onAdd?: () => void; }) {
   const { t } = useTranslation();
   const labelOf = useStatusLabel();
   const chips = filterChips(filters, t, labelOf);
@@ -22,9 +22,11 @@ export function FilterChips({ filters, onAdd }: { filters: FilterControls; onAdd
       {t('focusList.addFilter')}
     </button>
   );
+  // Inside the phone drawer only removable filters belong here; the drawer already provides context and actions.
+  if (!onAdd && !removable) return null;
   return (
     <div role='group' aria-label={t('focusList.chips')} className='filter-chips'>
-      {chips.map(chip =>
+      {chips.filter(chip => onAdd || chip.remove).map(chip =>
         chip.remove
           ? (
             <span key={chip.id} className='filter-chip' data-filter-chip={chip.id}>
@@ -44,8 +46,8 @@ export function FilterChips({ filters, onAdd }: { filters: FilterControls; onAdd
             </Tooltip>
           )
       )}
-      {add}
-      {removable > 1 && <button type='button' className='filter-chip-clear' onClick={filters.onClear}>{t('filters.clear')}</button>}
+      {onAdd && add}
+      {onAdd && removable > 1 && <button type='button' className='filter-chip-clear' onClick={filters.onClear}>{t('filters.clear')}</button>}
     </div>
   );
 }

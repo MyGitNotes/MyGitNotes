@@ -37,7 +37,7 @@ const SHORT_SORT: Record<string, 'browse.sortUpdated' | 'browse.sortCreated' | '
  * A button under the list header that opens a small panel below it. The panel is a non-modal dialog: Escape and a press outside close it, and
  * closing it with Escape puts the keyboard back on the button.
  */
-function FilterPopover({ label, title, active = false, face, children }: { label: string; title: string; active?: boolean; /** What the button shows when it is shorter than its name, which `label` then gives it. */ face?: ReactNode; children: (close: () => void) => ReactNode; }): JSX.Element {
+export function FilterPopover({ label, title, active = false, face, children }: { label: string; title: string; active?: boolean; /** What the button shows when it is shorter than its name, which `label` then gives it. */ face?: ReactNode; children: (close: () => void) => ReactNode; }): JSX.Element {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);

@@ -1,7 +1,7 @@
 import { type NoteListItem } from '@mygitnotes/core/note-query';
 import { planTagAdd, planTagDelete } from '@mygitnotes/core/tag-ops';
 import { useState } from 'react';
-import { applyTagEntries, PartialTagChangeError } from '../lib/tag-changes.js';
+import { applyTagEntries, PartialTagChangeError, skippedTagNotice, wasSkipped } from '../lib/tag-changes.js';
 import { repositoryOf } from '../lib/workspace-repositories.js';
 import { fetchFiles, type FileResult, mutateFile } from '../lib/files-api.js';
 import type { I18nContextValue } from '../lib/i18n/index.js';
@@ -58,21 +58,25 @@ export function useBulkNoteActions({ selectedNotes, clearSelection, onUpdateNote
       if (plan.affected.length === 0) return;
       const entries = plan.affected.map(({ path, notebookId, nextTags }) => ({ path, notebookId, tags: nextTags }));
       const label = { key: kind === 'add' ? 'bulk.tagAddedLabel' as const : 'bulk.tagRemovedLabel' as const, params: { tag, count: plan.affected.length } };
+      let skipped: Awaited<ReturnType<typeof applyTagEntries>>;
       try {
-        await applyTagEntries(repositories, entries, t(label.key, label.params), (repository, revision) => {
+        skipped = await applyTagEntries(repositories, entries, t(label.key, label.params), (repository, revision) => {
           if (remote && revision) setRepositoryRevision(repository.id, revision);
         });
       } catch (error) {
         // Repositories committed before the failure keep their change, so their part stays undoable.
-        if (error instanceof PartialTagChangeError) tagOperations.record(kind, label, { ...plan, affected: plan.affected.filter(entry => error.committed.includes(repositoryOf(repositories, entry.notebookId)?.id ?? '')) });
+        if (error instanceof PartialTagChangeError) tagOperations.record(kind, label, { ...plan, affected: plan.affected.filter(entry => error.committed.includes(repositoryOf(repositories, entry.notebookId)?.id ?? '') && !wasSkipped(error.skipped, entry)) });
         throw error;
       } finally {
         if (!remote) invalidateNotes();
       }
-      tagOperations.record(kind, label, plan);
+      // A compilation the server skipped kept its tags: the undo leaves it alone, and the page names it.
+      const written = plan.affected.filter(entry => !wasSkipped(skipped, entry));
+      if (written.length) tagOperations.record(kind, label, { ...plan, affected: written });
+      if (skipped.length) setActionError(skippedTagNotice(t, skipped));
       clearSelection();
     } catch (error) {
-      setActionError((error as Error).message);
+      setActionError([(error as Error).message, error instanceof PartialTagChangeError ? skippedTagNotice(t, error.skipped) : ''].filter(Boolean).join(' '));
     } finally {
       setBulkBusy(false);
     }

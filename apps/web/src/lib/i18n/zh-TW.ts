@@ -1321,6 +1321,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'sidebar.tagSameNameError': '請選擇不同的標籤名稱。',
   'sidebar.tagNoNotesAffected': '工作區內沒有筆記使用這個標籤。',
   'sidebar.tagOperationFailed': '標籤更新失敗：{error}',
+  'sidebar.tagSkippedCompilations': '其餘檔案都已更新。以下合輯換上新標籤後會無法開啟，已略過並保持原樣（{count} 個）：{files}',
   'sidebar.tagMergeNewTarget': '「{tag}」還不是現有的標籤。',
   'sidebar.tagSuggestions': '符合的標籤',
   'sidebar.recentTagChanges': '近期標籤變更',
