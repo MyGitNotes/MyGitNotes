@@ -4,6 +4,9 @@
    way (the board's sort and dragging still do both). */
 @container (max-width: 239px) { .kanban-column-sort, .kanban-card-step { display: none; } }
 
+/* Give the heading the full first line without shrinking the actions' touch targets. */
+@container (max-width: 239px) { .kanban-column-header { display: grid; grid-template-columns: minmax(0, 1fr); } .kanban-column-header > :last-child { justify-self: end; } .kanban-column-count { padding: 0; background: none; font-size: 11px; font-weight: 400; } }
+
 /* A folded column: dot, name down the strip, count. It stays a drop target. */
 .kanban-strip { flex: none; width: 30px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); transition: border-color 120ms ease, background-color 120ms ease; }
 .kanban-strip[data-over] { border-color: var(--color-primary); background: var(--color-primary-light); box-shadow: 0 0 0 2px var(--color-primary); }

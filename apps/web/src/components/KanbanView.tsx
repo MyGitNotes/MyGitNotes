@@ -78,11 +78,13 @@ function KanbanColumn({ col, index, board, query, hiddenNote, sort, onSort }: { 
   return (
     <div data-status-column={col.id} onDragOver={drag.onDragOver} onDragLeave={drag.onDragLeave} onDrop={drag.onDrop} className={`kanban-column rounded-xl p-3 flex flex-col max-h-full border transition-colors shadow-xs ${isColumnDragOver ? '' : 'border-line/80'}`} style={{ backgroundColor: isColumnDragOver ? 'var(--color-primary-light)' : 'var(--color-surface)', borderColor: isColumnDragOver ? 'var(--color-primary)' : 'var(--color-line)', boxShadow: isColumnDragOver ? '0 0 0 2px var(--color-primary), 0 8px 20px -4px var(--color-primary-light)' : undefined }}>
       {/* Column Header */}
-      <div className='flex items-center justify-between mb-3 px-1'>
+      <div className='kanban-column-header flex items-center justify-between mb-3 px-1'>
         <div className='flex items-center gap-2 min-w-0'>
           <span className={`status-dot ${col.color}`} aria-hidden='true' />
-          <h3 className='font-semibold text-fg text-sm truncate'>{col.title}</h3>
-          <span className='text-xs px-2 py-0.5 rounded-full bg-fg/5 text-muted font-medium shrink-0'>{result.total}</span>
+          <Tooltip label={col.title}>
+            <h3 className='font-semibold text-fg text-sm truncate'>{col.title}</h3>
+          </Tooltip>
+          <span className='kanban-column-count text-xs px-2 py-0.5 rounded-full bg-fg/5 text-muted font-medium shrink-0'>{result.total}</span>
         </div>
         <div className='flex items-center gap-1.5 shrink-0'>
           {/* Column Sort Selector */}
@@ -137,11 +139,13 @@ function KanbanUnassignedColumn({ board, query, hiddenNote, sort }: { board: Boa
   if (board.foldOf('', false) === 'strip') return <KanbanStrip id='' title={t('kanban.noStatus')} dot='bg-muted' total={result.total} over={board.dragOverColumnId === ''} drop={drag} onExpand={() => board.setFold('', 'open')} />;
   return (
     <div onDragOver={drag.onDragOver} onDragLeave={drag.onDragLeave} onDrop={drag.onDrop} className='kanban-column rounded-xl p-3 flex flex-col max-h-full border border-dashed shadow-xs' style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-line)' }}>
-      <div className='flex items-center justify-between mb-3 px-1'>
+      <div className='kanban-column-header flex items-center justify-between mb-3 px-1'>
         <div className='flex items-center gap-2 min-w-0'>
           <span className='w-2.5 h-2.5 rounded-full bg-muted shrink-0' />
-          <h3 className='font-medium text-sm truncate' style={{ color: 'var(--color-muted)' }}>{t('kanban.noStatus')}</h3>
-          <span className='text-xs px-2 py-0.5 rounded-full bg-fg/5 text-muted font-medium'>{result.total}</span>
+          <Tooltip label={t('kanban.noStatus')}>
+            <h3 className='font-medium text-sm truncate' style={{ color: 'var(--color-muted)' }}>{t('kanban.noStatus')}</h3>
+          </Tooltip>
+          <span className='kanban-column-count text-xs px-2 py-0.5 rounded-full bg-fg/5 text-muted font-medium shrink-0'>{result.total}</span>
         </div>
         <FoldButton title={t('kanban.noStatus')} onFold={() => board.setFold('', 'strip')} />
       </div>
