@@ -6,6 +6,8 @@ import YAML from 'yaml';
 import { applyCompilationMetadata, CompilationError, parseCompilation, replaceCompilationTags } from '../src/compilation.js';
 import { replaceFileTags, serializeNoteFile } from '../src/note-file.js';
 import { writeNoteFile } from '../src/note-service.js';
+import { openRemoteRepository } from '../src/remote-factory.js';
+import { gitlabFixture } from './fixtures/gitlab.js';
 
 // A tag or status write rewrites only those two fields of a compilation's text, and only into a file that opens: its
 // result passes the schema every other compilation write is checked against, every other field (the board and unknown
@@ -60,6 +62,45 @@ describe('a tag or status write over a valid compilation', () => {
     const stringTags = board.replace('tags: [thesis]', 'tags: thesis');
     expect(() => parseCompilation(stringTags)).toThrow(CompilationError);
     expect(parseCompilation(replaceCompilationTags(stringTags, ['thesis'])).tags).toEqual(['thesis']);
+  });
+
+  it('writes the requested status over a typed scalar, not the old type with a new value', () => {
+    const typed = board.replace('status: working', 'status: !!int 123');
+    const next = applyCompilationMetadata(typed, { tags: ['thesis'], status: 'done' });
+    expect(next).toBe(board.replace('status: working', 'status: done'));
+    expect(parseCompilation(next).status).toBe('done');
+    // A file written as one flow mapping is written out again, the status a fresh node.
+    const flow = '{ version: 1, id: f, title: F, arrangement: lane, status: !!int 123, source: { kind: tag, tag: x } }\n';
+    expect(parseCompilation(applyCompilationMetadata(flow, { tags: ['x'], status: 'done' }))).toMatchObject({ status: 'done', tags: ['x'] });
+  });
+
+  it('changes nothing else when an unknown field holds a cyclic alias', () => {
+    const cyclic = `${board}extra: &ext { self: *ext }\n`;
+    expect(parseCompilation(cyclic).title).toBe('Chapter');
+    expect(replaceCompilationTags(cyclic, ['thesis', 'draft'])).toBe(cyclic.replace('tags: [thesis]', 'tags: [thesis, draft]'));
+    expect(applyCompilationMetadata(cyclic, { tags: ['thesis'], status: 'done' })).toBe(cyclic.replace('status: working', 'status: done'));
+  });
+
+  it('judges a valid status by its normalised value, so a tag write carrying the status it read leaves it alone', () => {
+    const spaced = board.replace('status: working', 'status: &state " working "').replace('text: "Decide first"', 'text: *state');
+    expect(parseCompilation(spaced).status).toBe('working');
+    const next = applyCompilationMetadata(spaced, { tags: ['thesis', 'new'], status: 'working' });
+    expect(next).toBe(spaced.replace('tags: [thesis]', 'tags: [thesis, new]'));
+    expect(applyCompilationMetadata(spaced, { tags: ['thesis'], status: 'working' })).toBe(spaced);
+  });
+
+  it('replaces only the source of the field it writes: style, line endings, order and comments stay', () => {
+    const exact = `${board}padding: "${'x'.repeat(512 * 1024 - board.length - 12)}"\n`;
+    expect(new TextEncoder().encode(exact).length).toBe(512 * 1024);
+    const renamed = replaceCompilationTags(exact.replace('tags: [thesis]', 'tags: [old]'), ['new']);
+    expect(renamed).toBe(exact.replace('tags: [thesis]', 'tags: [new]'));
+    const crlf = board.replace('translationKey: chapter-3\n', '').replace('tags: [thesis]\n', 'translationKey: chapter-3 # between known fields\ntags:\n  - thesis # first\n').replace('title: Chapter', 'title: &name Chapter').replace(/\n/g, '\r\n') + 'alias: *name # aliases a known field\r\n';
+    expect(parseCompilation(crlf).tags).toEqual(['thesis']);
+    const next = applyCompilationMetadata(crlf, { tags: ['thesis', 'draft'], status: 'review' });
+    expect(next).toBe(crlf.replace('tags:\r\n  - thesis # first\r\n', 'tags:\r\n  - thesis\r\n  - draft\r\n').replace('status: working', 'status: review'));
+    const removed = applyCompilationMetadata(next, { tags: [] });
+    expect(removed).toBe(next.replace('tags:\r\n  - thesis\r\n  - draft\r\n', '').replace('status: review\r\n', ''));
+    expect(applyCompilationMetadata(removed, { tags: ['a b', 'x, y'], status: 'done' })).toBe(removed.replace('arrangement: board\r\n', 'arrangement: board\r\ntags:\r\n  - a b\r\n  - x, y\r\nstatus: done\r\n'));
   });
 });
 
@@ -133,5 +174,43 @@ describe('the callers of a refused write', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+// A full save sends the whole text: when it differs from the stored one it must open, whether or not its tags and status
+// changed; the stored text sent back unchanged passes byte for byte, whatever it holds.
+describe('a full save of a compilation', () => {
+  const broken = board.replace('arrangement: board\n', '');
+  const same = { tags: ['thesis'], status: 'working' };
+
+  it('is refused locally when the new text would not open, with or without metadata', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mgn-compilation-save-'));
+    try {
+      const target = path.join(root, file);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, board, 'utf8');
+      expect(() => writeNoteFile(root, file, broken, same, 'thesis')).toThrow(`${file}: Compilation not saved: arrangement: Required`);
+      expect(() => writeNoteFile(root, file, broken, undefined, 'thesis')).toThrow(CompilationError);
+      expect(fs.readFileSync(target, 'utf8')).toBe(board);
+      fs.writeFileSync(target, broken, 'utf8');
+      expect(writeNoteFile(root, file, broken, same, 'thesis').invalid).toContain('arrangement');
+      expect(fs.readFileSync(target, 'utf8')).toBe(broken);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('is refused remotely by a save and a commit of working notes, writing nothing', async () => {
+    const remote = 'notes/ex/c.compilation.yml';
+    const f = gitlabFixture(undefined, { [remote]: board });
+    const { reader } = openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'fixture-token', f.request);
+    const writes = f.writes;
+    await expect(reader.save(remote, broken, same, f.head)).rejects.toThrow(`${remote}: Compilation not saved: arrangement: Required`);
+    await expect(reader.save(remote, broken, undefined, f.head)).rejects.toThrow(CompilationError);
+    await expect(reader.commitNotes([{ path: remote, content: broken, metadata: same }], f.head, 'edit')).rejects.toThrow(`${remote}: Compilation not saved: arrangement: Required`);
+    expect(f.writes).toBe(writes);
+    expect(f.files.get(remote)).toBe(board);
+    const saved = await reader.save(remote, board.replace('title: Chapter', 'title: Renamed'), same, f.head);
+    expect(saved.note.title).toBe('Renamed');
   });
 });

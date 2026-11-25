@@ -48,6 +48,14 @@ it('answers a refused local compilation write as a tool error and leaves the fil
   const done = await tool('update_note_metadata', { path: file, status: 'done', tags: ['kept'] });
   expect(done.isError).toBeFalsy();
   expect(parseCompilation(fs.readFileSync(path.join(repo, file), 'utf8'))).toMatchObject({ status: 'done', tags: ['kept'], board: parseCompilation(board).board });
+
+  // A tag update carries the status it read, `working`; the stored ` working ` an alias shares is the same status, kept.
+  const spaced = board.replace('status: working', 'status: &state " working "').replace('text: Open', 'text: *state');
+  fs.writeFileSync(path.join(repo, file), spaced);
+  await stageAndCommit(repo, [file], 'aliased status');
+  const tagged = await tool('update_note_metadata', { path: file, tags: ['new'] });
+  expect(tagged.isError).toBeFalsy();
+  expect(fs.readFileSync(path.join(repo, file), 'utf8')).toBe(spaced.replace('status: &state', 'tags:\n  - new\nstatus: &state'));
 });
 
 it('refuses a remote compilation write that would not open, writing nothing', async () => {

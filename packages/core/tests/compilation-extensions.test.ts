@@ -47,14 +47,15 @@ it('keeps the blog fields through rename, arrangement, reorder, add and remove',
   }
 });
 
-it('puts extensions last on backend metadata, tag and relocation writes without changing their values', () => {
+it('keeps extensions where they are on backend metadata and tag writes, and puts them last on relocation, without changing their values', () => {
   const saved = serializeNoteFile(owner.path, { status: 'review' }, raw, false, new Date(), raw);
   const tagged = replaceFileTags(raw, owner.path, ['causal']);
   const relocated = relocateCompilation(raw, path => path.replace('/lessons/', '/chapters/'))!;
-  for (const text of [saved, tagged, relocated]) {
-    expect(text).toContain(`description: ${description}\n`);
-    expect(text.endsWith(translation)).toBe(true);
-  }
+  // A metadata or tag write replaces only its own field's source.
+  expect(saved).toBe(raw.replace('status: draft\n', 'status: review\n'));
+  expect(tagged).toBe(raw.replace('status: draft\n', 'tags:\n  - causal\nstatus: draft\n'));
+  expect(relocated).toContain(`description: ${description}\n`);
+  expect(relocated.endsWith(translation)).toBe(true);
   expect(parseCompilation(saved).status).toBe('review');
   expect(parseCompilation(tagged).tags).toEqual(['causal']);
   expect(parseCompilation(relocated).items).toEqual(expect.arrayContaining([expect.objectContaining({ path: expect.stringContaining('/chapters/') })]));
@@ -71,8 +72,8 @@ it('round-trips YAML directives and typed external values such as timestamps and
 it('preserves external values that share anchors with fields MGN changes', () => {
   const anchored = raw.replace('title: 因果模型講義', 'title: &title 因果模型講義').replace('status: draft', 'archiveStatus: &archive draft\nstatus: *archive').replace(translation, 'originalTitle: *title\n');
   const saved = serializeNoteFile(owner.path, { status: 'review' }, anchored, false, new Date(), anchored);
-  const entries = [...YAML.parse(saved, { mapAsMap: true }).entries()];
-  expect(entries.slice(-2)).toEqual([['archiveStatus', 'draft'], ['originalTitle', '因果模型講義']]);
+  expect(saved).toBe(anchored.replace('status: *archive', 'status: review'));
+  expect(YAML.parse(saved)).toMatchObject({ archiveStatus: 'draft', originalTitle: '因果模型講義' });
   expect(parseCompilation(saved).status).toBe('review');
   expect(parseCompilation(saved).title).toBe('因果模型講義');
 });

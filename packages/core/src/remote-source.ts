@@ -6,7 +6,7 @@ import path from 'node:path';
 import { assetPath, decodeAsset, isAssetPath } from './assets.js';
 import { MANIFEST_FILES } from './remote-manifest.js';
 import { type RepositoryId, StaleRevisionError } from './repository.js';
-import { isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
+import { checkedNoteFile, isNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
 import { templateFileId } from './templates.js';
 import { isNotebookContent, parseFolderConfig } from './folders.js';
 import { NotebookConfig, NoteMetadata } from './types.js';
@@ -118,7 +118,7 @@ export abstract class RemoteSource extends NoteSource {
     if (existing && (existing.type !== 'blob' || existing.mode === '120000')) throw new SourceError('Path is not a regular note file.', 403);
     if (file.includes('\0') || (metadata !== undefined && (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)))) throw new SourceError('Invalid note path or metadata.');
     const existingRaw = link ? (await this.liveTextOf(link)).content : existing ? await this.readFile(file).then(b => b.toString('utf8')).catch(() => undefined) : undefined;
-    const serialized = metadata ? serializeNoteFile(file, metadata, content, !existing && !link, new Date(), existingRaw) : content;
+    const serialized = checkedNoteFile(file, metadata ? serializeNoteFile(file, metadata, content, !existing && !link, new Date(), existingRaw) : content, existingRaw, config.notebooks.map(item => item.root));
     // The live editor keeps text in normal form, which is what the note then reads.
     const raw = base ? normalizeLiveText(serialized) : serialized;
     if (Buffer.byteLength(raw) > 5 * 1024 * 1024) throw base ? new LiveTooLargeError() : new SourceError('Note exceeds the 5 MiB limit.', 413);
@@ -160,6 +160,7 @@ export abstract class RemoteSource extends NoteSource {
     }
     // Bounds concurrent blob reads the same way `contents()` does, so a 200-note batch cannot burst 200 uncached platform reads at once.
     await this.prefetchFiles(writes.filter(note => !note.createOnly).map(note => note.path));
+    const roots = (await this.config()).notebooks.map(item => item.root);
     const changes: RemoteChange[] = [];
     for (let i = 0; i < writes.length; i += 6) {
       changes.push(
@@ -169,7 +170,7 @@ export abstract class RemoteSource extends NoteSource {
               if (!(error instanceof SourceError && error.status === 404)) throw error;
               return undefined;
             });
-            return { path: note.path, content: serializeNoteFile(note.path, note.metadata, note.content, Boolean(note.createOnly), new Date(), existingRaw) };
+            return { path: note.path, content: checkedNoteFile(note.path, serializeNoteFile(note.path, note.metadata, note.content, Boolean(note.createOnly), new Date(), existingRaw), existingRaw, roots) };
           }),
         ),
       );

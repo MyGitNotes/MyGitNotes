@@ -1,4 +1,4 @@
-import { applyCompilationMetadata, CompilationError, compilationFields, isCompilationPath, replaceCompilationTags } from './compilation.js';
+import { applyCompilationMetadata, CompilationError, compilationFields, isCompilationPath, parseCompilation, replaceCompilationTags } from './compilation.js';
 import { noteFrontmatterSpan, parseNoteContent, replaceNoteTags, serializeNoteContent } from './frontmatter.js';
 import { isOutlinePath, OUTLINE_SUFFIX } from './outline.js';
 import type { NoteMetadata } from './types.js';
@@ -41,12 +41,12 @@ export function parseNoteFile(raw: string, filePath: string, scope?: readonly st
   return { metadata: fields.metadata, content: raw, title: fields.title, lineNumberOffset: 0, extra: { kind: 'compilation', ...(fields.invalid ? { invalid: fields.invalid } : {}) } };
 }
 
-/** A compilation write, its refusal naming the file. */
+/** A compilation write, its refusal naming the file; its `reason` stays the refusal alone. */
 function compilationWrite(filePath: string, write: () => string): string {
   try {
     return write();
   } catch (error) {
-    throw error instanceof CompilationError ? new CompilationError(`${filePath}: ${error.message}`) : error;
+    throw error instanceof CompilationError ? new CompilationError(`${filePath}: ${error.message}`, error.reason) : error;
   }
 }
 
@@ -57,6 +57,23 @@ function compilationWrite(filePath: string, write: () => string): string {
 export function serializeNoteFile(filePath: string, metadata: NoteMetadata, content: string, isNew: boolean, now: Date, existingRaw?: string): string {
   if (isCompilationPath(filePath)) return compilationWrite(filePath, () => applyCompilationMetadata(content, metadata));
   return serializeNoteContent(metadata, content, isNew, now, existingRaw, isOutlinePath(filePath));
+}
+
+/**
+ * The text a save stores, as it is. A compilation's text that differs from the stored one (`existingRaw`, none for a new
+ * file) must open, as every other compilation write must, or the save is refused with a `CompilationError` naming the
+ * file; the stored text sent back unchanged passes whatever it holds. `scope` holds the repository's notebook roots.
+ */
+export function checkedNoteFile(filePath: string, text: string, existingRaw: string | undefined, scope?: readonly string[]): string {
+  if (!isCompilationPath(filePath) || text === existingRaw) return text;
+  return compilationWrite(filePath, () => {
+    try {
+      parseCompilation(text, scope);
+    } catch (error) {
+      throw new CompilationError(`Compilation not saved: ${(error as Error).message}`);
+    }
+    return text;
+  });
 }
 
 /**
@@ -77,4 +94,24 @@ export function keptNoteMetadata(filePath: string, existingRaw: string | undefin
 export function replaceFileTags(raw: string, filePath: string, tags: string[]): string {
   if (!isCompilationPath(filePath)) return replaceNoteTags(raw, tags);
   return compilationWrite(filePath, () => replaceCompilationTags(raw, tags));
+}
+
+/** A file a batch write left as it is, and why. */
+export interface SkippedFile {
+  path: string;
+  reason: string;
+}
+
+/**
+ * The result of one file's write in a batch that goes on without a compilation it refuses: a `CompilationError` lists
+ * the file in `skipped` with its reason and gives undefined; any other error stops the batch.
+ */
+export function skipRefusedCompilation<T>(skipped: SkippedFile[], filePath: string, write: () => T): T | undefined {
+  try {
+    return write();
+  } catch (error) {
+    if (!(error instanceof CompilationError)) throw error;
+    skipped.push({ path: filePath, reason: error.reason });
+    return undefined;
+  }
 }

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { applyTagEntries, PartialTagChangeError } from './tag-changes.js';
+import { applyTagEntries, PartialTagChangeError, skippedTagNotice, wasSkipped } from './tag-changes.js';
 import type { WorkspaceRepository } from './workspace-repositories.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
 
@@ -43,4 +43,34 @@ it('passes a failure of the first repository through unchanged', async () => {
   const error = await applyTagEntries([home, other], entries, 'rename', () => {}).catch(caught => caught);
   expect(error).not.toBeInstanceOf(PartialTagChangeError);
   expect(error.staleRepositories).toEqual([home.id]);
+});
+
+it('answers the compilations each repository skipped, with their notebook, and keeps them on a later failure', async () => {
+  const skipped = { path: 'trpg/b.md', reason: 'Tags not written: the compilation would not open (arrangement: Required)' };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (body.repository === home.id) return new Response(JSON.stringify({ success: true, changedPaths: [], skipped: [{ ...skipped, path: 'notes/life/a.md' }], revision: 'next' }));
+      return new Response(JSON.stringify({ success: true, changedPaths: [], skipped: [skipped], revision: 'next' }));
+    }),
+  );
+  expect(await applyTagEntries([home, other], entries, 'rename', () => {})).toEqual([{ ...skipped, path: 'notes/life/a.md', notebookId: 'notes~life' }, { ...skipped, notebookId: 'campaign~trpg' }]);
+  expect(wasSkipped([{ ...skipped, notebookId: 'campaign~trpg' }], entries[1])).toBe(true);
+  expect(wasSkipped([{ ...skipped, notebookId: 'campaign~trpg' }], { ...entries[1], notebookId: 'notes~life' })).toBe(false);
+  const t = (key: string, params?: Record<string, string | number>) => `${key} ${JSON.stringify(params)}`;
+  expect(skippedTagNotice(t as never, [{ ...skipped, notebookId: 'campaign~trpg' }])).toBe(`sidebar.tagSkippedCompilations ${JSON.stringify({ count: 1, files: `trpg/b.md (${skipped.reason})` })}`);
+  expect(skippedTagNotice(t as never, [])).toBe('');
+
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (body.repository === home.id) return new Response(JSON.stringify({ success: true, changedPaths: [], skipped: [{ ...skipped, path: 'notes/life/a.md' }], revision: 'next' }));
+      return new Response(JSON.stringify({ error: 'The repository changed.' }), { status: 409 });
+    }),
+  );
+  const error = await applyTagEntries([home, other], entries, 'rename', () => {}).catch(caught => caught);
+  expect(error).toBeInstanceOf(PartialTagChangeError);
+  expect(error.skipped).toEqual([{ ...skipped, path: 'notes/life/a.md', notebookId: 'notes~life' }]);
 });

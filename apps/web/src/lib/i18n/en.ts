@@ -1320,6 +1320,7 @@ export const en = {
   'sidebar.tagSameNameError': 'Choose a different tag name.',
   'sidebar.tagNoNotesAffected': 'No notes across the workspace have this tag.',
   'sidebar.tagOperationFailed': 'Tag update failed: {error}',
+  'sidebar.tagSkippedCompilations': 'Every other file was updated. Compilations left as they were, as they would not open with the new tags ({count}): {files}',
   'sidebar.tagMergeNewTarget': '"{tag}" is not an existing tag yet.',
   'sidebar.tagSuggestions': 'Matching tags',
   'sidebar.recentTagChanges': 'Recent tag changes',

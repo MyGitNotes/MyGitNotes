@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import fs from 'node:fs';
-import { classifyResource, CompilationError, replaceFileTags, resolveSafePath } from '@mygitnotes/core';
+import { classifyResource, replaceFileTags, resolveSafePath, skipRefusedCompilation } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { namedLocal } from './request-workspace.js';
@@ -28,6 +28,7 @@ export function createLocalTagsRouter(): Router {
         // Validate and compute every entry's patched content before writing any of them, so a
         // later entry failing validation cannot leave an earlier one written but uncommitted.
         const planned: { path: string; safePath: string; patched: string; }[] = [];
+        const skipped: { path: string; reason: string; }[] = [];
         for (const entry of entries) {
           let safePath: string;
           try {
@@ -37,21 +38,22 @@ export function createLocalTagsRouter(): Router {
             throw Object.assign(new Error(`Not a configured note: ${entry.path}`), { status: 403 });
           }
           const raw = fs.readFileSync(safePath, 'utf-8');
-          const patched = replaceFileTags(raw, entry.path, entry.tags);
-          if (patched === raw) continue;
+          const patched = skipRefusedCompilation(skipped, entry.path, () => replaceFileTags(raw, entry.path, entry.tags));
+          if (patched === undefined || patched === raw) continue;
           planned.push({ path: entry.path, safePath, patched });
         }
-        if (planned.length === 0) return { success: true, changedPaths: [] as string[] };
+        // A compilation that would not open with its new tags is left as it is and listed; the rest are written.
+        const listed = skipped.length ? { skipped } : {};
+        if (planned.length === 0) return { success: true, changedPaths: [] as string[], ...listed };
         for (const entry of planned) fs.writeFileSync(entry.safePath, entry.patched, 'utf-8');
         const changedPaths = planned.map(entry => entry.path);
         const message = typeof req.body.message === 'string' && req.body.message.trim() ? req.body.message.trim() : `docs(notes): update tags in ${changedPaths.length} note${changedPaths.length === 1 ? '' : 's'}`;
         const commit = await stageAndCommit(repoRoot, changedPaths, message);
-        return { success: true, changedPaths, commit };
+        return { success: true, changedPaths, commit, ...listed };
       });
       res.json(result);
     } catch (err: unknown) {
-      // A compilation that would not open with its new tags refuses the whole batch, naming the file; nothing is written.
-      const status = err instanceof CompilationError ? 400 : (err as { status?: number; })?.status || 500;
+      const status = (err as { status?: number; })?.status || 500;
       res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });

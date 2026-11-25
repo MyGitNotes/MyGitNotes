@@ -4,7 +4,7 @@ import { fail } from './route-errors.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { agentWorkspaceFile, agentWorkspaces, BOOKMARKS_DOCUMENT, classifyResource, FOCUS_DOCUMENT, hostedR2SourceFromEnv, keyedItem, lookupNotes, noteAgenda, type NotebookConfig, noteFacets, noteGraph, parseNoteQuery, productRepository, queryNotePaths, queryNotes, r2Cache, r2CacheRoot, RemoteSource, replaceFileTags, repositoryManifestStatus, type RepositoryStatus, resolveSafePath, SourceError, type UnavailableReason, visibleMembers, type WorkspaceConfigSource, type WorkspaceStatus } from '@mygitnotes/core';
+import { agentWorkspaceFile, agentWorkspaces, BOOKMARKS_DOCUMENT, classifyResource, FOCUS_DOCUMENT, hostedR2SourceFromEnv, keyedItem, lookupNotes, noteAgenda, type NotebookConfig, noteFacets, noteGraph, parseNoteQuery, productRepository, queryNotePaths, queryNotes, r2Cache, r2CacheRoot, RemoteSource, replaceFileTags, repositoryManifestStatus, type RepositoryStatus, resolveSafePath, skipRefusedCompilation, SourceError, type UnavailableReason, visibleMembers, type WorkspaceConfigSource, type WorkspaceStatus } from '@mygitnotes/core';
 import { createRemoteCache } from './remote-cache-store.js';
 import { createRecordStore, NoRecordStore, type RecordStore, storageMode } from './record-store/index.js';
 import { type BrowserSessions, cookieSessions, storedSessions } from './browser-sessions.js';
@@ -522,20 +522,23 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         const snapshot = await reader.getSnapshot();
         if (!snapshot.info.permissions?.push || reader.branch !== 'main') throw new SourceError('Write access on the main workspace branch is required.', 403);
         const changes: { path: string; content: string; }[] = [];
+        const skipped: { path: string; reason: string; }[] = [];
         for (const entry of entries) {
           const raw = (await reader.readFile(String(entry.path))).toString('utf8');
-          const patched = replaceFileTags(raw, String(entry.path), entry.tags as string[]);
-          if (patched === raw) continue;
+          const patched = skipRefusedCompilation(skipped, String(entry.path), () => replaceFileTags(raw, String(entry.path), entry.tags as string[]));
+          if (patched === undefined || patched === raw) continue;
           changes.push({ path: String(entry.path), content: patched });
         }
-        if (changes.length === 0) return res.json({ success: true, changedPaths: [] });
+        // A compilation that would not open with its new tags is left as it is and listed; the rest are committed.
+        const listed = skipped.length ? { skipped } : {};
+        if (changes.length === 0) return res.json({ success: true, changedPaths: [], ...listed });
         const message = typeof req.body.message === 'string' && req.body.message.trim() ? req.body.message.trim() : `docs(notes): update tags in ${changes.length} note${changes.length === 1 ? '' : 's'}`;
         const receipt = await reader.commitChanges(changes, String(req.body.revision || ''), 'tags', 'notes', message);
         // The notes are published with their new tags, as after a commit route; the answer is the commit's own either way.
         // Tags are not in a Gist, so no Gist is pushed.
         const person = requestPerson(res)?.person;
         await publishChanges(publishCommit, { repository: target, changes, revision: receipt.revision, gistTextKept: true, ...(person ? { person } : {}) });
-        res.json(receipt);
+        res.json({ ...receipt, ...listed });
       } catch (error) {
         fail(res, error);
       }
