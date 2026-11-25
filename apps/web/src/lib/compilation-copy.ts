@@ -1,5 +1,5 @@
 import { compilationCopyPath, compilationFile, type CompilationRow, copyCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
-import { compilationMetadata, newCompilationFile } from './compilation-rows.js';
+import { compilationMetadata, openableCompilationText } from './compilation-rows.js';
 import { listCompilations } from './compilation-lookup.js';
 import { firstFreePath } from './compilation-paths.js';
 
@@ -15,5 +15,5 @@ export async function planCompilationCopy(row: CompilationRow, initialStatus?: s
   const path = await firstFreePath(row.notebookId, taken => compilationCopyPath(row.path, taken));
   const source = compilationFile(row);
   const file = copyCompilation(!source.status && initialStatus ? { ...source, status: initialStatus } : source, (await listCompilations()).flatMap(note => typeof note.metadata.id === 'string' ? [note.metadata.id] : []));
-  return { path, content: serializeCompilation(newCompilationFile(file)), metadata: compilationMetadata({ ...row, name: file.title, ...(file.status ? { status: file.status } : {}) }), title: file.title };
+  return { path, content: openableCompilationText(serializeCompilation(file), file.title), metadata: compilationMetadata({ ...row, name: file.title, ...(file.status ? { status: file.status } : {}) }), title: file.title };
 }

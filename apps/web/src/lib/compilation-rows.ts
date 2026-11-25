@@ -1,4 +1,4 @@
-import { type CompilationFile, compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
+import { boardCompilation, CompilationError, type CompilationFile, compilationFile, type CompilationRow, compilationRow, isFileItem, parseCompilation, serializeCompilation } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { parseNotebookKey } from '@mygitnotes/core/notebook-key';
 import type { NotebookConfig } from './types.js';
@@ -12,6 +12,8 @@ export interface ParsedCompilation {
   content: string;
   row?: CompilationRow;
   error?: string;
+  /** Why the row may be drawn but not written: its legacy graph layout places more notes than a board holds, so writing it as a board would lose positions. */
+  upgradeLoss?: string;
 }
 
 /** The repository a notebook key names; bare local ids, as a single-repository workspace may hold, share one. */
@@ -55,23 +57,47 @@ export function parseCompilationNote(note: Pick<NoteListItem, 'path' | 'notebook
   const scope = notebooks.filter(candidate => repositoryOf(candidate.id) === repository);
   const notebookOf = (path: string) => scope.find(candidate => path === candidate.root || path.startsWith(`${candidate.root}/`))?.id;
   try {
-    return { ...base, row: compilationRow(parseCompilation(note.content, scope.map(candidate => candidate.root)), { notebookId: note.notebookId, path: note.path }, notebookOf) };
+    // A file in the graph arrangement it replaces opens as a board; the next write of the compilation writes the board and drops `graph`.
+    const file = parseCompilation(note.content, scope.map(candidate => candidate.root));
+    const upgraded = boardCompilation(file);
+    const loss = upgradeLoss(file, upgraded);
+    return { ...base, row: compilationRow(upgraded, { notebookId: note.notebookId, path: note.path }, notebookOf), ...(loss ? { upgradeLoss: loss } : {}) };
   } catch (error) {
     return { ...base, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * Why writing a legacy graph layout as a board would lose positions, if it would: the layout places more notes than a
+ * board holds (a legacy layout may name 5,000 paths, a board 2,000 cards). The board still draws what fits.
+ */
+function upgradeLoss(file: CompilationFile, upgraded: CompilationFile): string | undefined {
+  if (file.board || !file.graph) return undefined;
+  const paths = new Set(file.graph.nodes.map(node => node.path));
+  const placed = file.items ? file.items.filter(item => item.kind !== 'heading' && item.kind !== 'youtube' && paths.has(item.path)).length : paths.size;
+  const kept = upgraded.board?.cards?.length ?? 0;
+  return placed > kept ? `${file.title}: not saved, its legacy graph layout places ${placed} notes and a whiteboard keeps ${kept}; remove positions from its graph section first` : undefined;
 }
 
 /** The YAML a row is stored as. */
 export const compilationText = (row: CompilationRow) => serializeCompilation(compilationFile(row));
 
 /**
- * A new file every deployment can open: until every one reads boards (the whiteboard spec's rollout), nothing creates
- * an `arrangement: board` file, which an older Core refuses; a board is created as the graph it replaces, with its
- * board data. An existing board file keeps its arrangement through edits.
+ * `text` when the file it makes would open again, else a `CompilationError` naming `title`: a file over the 512 KiB cap
+ * (a legacy graph layout written as a board's one-line entries can grow past it) or outside the schema is not written,
+ * and the stored file stays as it is.
  */
-export const newCompilationFile = (file: CompilationFile): CompilationFile => file.arrangement === 'board' ? { ...file, arrangement: 'graph' } : file;
-/** A new row's form of `newCompilationFile`. */
-export const newCompilationRow = (row: CompilationRow): CompilationRow => row.view === 'board' ? { ...row, view: 'graph' } : row;
+export function openableCompilationText(text: string, title: string): string {
+  try {
+    parseCompilation(text);
+  } catch (error) {
+    throw new CompilationError(`${title}: not saved, the file would not open (${error instanceof Error ? error.message : String(error)})`);
+  }
+  return text;
+}
+
+/** The YAML a row is written as, refused as `openableCompilationText` refuses it. */
+export const writableCompilationText = (row: CompilationRow): string => openableCompilationText(compilationText(row), row.name);
 
 /** What the note actions carry beside the YAML: the title, tags and status shown in listings. */
 export const compilationMetadata = (row: CompilationRow) => ({ title: row.name, tags: row.tags ?? [], ...(row.status ? { status: row.status } : {}) });

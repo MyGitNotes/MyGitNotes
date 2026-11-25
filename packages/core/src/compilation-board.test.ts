@@ -174,6 +174,14 @@ graph:
     // A lane or book keeps its arrangement; only its legacy layout becomes a board.
     expect(boardCompilation(parseCompilation(legacy.replace('arrangement: graph', 'arrangement: book'), scope))).toMatchObject({ arrangement: 'book', board: { cards: expect.any(Array) } });
   });
+  it('separates three legacy cards at each extreme edge', () => {
+    const nodes = Array.from({ length: 6 }, (_, i) => `{ path: notes/one/${i}.md, x: ${i < 3 ? -5000000 : 5000000}, y: ${i < 3 ? -5000000 : 5000000} }`).join(', ');
+    const converted = boardCompilation(parseCompilation(`version: 1\nid: d\ntitle: D\narrangement: graph\nsource: { kind: tag, tag: t }\ngraph: { nodes: [${nodes}] }\n`, scope));
+    const cards = converted.board!.cards!;
+    expect(cards).toHaveLength(6);
+    for (const [i, card] of cards.entries()) for (const next of cards.slice(i + 1)) expect(overlap(card, next)).toBe(false);
+    expect(parseCompilation(serializeCompilation(converted), scope)).toEqual(converted);
+  });
   it('keeps a converted legacy layout inside the board’s range and card limit', () => {
     const far = boardCompilation(parseCompilation('version: 1\nid: d\ntitle: D\narrangement: graph\nsource: { kind: tag, tag: t }\ngraph: { nodes: [{ path: notes/one/a.md, x: 5000000, y: 0 }, { path: notes/one/b.md, x: 5001000, y: 0 }, { path: notes/one/c.md, x: -9000000, y: -9000000 }] }\n', scope));
     const cards = far.board!.cards!;

@@ -1,5 +1,5 @@
 import { Tooltip } from './Tooltip.js';
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { DndContext, type DragEndEvent, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -24,19 +24,20 @@ import type { FolderItem, NotebookConfig } from '../lib/types.js';
 import { useNoteFacets, useNoteQueryScope } from '../lib/use-note-queries.js';
 import { useCompilation } from '../lib/use-compilation.js';
 import { useStudyWorkspace } from '../lib/use-study-workspace.js';
+import { usePhone } from '../lib/use-phone.js';
 import { Button } from './Button.js';
 import type { CompilationContentProps } from './CompilationCard.js';
 import { CompilationAddItem, CompilationEditRow } from './CompilationDialogs.js';
-import { CompilationLane } from './CompilationLane.js';
+import { CompilationLane, createLaneNoteContext } from './CompilationLane.js';
 import { shownView } from './CompilationHeader.js';
 import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 import { CompilationBook } from './CompilationBook.js';
+import { CompilationBoard } from './board/CompilationBoard.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { useCompilationAssets, useCompilationItemOpen } from './useCompilationItemOpen.js';
 import { compilationNotebookIds } from '../lib/compilation-rows.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 
-const GraphPage = lazy(() => import('./GraphPage.js').then(module => ({ default: module.GraphPage })));
 const ignoreSaved = () => {};
 
 export interface CompilationViewProps {
@@ -54,7 +55,7 @@ export interface CompilationViewProps {
   onClose?: () => void;
 }
 
-/** One open compilation: its header, then the lane, book or graph arrangement. Edits write the file through the note actions. */
+/** One open compilation: its header, then the lane, book or whiteboard arrangement. Edits write the file through the note actions. */
 export function CompilationView({ notebookId, path, notebooks, folders, frame, onOpenNote, onOpenFolder, onClose }: CompilationViewProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -77,7 +78,10 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   const row = compilation.page.rows[0] as CompilationRow | undefined;
   const itemOpen = useCompilationItemOpen({ notebooks, assets, onOpenNote, onMissing: () => setMissing(true) });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: screenKeyboardCoordinates }));
-  const disabled = !compilation.writable || compilation.loading;
+  // On a phone a board is for looking: nothing there changes the compilation file, the outline or the compilation's place.
+  const phone = usePhone();
+  const writable = compilation.writable && !(phone && row !== undefined && shownView(row.view) === 'board');
+  const disabled = !writable || compilation.loading;
   // A folder source includes assets, so an incomplete asset read must not become a saved manual order.
   const dragDisabled = row?.kind === 'dynamic' && row.source.kind === 'folder' && (assetsLoading || assetError);
   const latest = useRef<{ row: CompilationRow | undefined; scope: typeof scope; assets: typeof assets; blocked: boolean; } | null>(null);
@@ -114,6 +118,9 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
   };
   const copy = async () => {
     if (!row) return;
+    // A copy written from a legacy layout a whiteboard cannot keep would lose positions as a save would.
+    const loss = compilation.upgradeLoss.get(row.path);
+    if (loss) return compilation.setError(loss);
     try {
       const next = await planCompilationCopy(row, initialCompilationStatus(notebooks, notebookId, facets.facets));
       await actions.create(notebookId, next.path, next.content, next.metadata);
@@ -176,9 +183,9 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     void slots.finish().then(saved => saved && change(next));
   };
   const addToFocus = compilation.note ? editing.addToFocus({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
-  const move = compilation.writable && compilation.note ? editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
+  const move = writable && compilation.note ? editing.moveNote?.({ ...compilation.note, content: compilation.note.content ?? '' }) : undefined;
   // Renaming retitles the compilation through its own row, then the file follows the new name.
-  const rename = (current: CompilationRow) => compilation.writable && compilation.note ? editing.renameNote?.({ ...compilation.note, content: compilation.note.content ?? '', title: current.name }, title => change({ ...current, name: title })) : undefined;
+  const rename = (current: CompilationRow) => writable && compilation.note ? editing.renameNote?.({ ...compilation.note, content: compilation.note.content ?? '', title: current.name }, title => change({ ...current, name: title })) : undefined;
 
   const view = (current: CompilationRow) => {
     const common = {
@@ -189,7 +196,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onOpen: open,
       disabled,
       dragDisabled,
-      readOnly: !compilation.writable,
+      readOnly: !writable,
       study,
       facets: facets.facets,
       onStudy: () => void startStudy(),
@@ -198,7 +205,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       onAdd: () => setDialog('add'),
       extra: (
         <>
-          {outlines?.canAdd(notebookId) && compilation.writable && compilation.note && (
+          {outlines?.canAdd(notebookId) && writable && compilation.note && (
             <Tooltip label={t('outline.add')}>
               <button
                 type='button'
@@ -211,7 +218,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
               </button>
             </Tooltip>
           )}
-          {(compilation.writable || addToFocus) && (
+          {(writable || addToFocus) && (
             // Secondary actions share one menu so the header stays on one line in a narrow Focus pane.
             <DropdownMenu.Root>
               <Tooltip label={t('compilation.more')}>
@@ -227,7 +234,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
                       <span>{t('focus.addTo')}</span>
                     </DropdownMenu.Item>
                   )}
-                  {compilation.writable && (
+                  {writable && (
                     <>
                       <DropdownMenu.Item
                         disabled={disabled}
@@ -262,12 +269,21 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
         </>
       ),
       onSort: (sort: NonNullable<Extract<CompilationRow, { kind: 'dynamic'; }>['sort']>) => current.kind === 'dynamic' && change({ ...current, sort }),
-      onEditOrder: current.kind === 'dynamic' && compilation.writable ? () => setDialog('order') : undefined,
-      onArrange: current.kind === 'custom' && compilation.writable ? () => setDialog('arrange') : undefined,
+      onEditOrder: current.kind === 'dynamic' && writable ? () => setDialog('order') : undefined,
+      onArrange: current.kind === 'custom' && writable ? () => setDialog('arrange') : undefined,
       onRename: rename(current),
       onCreateNote: actions.createNote,
     };
-    return current.view === 'book' ? <CompilationBook {...common} /> : (
+    if (current.view === 'book') return <CompilationBook {...common} />;
+    if (shownView(current.view) === 'board') {
+      // A board draws its items where the file places them; its status filter does not apply, and on a phone it is for looking.
+      const createInSource = () => {
+        const context = createLaneNoteContext(current, notebooks);
+        if (context) actions.createNote?.(context);
+      };
+      return <CompilationBoard row={current} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={open} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} hideQuery />;
+    }
+    return (
       <CompilationLane
         {...common}
         onRemove={id => {
@@ -276,13 +292,6 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
           if (slots.editing?.slot === id) void slots.finish().then(saved => saved && change(next));
           else change(next);
         }}
-        graph={shownView(current.view) === 'graph'
-          ? (
-            <Suspense fallback={<p role='status'>{t('graph.title')}</p>}>
-              <GraphPage notebooks={notebooks} lane={current} screen={compilation} />
-            </Suspense>
-          )
-          : undefined}
       />
     );
   };

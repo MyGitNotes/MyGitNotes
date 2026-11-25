@@ -8,7 +8,7 @@ import { GraphTool } from './GraphTool.js';
 import { CompilationEditRow } from '../CompilationDialogs.js';
 import type { useGraphController } from './useGraphController.js';
 export function GraphPanels({ model }: { model: ReturnType<typeof useGraphController>; }) {
-  const { notebooks, filters, screen, lane, folders, t, params, setParams, laneIds, activeLane, showOutside, lanePanel, setLanePanel, editLane, setEditLane, rows, laneRows, selectLane, setSaveLayoutRequested, controls, selected, only, setOnly, showOrphans, setShowOrphans, boxMode, setBoxMode, setSaveOpen, setName, notice, setNotice, pickerOpen, setPickerOpen, appearance, appearanceError, matching, laneMembers, graphData, colors, changeAppearance, currentLayout, persistLayout, freeze, reflow, setExpanded, select, fitView, visibleSelected, changeMembership, openFullGraph, saveNotebook } = model;
+  const { notebooks, filters, screen, lane, folders, t, params, setParams, laneIds, activeLane, showOutside, lanePanel, setLanePanel, editLane, setEditLane, rows, laneRows, selectLane, controls, selected, only, setOnly, showOrphans, setShowOrphans, boxMode, setBoxMode, setSaveOpen, setName, notice, setNotice, pickerOpen, setPickerOpen, appearance, appearanceError, matching, laneMembers, graphData, colors, changeAppearance, currentLayout, persistLayout, freeze, reflow, setExpanded, select, fitView, visibleSelected, changeMembership, openFullGraph, saveNotebook } = model;
   const filtersElement = filters
     ? (
       <GraphFilters {...filters} count={matching.length} showOrphans={showOrphans} onToggleOrphans={() => setShowOrphans(v => !v)} extraCount={laneIds.length}>
@@ -97,11 +97,6 @@ export function GraphPanels({ model }: { model: ReturnType<typeof useGraphContro
           }}
           screen={screen}
           onEditLane={() => setEditLane(true)}
-          onSaveCurrentLane={() => {
-            freeze();
-            persistLayout(currentLayout());
-            setSaveLayoutRequested(true);
-          }}
           laneMembers={laneMembers}
           visibleSelected={visibleSelected}
           onChangeMembership={changeMembership}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { type CompilationPage, type CompilationRow, compilationSlug, uniqueCompilationPath } from '@mygitnotes/core/compilation';
 import { type NoteListItem, type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { useCompilationActions } from './compilation-actions.js';
-import { compilationMetadata, compilationText, newCompilationRow, parseCompilationNote, type ParsedCompilation, planCompilationWrites } from './compilation-rows.js';
+import { compilationMetadata, compilationText, parseCompilationNote, type ParsedCompilation, planCompilationWrites, writableCompilationText } from './compilation-rows.js';
 import { useEditorRegistry } from './note-editing.js';
 import { initialCompilationStatus } from './compilation-status.js';
 import { useNoteFacets, useNoteList, useNoteLookup } from './use-note-queries.js';
@@ -26,6 +26,8 @@ export interface CompilationController {
   setError: (message: string) => void;
   /** Whether every compilation shown may be written. */
   writable: boolean;
+  /** Files drawn but never written or copied, by path, with the reason: a legacy graph layout whose positions a whiteboard cannot keep. */
+  upgradeLoss: ReadonlyMap<string, string>;
 }
 
 interface ControllerInput {
@@ -47,6 +49,8 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   const register = useEditorRegistry();
   const parsed = useMemo(() => entries.map(entry => parseCompilationNote(entry, notebooks)), [entries, notebooks]);
   const stored = useMemo(() => parsed.flatMap(entry => entry.row ? [entry.row] : []), [parsed]);
+  // Files a write would lose positions of: drawn, never written.
+  const lossy = useMemo(() => new Map(parsed.flatMap(entry => entry.row && entry.upgradeLoss ? [[entry.path, entry.upgradeLoss] as const] : [])), [parsed]);
   // Rows edited here and not yet seen in the stored files; null stands for a deleted file.
   const [pending, setPending] = useState<Record<string, CompilationRow | null>>({});
   const [error, setError] = useState('');
@@ -58,9 +62,9 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     return result;
   }, [stored, pending]);
 
-  const latest = useRef({ pending, stored, entries, rows, actions, newPath, initialStatus });
+  const latest = useRef({ pending, stored, entries, rows, actions, newPath, initialStatus, lossy });
   /* eslint-disable react/refs -- The write timer and the unmount flush read the newest state without restarting. */
-  latest.current = { pending, stored, entries, rows, actions, newPath, initialStatus };
+  latest.current = { pending, stored, entries, rows, actions, newPath, initialStatus, lossy };
   /* eslint-enable react/refs */
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inflight = useRef<Promise<void>>(Promise.resolve());
@@ -121,7 +125,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     const writes = planCompilationWrites(current, next.rows);
     if (!writes.save.length && !writes.create.length && !writes.remove.length) return;
     const taken = new Set([...current.map(row => row.path), ...Object.keys(latest.current.pending)]);
-    const created = writes.create.map(newCompilationRow).flatMap(row => {
+    const created = writes.create.flatMap(row => {
       if (row.path) return [row];
       if (!placeNew) return [];
       const path = placeNew(row, taken);
@@ -130,8 +134,21 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       return [{ ...row, path, ...(status ? { status } : {}) }];
     });
     const updates: Record<string, CompilationRow | null> = {};
+    const refused: string[] = [];
     for (const row of [...writes.save, ...created]) {
       if (!api.canWrite(row.notebookId)) continue;
+      // A row whose file would not open again, or would lose a legacy layout's positions, is not written; its stored file and the rows shown stay as they were.
+      const loss = latest.current.lossy.get(row.path);
+      if (loss) {
+        refused.push(loss);
+        continue;
+      }
+      try {
+        writableCompilationText(row);
+      } catch (caught) {
+        refused.push(caught instanceof Error ? caught.message : String(caught));
+        continue;
+      }
       updates[row.path] = row;
       queued.current.set(row.path, row);
     }
@@ -140,7 +157,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
       queued.current.set(path, null);
     }
     setPending(previous => ({ ...previous, ...updates }));
-    setError('');
+    setError(refused.join('\n'));
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), WRITE_DELAY);
   }, [flush]);
@@ -157,7 +174,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   }, [flush]);
 
   const writable = rows.length > 0 ? rows.every(row => actions.canWrite(row.notebookId)) : false;
-  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, loading, saving, error: error || loadError, setError, writable };
+  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, loading, saving, error: error || loadError, setError, writable, upgradeLoss: lossy };
 }
 
 /**

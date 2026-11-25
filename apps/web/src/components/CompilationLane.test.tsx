@@ -162,25 +162,13 @@ it('switches layout when the compilation is resized across 560px without writing
   expect(vi.mocked(fetch).mock.calls.slice(requests).filter(([, init]) => init?.method && init.method !== 'GET')).toEqual([]);
 });
 
-it('draws a board-arranged compilation as the graph lane until the board is drawn, and its switch marks the graph', () => {
+it('offers the whiteboard in the arrangement switch where it offered the graph', () => {
   const onView = vi.fn();
-  render(lane({ row: { ...row, view: 'board' }, onView, graph: createElement('div', { 'data-testid': 'graph-lane' }) }), { wrapper });
-  expect(screen.getByTestId('graph-lane')).toBeInTheDocument();
-  expect(document.querySelector('.screen-lane-strip')).toBeNull();
-  expect(document.querySelector('.screen-lane')).toHaveClass('screen-view-graph');
+  render(lane({ row, onView }), { wrapper });
   const tabs = within(screen.getByRole('group', { name: 'View size: Pinned' }));
-  expect(tabs.getByRole('button', { name: 'Graph' })).toHaveAttribute('aria-pressed', 'true');
-  expect(tabs.getAllByRole('button').map(button => button.getAttribute('aria-label'))).not.toContain('Board');
-  fireEvent.click(tabs.getByRole('button', { name: 'Book' }));
-  expect(onView).toHaveBeenCalledWith('book');
-});
-
-it('takes Alt+wheel again after the arrangement returns from graph to cards', async () => {
-  const { rerender } = render(compilationView('900px', { row: { ...row, view: 'graph' } }), { wrapper });
-  expect(document.querySelector('.screen-lane-strip')).toBeNull();
-  rerender(compilationView('900px'));
-  await waitFor(() => expect(screen.getByText('Note A')).toBeInTheDocument());
-  expect(altWheel(document.querySelector('.screen-lane-strip')!)).toBe(true);
+  expect(tabs.getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Thumbnail', 'Small', 'Medium', 'Book', 'Whiteboard']);
+  fireEvent.click(tabs.getByRole('button', { name: 'Whiteboard' }));
+  expect(onView).toHaveBeenCalledWith('board');
 });
 
 const card = (title: string) => document.querySelector<HTMLElement>(`[data-screen-item="${title}"]`)!;
@@ -437,13 +425,11 @@ it('moves a card across a divider into the next chapter, and a divider alone, wi
   vi.mocked(HTMLElement.prototype.getBoundingClientRect).mockRestore();
 });
 
-it('offers Arrange contents on a writable custom compilation, in lanes and in the graph arrangement', async () => {
+it('offers Arrange contents on a writable custom compilation', async () => {
   const onArrange = vi.fn();
   const { rerender } = render(lane({ row: chaptered, onArrange }), { wrapper });
   fireEvent.click(await screen.findByRole('button', { name: 'Arrange contents: Pinned' }));
   expect(onArrange).toHaveBeenCalledTimes(1);
-  rerender(lane({ row: { ...chaptered, view: 'graph' }, onArrange, graph: createElement('div') }));
-  expect(screen.getByRole('button', { name: 'Arrange contents: Pinned' })).toBeInTheDocument();
   rerender(lane({ row: chaptered, onArrange, readOnly: true }));
   expect(screen.queryByRole('button', { name: /Arrange contents/ })).not.toBeInTheDocument();
 });

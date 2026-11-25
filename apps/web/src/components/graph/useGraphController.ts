@@ -3,7 +3,7 @@ import { graphOwnsEnter } from './graph-keys.js';
 import { createGraphInteractions } from './createGraphInteractions.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { COMPILATION_MAX_ITEMS, type CompilationRow, type GraphLayout } from '@mygitnotes/core/compilation';
+import { boardFromGraph, COMPILATION_MAX_ITEMS, type CompilationRow, type GraphLayout } from '@mygitnotes/core/compilation';
 import { arrangeGraphLayout, graphLaneViewport, type GraphPlacement } from '../../lib/graph-layout.js';
 import { optimizeGraphLayout } from '../../lib/graph-topology-layout.js';
 import { useTranslation } from '../../lib/i18n/index.js';
@@ -123,9 +123,8 @@ export function useGraphController({ notebooks, filters, screen, lane, folders =
     return { nodes: [...merged.values()] };
   };
   const persistLayout = (next: GraphPlacement) => {
+    // A compilation is a board now and its layout belongs to the board: the graph page keeps a lane's layout for this visit only and never writes `graph` again.
     setLayout(next);
-    const controller = latest.current.screen;
-    if (activeLane && controller?.writable) controller.change({ ...controller.page, rows: controller.page.rows.map(row => row.id === activeLane.id ? { ...row, graph: persistedLayout(next, row.notebookId) } : row) });
   };
   const saveLayout = screen?.save, layoutSaving = screen?.saving, layoutPage = screen?.page;
 
@@ -301,7 +300,10 @@ export function useGraphController({ notebooks, filters, screen, lane, folders =
   const saveLane = () => {
     if (!screen?.writable || !name.trim() || !saveNotebook) return;
     const id = crypto.randomUUID(), current = currentLayout();
-    const row: CompilationRow = { id, path: '', kind: 'custom', name: name.trim(), view: 'graph', notebookId: saveNotebook, items: graphData.nodes.filter(node => visibleSelected.includes(node.id)).map(node => ({ id: crypto.randomUUID(), kind: 'note', notebookId: saveNotebook, path: node.path })), graph: persistedLayout({ nodes: current.nodes.filter(n => visibleSelected.includes(n.id)) }, saveNotebook) };
+    const items = graphData.nodes.filter(node => visibleSelected.includes(node.id)).map(node => ({ id: crypto.randomUUID(), kind: 'note' as const, notebookId: saveNotebook, path: node.path }));
+    // The new compilation is a board, its cards where the graph shows the notes.
+    const board = boardFromGraph(persistedLayout({ nodes: current.nodes.filter(n => visibleSelected.includes(n.id)) }, saveNotebook), { items });
+    const row = { id, path: '', kind: 'custom' as const, name: name.trim(), view: 'board' as const, notebookId: saveNotebook, items, board } satisfies CompilationRow;
     if (row.items.length > COMPILATION_MAX_ITEMS) {
       setNotice(t('screen.limit'));
       return;

@@ -116,7 +116,7 @@ function MovableDivider({ item, dragDisabled, remove }: { item: CompilationHeadi
   /* eslint-enable react/refs */
 }
 
-export function CompilationLane({ row, graph, dragDisabled, disabled, study, facets, notebooks, assets, folders = [], onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, onArrange, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { graph?: ReactNode; extra?: ReactNode; facets?: Record<string, NotebookFacets>; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; row: CompilationRow; dragDisabled?: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onArrange?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
+export function CompilationLane({ row, dragDisabled, disabled, study, facets, notebooks, assets, folders = [], onOpen, onStudy, onStudyChange, onView, onSort, onEditOrder, onRename, onAdd, onRemove, onCreateNote, onArrange, readOnly, extra }: Omit<CompilationContentProps, 'notes'> & { extra?: ReactNode; facets?: Record<string, NotebookFacets>; /** Names and orders the chapters of a dynamic compilation grouped by folder. */ folders?: FolderItem[]; row: CompilationRow; dragDisabled?: boolean; disabled: boolean; study: StudyController; readOnly?: boolean; onStudy?: () => void; onView?: (view: CompilationRow['view']) => void; onAdd?: () => void; onRemove?: (id: string) => void; onSort?: (sort: CompilationSort) => void; onEditOrder?: () => void; onArrange?: () => void; onRename?: () => void; onStudyChange?: (study: NonNullable<CompilationRow['study']>) => void; onCreateNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void; }) {
   const { t } = useTranslation();
   const host = useRef<HTMLElement>(null), strip = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(() => new Date());
@@ -124,9 +124,9 @@ export function CompilationLane({ row, graph, dragDisabled, disabled, study, fac
     const timer = setInterval(() => setClock(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
-  const view = shownView(row.view), graphed = view === 'graph';
-  // Cards show a body, so the lane's page is read with content; a graph lane needs none.
-  const laneNotes = useLaneNotes(row, { content: !graphed });
+  const view = shownView(row.view);
+  // Cards show a body, so the lane's page is read with content.
+  const laneNotes = useLaneNotes(row, { content: true });
   // While a card edits, its autosaves must not move or drop anything: the notes keep the copies they had (a note that leaves the loaded page stays a note card), the items their order (E11).
   const notes = useHeldNotes(laneNotes.notes);
   const content: CompilationContentProps = { notebooks, assets, onOpen, notes };
@@ -136,11 +136,11 @@ export function CompilationLane({ row, graph, dragDisabled, disabled, study, fac
   const canDrag = editable && !row.study?.status && !dragDisabled;
   const custom = row.kind === 'custom';
   const chapters = dragChapters(items, !custom && row.group === 'folder');
-  const drop = useDroppable({ id: `lane:${row.id}`, disabled: !canDrag || !custom || graphed, data: { empty: custom && !row.items.length } });
+  const drop = useDroppable({ id: `lane:${row.id}`, disabled: !canDrag || !custom, data: { empty: custom && !row.items.length } });
   const remove = (id: string) => editable && custom && !row.study?.status && onRemove ? () => onRemove(id) : undefined;
   // A narrow compilation lists its cards top to bottom: nothing scrolls sideways, and cards sort along the column.
   const vertical = useLaneOrientation(host) === 'vertical';
-  useAltWheelHorizontalScroll(host, strip, undefined, !graphed && !vertical);
+  useAltWheelHorizontalScroll(host, strip, undefined, !vertical);
   // Crossing the width threshold only changes CSS and the sorting strategy, so a card that edits keeps its editor and unsaved text; it is scrolled back into view (L7).
   const editingSlot = useCompilationEditingContext().editing?.slot;
   const seenVertical = useRef(vertical);
@@ -156,39 +156,37 @@ export function CompilationLane({ row, graph, dragDisabled, disabled, study, fac
     if (context) onCreateNote?.(context);
   };
   return (
-    <section id={`screen-lane-${row.id}`} ref={host} data-orientation={graphed ? undefined : vertical ? 'vertical' : 'horizontal'} className={`screen-lane screen-view-${view} ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`} aria-label={row.name}>
-      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onArrange={onArrange} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={graphed || vertical ? undefined : scrollButton} />
-      {graphed ? graph : (
-        <div ref={readOnly ? undefined : drop.setNodeRef} className={!readOnly && drop.isOver ? 'screen-drop-target' : ''}>
-          <div ref={strip} className='screen-lane-strip' tabIndex={0} aria-label={`${row.name} · ${t('screen.items')}`}>
-            <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>
-              {items.map(item =>
-                item.kind === 'heading'
-                  ? custom ? <MovableDivider key={item.id} item={item} dragDisabled={!canDrag} remove={remove(item.id)} /> : (
-                    <div key={item.id} className='screen-card-slot screen-chapter-slot'>
-                      <ChapterDivider item={item} />
-                    </div>
-                  )
-                  : <MovableCard key={item.id} {...content} item={item} row={row} editable={editable} dragDisabled={!canDrag} chapterId={chapters.get(item.id)} remove={remove(item.id)} />
-              )}
-            </SortableContext>
-            {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>}
-            {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>}
-            <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />
-            {!contentItems(items).length && !laneNotes.loading && (
-              <div className='screen-lane-empty'>
-                {t(row.kind === 'custom' ? 'screen.emptyCustom' : 'screen.emptyDynamic')}
-                {!readOnly && !disabled && (
-                  <Button onClick={row.kind === 'custom' ? onAdd : handleCreateInLane}>
-                    <Plus size={14} />
-                    {t(row.kind === 'custom' ? 'screen.addItem' : 'screen.createNoteInLane')}
-                  </Button>
-                )}
-              </div>
+    <section id={`screen-lane-${row.id}`} ref={host} data-orientation={vertical ? 'vertical' : 'horizontal'} className={`screen-lane screen-view-${view} ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`} aria-label={row.name}>
+      <CompilationHeader row={row} count={contentItems(items).length} disabled={disabled} readOnly={readOnly} notebooks={content.notebooks} facets={facets} extra={extra} onStudy={onStudy} onView={onView} onAdd={onAdd} onSort={onSort} onEditOrder={onEditOrder} onArrange={onArrange} onRename={onRename} onStudyChange={onStudyChange} onCreateInSource={handleCreateInLane} scrollButton={vertical ? undefined : scrollButton} />
+      <div ref={readOnly ? undefined : drop.setNodeRef} className={!readOnly && drop.isOver ? 'screen-drop-target' : ''}>
+        <div ref={strip} className='screen-lane-strip' tabIndex={0} aria-label={`${row.name} · ${t('screen.items')}`}>
+          <SortableContext items={items.map(item => item.id)} strategy={vertical ? verticalListSortingStrategy : horizontalListSortingStrategy}>
+            {items.map(item =>
+              item.kind === 'heading'
+                ? custom ? <MovableDivider key={item.id} item={item} dragDisabled={!canDrag} remove={remove(item.id)} /> : (
+                  <div key={item.id} className='screen-card-slot screen-chapter-slot'>
+                    <ChapterDivider item={item} />
+                  </div>
+                )
+                : <MovableCard key={item.id} {...content} item={item} row={row} editable={editable} dragDisabled={!canDrag} chapterId={chapters.get(item.id)} remove={remove(item.id)} />
             )}
-          </div>
+          </SortableContext>
+          {laneNotes.error && <p role='alert' className='screen-error'>{laneNotes.error}</p>}
+          {laneNotes.loading && <LoadingStatus className='screen-lane-empty'>{t('notes.loading')}</LoadingStatus>}
+          <NoteListSentinel hasMore={laneNotes.hasMore} loading={laneNotes.loadingMore} error={laneNotes.error} onLoadMore={laneNotes.loadMore} className='screen-lane-sentinel' />
+          {!contentItems(items).length && !laneNotes.loading && (
+            <div className='screen-lane-empty'>
+              {t(row.kind === 'custom' ? 'screen.emptyCustom' : 'screen.emptyDynamic')}
+              {!readOnly && !disabled && (
+                <Button onClick={row.kind === 'custom' ? onAdd : handleCreateInLane}>
+                  <Plus size={14} />
+                  {t(row.kind === 'custom' ? 'screen.addItem' : 'screen.createNoteInLane')}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </section>
   );
 }

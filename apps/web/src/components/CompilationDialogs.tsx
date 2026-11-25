@@ -5,7 +5,7 @@ import { defaultStudyProgression, studyLaneStatuses, type StudyProgression, Stud
 import { StudyLaneSettings } from './StudyLane.js';
 import { WorkspaceDialog } from './WorkspaceDialog.js';
 import { Select } from './Select.js';
-import { shownView } from './CompilationHeader.js';
+import { COMPILATION_SWITCH_VIEWS, shownView } from './CompilationHeader.js';
 import type { CompilationContentProps } from './CompilationCard.js';
 import type { FolderItem } from '../lib/types.js';
 import { useTranslation } from '../lib/i18n/index.js';
@@ -104,7 +104,7 @@ function CompilationRowDialog({ notebooks, assets, folders, selectedNotebookId, 
         )}
         <label>
           {t('screen.view')}
-          <Select aria-label={t('screen.view')} value={shownView(view)} disabled={disabled} onValueChange={value => setView(value as CompilationRow['view'])} options={(['thumbnail', 'small', 'medium', 'book', 'graph'] as const).map(value => ({ value, label: t(`screen.${value}`) }))} />
+          <Select aria-label={t('screen.view')} value={shownView(view)} disabled={disabled} onValueChange={value => setView(value as CompilationRow['view'])} options={COMPILATION_SWITCH_VIEWS.map(value => ({ value, label: t(`screen.${value}`) }))} />
         </label>
         <details className='study-advanced' open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}>
           <summary>{t('study.advanced')}</summary>

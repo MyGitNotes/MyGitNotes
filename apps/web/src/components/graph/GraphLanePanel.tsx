@@ -1,5 +1,5 @@
 import { Tooltip } from '../Tooltip.js';
-import { Minus, Pencil, Plus, Save, X } from 'lucide-react';
+import { Minus, Pencil, Plus, X } from 'lucide-react';
 import type { CompilationController } from '../../lib/use-compilation.js';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { I18nContextValue } from '../../lib/i18n/index.js';
@@ -14,14 +14,13 @@ interface GraphLanePanelProps {
   onToggleShowOutside: (checked: boolean) => void;
   screen: CompilationController | undefined;
   onEditLane: () => void;
-  onSaveCurrentLane: () => void;
   laneMembers: Set<string>;
   visibleSelected: string[];
   onChangeMembership: (add: boolean) => void;
 }
 
 /** The lane picker and per-lane actions (edit, save layout, membership) shown when the lane panel is open. */
-export function GraphLanePanel({ t, activeLane, onClose, laneRows, onSelectLane, showOutside, onToggleShowOutside, screen, onEditLane, onSaveCurrentLane, laneMembers, visibleSelected, onChangeMembership }: GraphLanePanelProps) {
+export function GraphLanePanel({ t, activeLane, onClose, laneRows, onSelectLane, showOutside, onToggleShowOutside, screen, onEditLane, laneMembers, visibleSelected, onChangeMembership }: GraphLanePanelProps) {
   return (
     <section className='graph-lane-panel' aria-label={t('graph.chooseLane')}>
       <header>
@@ -47,13 +46,7 @@ export function GraphLanePanel({ t, activeLane, onClose, laneRows, onSelectLane,
               {t('screen.editRow')}
             </button>
           </Tooltip>
-          <Tooltip label={t('graph.saveLayoutHint')}>
-            <button className='ui-button graph-save-lane' disabled={!screen?.writable || screen.saving || Boolean(screen.error)} onClick={onSaveCurrentLane}>
-              <Save size={14} />
-              {t(screen?.saving ? 'editor.saving' : 'graph.saveCurrentLane')}
-            </button>
-          </Tooltip>
-          <p className='graph-save-hint'>{t('graph.saveLayoutHint')}</p>
+          {/* A compilation's layout belongs to its whiteboard now; this page keeps a lane's layout for the visit only, so it offers no layout save. */}
           {activeLane.kind === 'custom'
             ? (
               <div className='graph-lane-membership'>
