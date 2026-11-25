@@ -12,7 +12,7 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 2. `list_notebooks`: Lists all configured notebooks and their root directories.
 3. `list_notes`: Lists note summaries within a notebook, paged by `offset` and `limit` (default 100), returning `total` and `nextOffset`. Each entry carries frontmatter, a file path, a bounded `description` in place of the Markdown body, and the note's edit dates `lastCommitAt` and `updated` (see Edit dates below).
 4. `read_note`: Reads a note file and parses its frontmatter and raw Markdown body (supports `metadataOnly: true` to return metadata without the markdown body). Both forms carry `lastCommitAt` and `updated`.
-5. `save_note`: Atomically creates or updates a note file with path traversal and branch checks, and commits to Git. A compilation (`*.compilation.yml`) is saved as its YAML like any note; its items are repository-relative paths in any notebook of the same repository, and a folder source must lie in one of them. A custom compilation's `items` may hold `{ id, kind: heading, title }` entries, each starting a chapter of the items after it up to the next heading. A note item may carry `anchor: <heading text>` and then shows only that heading's section, matched like a `#heading` link. A dynamic compilation may set `group: folder` for one chapter per folder. If `content` is omitted, updates frontmatter metadata only. On an existing note, frontmatter keys left out of `metadata` keep their values, so a save without `metadata` keeps the frontmatter. The commit is marked as an agent edit (see below). Returns the note `path`. A creation (`createOnly`, as the web page's commit sends it) is refused with 409 when its name differs only in letter case or Unicode form (NFC, lower case) from another entry of the repository, or from another creation of the same commit, because a case-insensitive file system would make them one; the web chat agent's creations also refuse `AGENTS.md` and `CLAUDE.md` names in any folder. With `template` (a template id of the note's notebook) it creates a note from that template instead; see Note templates below.
+5. `save_note`: Atomically creates or updates a note file with path traversal and branch checks, and commits to Git. A compilation (`*.compilation.yml`) is saved as its YAML like any note; its items are repository-relative paths in any notebook of the same repository, and a folder source must lie in one of them. A custom compilation's `items` may hold `{ id, kind: heading, title }` entries, each starting a chapter of the items after it up to the next heading. A note item may carry `anchor: <heading text>` and then shows only that heading's section, matched like a `#heading` link. A dynamic compilation may set `group: folder` for one chapter per folder. A compilation may also carry a `board` section that lays it out as a whiteboard (see Whiteboards below). If `content` is omitted, updates frontmatter metadata only. On an existing note, frontmatter keys left out of `metadata` keep their values, so a save without `metadata` keeps the frontmatter. The commit is marked as an agent edit (see below). Returns the note `path`. A creation (`createOnly`, as the web page's commit sends it) is refused with 409 when its name differs only in letter case or Unicode form (NFC, lower case) from another entry of the repository, or from another creation of the same commit, because a case-insensitive file system would make them one; the web chat agent's creations also refuse `AGENTS.md` and `CLAUDE.md` names in any folder. With `template` (a template id of the note's notebook) it creates a note from that template instead; see Note templates below.
    Compilation YAML may include `description` (a trimmed string, up to 500 characters) and additional top-level fields such as `translationKey`.
    Metadata-only updates preserve those fields.
    When replacing the entire YAML, include the extra fields you want to keep.
@@ -34,6 +34,48 @@ Default transport is **stdio** for local agent integration (e.g. Claude Desktop,
 
 > [!NOTE]
 > Backward Compatibility: Redundant endpoints (`get_note_metadata`, `update_note_metadata`, `get_folder_metadata`, `update_folder_metadata`, `list_agent_resources`, `check_core_update`) remain supported via tool dispatch aliases for backward compatibility with existing callers.
+
+## Whiteboards
+
+A whiteboard is a compilation with `arrangement: board`; its layout lives in the file's top-level `board` section, written and read with `save_note` and `read_note` like the rest of the YAML. No tool is specific to boards, and arranging a board never edits a note. `list_notes` reports the file's `arrangement` (`board`, or `graph` for a legacy file, which the app opens as a board) and, when the file has a `board` section, `board: { cards, sections, texts, arrows }` with the number of each.
+
+| Field | Shape | Rules |
+| --- | --- | --- |
+| `board.cards[]` | `{ item, x, y }` (custom) or `{ path, x, y }` (dynamic) | The card's top-left corner in board units (a card is 240 × 128). Custom: `item` names a content item, not a heading, once at most. Dynamic: `path` names a member by repository path; an entry whose path is no member now is kept and not drawn. |
+| `board.sections[]` | `{ item, x, y, w, h }` (custom) or `{ folder, x, y }` (dynamic with `group: folder`) | Custom: `item` names a `kind: heading` item, once at most; `w` ≥ 288, `h` ≥ 176. Dynamic: `folder` names a folder chapter, whose size follows its cards. |
+| `board.texts[]` | `{ id, x, y, w?, text, color? }` | `id` unique among texts; `w` 80–1200 (default 240); `text` 1–2000 characters, `\n` for a line break; `color` one of `green blue amber red purple teal pink gray`. |
+| `board.arrows[]` | `{ id, from, to, label? }` | `id` unique among arrows; `from` and `to` each `{ item: <id> }` (custom: a content or heading item), `{ path: <repository path> }` (dynamic: a member) or `{ text: <id> }`, and not the same; `label` 1–60 characters. |
+
+- A section is a chapter: a custom compilation's sections are its heading items, so a card's chapter is the heading its item follows in `items`, not the rectangle it is drawn in. Put an item under the heading of the section it should sit in.
+- Coordinates are integers from −1,000,000 to 1,000,000. Limits: 2,000 cards, 100 sections, 300 texts, 600 arrows, and the file's 512 KiB.
+- Write text and arrow ids as eight random characters of `[a-z0-9]`, and each entry as a one-line flow mapping (`- { item: n1, x: 24, y: 56 }`), as the app does: moving a card then changes one line, and the app's merge of two concurrent edits works by entry.
+- An item without a card entry is placed automatically when the board is drawn and stored once the person moves it, so an agent may add items without positions.
+- The file is checked when it is read, with the field named in the error: a custom entry with `path` or `folder`, a dynamic entry with `item`, a `folder` section without `group: folder`, an `item` that names no item of the right kind, a duplicate, a `text` end naming no text, an arrow from an element to itself, or a value out of range makes the compilation invalid, and the app shows the reason and overwrites nothing. Path ends and dynamic card paths are not checked against membership.
+- Removing an item in the app also removes its card, its section and every arrow ending on it.
+- A legacy `graph:` layout (`graph.nodes[]`, centre coordinates by path) is read as cards when the file has no `board`; the app's next write stores `board` and drops `graph`. Do not write `graph`.
+
+```yaml
+version: 1
+id: chapter-3
+title: 第三章：德性與依據
+arrangement: board
+items:
+  - { id: h1, kind: heading, title: 一、問題 }
+  - { id: n1, kind: note, path: notes/thesis/第三章導論.md }
+  - { id: n2, kind: note, path: notes/thesis/依據關係的因果條件.md }
+board:
+  sections:
+    - { item: h1, x: 0, y: 0, w: 288, h: 384 }
+  cards:
+    - { item: n1, x: 24, y: 56 }
+    - { item: n2, x: 24, y: 216 }
+  texts:
+    - { id: t8k2m4qz, x: 336, y: 40, w: 200, text: "口試前要定案", color: teal }
+  arrows:
+    - { id: a3f9q7wx, from: { item: n1 }, to: { item: n2 }, label: 提出 }
+```
+
+The note graph (`/api/notes/graph`, the links written inside notes) stays available to the API; the app draws it on a board as dashed lines and never turns it into arrows.
 
 ## Edit dates
 

@@ -1,5 +1,7 @@
-Status: proposed
+Status: approved
 Proposed at: 2026-11-25
+Approved at: 2026-11-25
+Implemented: all seven build slices; slice 7 removed the graph.
 Design: the approved frames `03-whiteboard.png` and `04-whiteboard-card-open.png` of the 2026-11-24 board-and-graph proposal (看板與關聯圖重新設計).
 Approved from: the owner's answers to that proposal's decision form, listed under [Owner decisions](#owner-decisions). The owner answered the [open questions](#open-questions) on 2026-11-25.
 

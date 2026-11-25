@@ -54,7 +54,7 @@ pnpm test          # Run test suite across all packages
 pnpm build         # Verify build succeeds cleanly
 ```
 
-Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/dist` and `apps/web/dist` output and run without setup on macOS and Linux CI; set `PUPPETEER_EXECUTABLE_PATH` (`GRAPH_QA_CHROME` for `qa-graph-*.mjs`) only to point at a Chrome binary other than the platform default.
+Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/dist` and `apps/web/dist` output and run without setup on macOS and Linux CI; set `PUPPETEER_EXECUTABLE_PATH` only to point at a Chrome binary other than the platform default.
 
 
 ### 合輯所有權
@@ -66,17 +66,21 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 `parseCompilation` 收儲存庫全部筆記本的根目錄，只檢查資料夾來源；目錄（本機與遠端）、學習路由與瀏覽器都用同一範圍。
 跨合輯拖曳項目限同一儲存庫（「Items stay inside their repository」）；新增項目的對話框可選同一儲存庫的筆記本，預設合輯自己的。
 學習時，合輯可在筆記所屬儲存庫的任何筆記本內；預設階段取合輯自己筆記本的狀態，所以其他筆記本的筆記可能得到該筆記本沒定義的狀態（看板會多一欄）。
-關聯圖排列只畫合輯自己筆記本的成員，並顯示「N items in other notebooks are not shown in the graph」／「另有 N 個項目在其他筆記本，關聯圖不顯示」，開啟時不寫檔。
+白板排列畫出所有項目，其他筆記本的卡片角落帶該筆記本的標記（`NotebookMark`），開啟時不寫檔。
 同一儲存庫裡能讀合輯的人就能讀所有筆記本，所以不會出現讀不到的項目；未來若有跨儲存庫或分享合輯，讀不到的項目採鎖定並隱藏標題。
 舊版用戶端讀到跨筆記本的合輯會標為無效（「outside the notebook」），不會丟棄或改寫；檔案格式與 `version` 不變，Pro 與社群版要一起升級。
 `packages/core/src/compilation.ts` 定義檔案格式；筆記目錄把它索引為 `compilation` 種類，`/api/notes/facets` 回傳各筆記本的合輯數，`/api/notes/query` 接受 `kind=compilation`。
 搬移或重新命名筆記與資料夾時，`workspace-documents.ts` 與合輯模組一併改寫合輯內的參照，包括 `manualOrder`。
 動態合輯的 `sort.field: manual` 依 `manualOrder` 的成員路徑排列，沒列入的成員依更新時間由舊到新接在後面；手動模式一次載入全部成員，選其他排序時保留 `manualOrder`。
-檔案的 `arrangement` 是 `lane`、`book` 或 `graph`；書本寫作 `book`。
+檔案的 `arrangement` 是 `lane`、`book` 或 `board`；書本寫作 `book`，白板寫作 `board`。
 舊版的 `stack` 仍可讀，當作書本開啟，開啟、列出、搜尋或學習都不會寫回。
 只有合輯自己被編輯（改名、項目、來源、排序、手動順序、排列、學習設定、複製）時才改寫成 `book`，`stack` 不再被寫出。
 搬移或重新命名筆記與資料夾、筆記的標籤與狀態編輯，保持檔案原本的 token。
 目錄摘要的 `arrangement` 對兩種 token 都回報 `book`；`schema_version` 與檔案的 `version: 1` 不變，也沒有遷移步驟。
+白板（`arrangement: board`，[規格](../../specs/2026-11-25-whiteboard/spec.md)）的位置、區塊、文字與箭頭存在檔案的 `board` 區段（欄位與驗證見 [MCP 說明](../mcp/index.md#whiteboards)）；區塊就是章名項目，排白板不改筆記。
+`board` 在任何排列下都合法，切換排列時保留；目錄摘要在檔案有 `board` 時另給 `board: { cards, sections, texts, arrows }` 的數量。
+舊的 `arrangement: graph` 讀成 `board`，沒有 `board` 時把 `graph.nodes` 的中心座標轉成卡片位置並以 `arrangeGraphLayout`（`packages/core/src/board-placement.ts`）排開；下次寫入改存 `board` 並移除 `graph`，App 不再寫出 `graph`。
+力導向的關聯圖頁與 `react-force-graph-2d`、`graphology` 已移除；筆記連結圖（`buildNoteGraph`、`/api/notes/graph`）留給白板的虛線、「＋N 相連」、筆記庫的「連到選取的卡片」，以及 MCP 與 API。
 舊版用戶端讀到 `book` 會把該合輯標為無效並附上原因，不會丟棄或改寫；Pro 與社群版要一起升級。
 書本的閱讀方式（連續捲動或分頁）是每台裝置的檢視偏好，存在瀏覽器 `localStorage`（`github-notes:book-reading-mode`，預設連續），切換不寫合輯檔案、不產生 commit。
 分頁以章節 `id` 追蹤，一次只繪製一章；← → 在 KEYMAP 的 `book` 範圍，觸控滑動由書本內文處理，兩者都不在編輯器、輸入框與正在編輯的區段內作用；離開正在編輯的頁面前走合輯編輯狀態的 `finish()`，儲存失敗就留在原頁。
@@ -84,8 +88,8 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 
 自訂合輯的 `items` 可以放章名項目 `{ id, kind: heading, title }`（`title` 去頭尾空白後 1–100 字，沒有 `path`）：章名開始一章，收它之後到下一個章名之前的項目；第一個章名之前的項目各自成章。只有一層章名。
 內容項目（筆記、資料夾、附件、影片）上限 100，章名另計，上限也是 100；`id` 在所有項目（含章名）間不可重複。`compilationChapters` 是章結構的唯一來源，`contentItems` 去掉章名；目錄摘要的 `itemCount` 只算內容項目，有章名時另給 `chapterCount`。
-筆記項目可以帶 `anchor`（去頭尾空白後 1–200 字，不含控制字元），比對方式與 `#標題` 連結相同（`headingSlug`，同名取第一個），只顯示該標題到下一個同級或更高級標題之間的內容；其他種類的項目不接受 `anchor`。標題改名不會改寫 `anchor`，項目顯示找不到並提供開啟整篇筆記。帶 `anchor` 的項目不在合輯裡就地編輯，編輯時在放大檢視開啟整篇筆記並捲到該標題；學習與關聯圖把同一篇筆記的多個段落算成一篇。
-動態合輯可以設 `group: folder`（只能搭配 `source`），每個有成員的資料夾成為一章：伺服器以 `group=folder` 分頁，章的順序是資料夾來源本身的筆記、再依側欄的資料夾順序，未列入側欄的資料夾依路徑排在後面；手動順序只在各章內比較。章名項目只存在於瀏覽器，學習與關聯圖不受影響。
+筆記項目可以帶 `anchor`（去頭尾空白後 1–200 字，不含控制字元），比對方式與 `#標題` 連結相同（`headingSlug`，同名取第一個），只顯示該標題到下一個同級或更高級標題之間的內容；其他種類的項目不接受 `anchor`。標題改名不會改寫 `anchor`，項目顯示找不到並提供開啟整篇筆記。帶 `anchor` 的項目不在合輯裡就地編輯，編輯時在放大檢視開啟整篇筆記並捲到該標題；學習把同一篇筆記的多個段落算成一篇，白板則每個項目各是一張卡片。
+動態合輯可以設 `group: folder`（只能搭配 `source`），每個有成員的資料夾成為一章：伺服器以 `group=folder` 分頁，章的順序是資料夾來源本身的筆記、再依側欄的資料夾順序，未列入側欄的資料夾依路徑排在後面；手動順序只在各章內比較。章名項目只存在於瀏覽器，學習不受影響；白板以 `{ folder, x, y }` 記資料夾區塊的位置。
 章名、`anchor` 與 `group` 都不需要遷移，檔案 `version` 仍是 1。舊版用戶端讀到這三者會把合輯標為無效並附原因，仍列出標題，除了搬移時改寫 `path`、`source.path` 與 `manualOrder` 之外不會改寫檔案；Pro 與社群版要一起升級。
 最外層可選填 `description`，須為字串，去掉頭尾空白後最多 500 字；空字串視同未填。
 合輯標題下方與目錄摘要都會帶出這段說明。
@@ -95,7 +99,7 @@ App 儲存合輯時先寫已知欄位，再依原順序寫回不認得的欄位�
 複製合輯時不帶不認得的欄位：其中可能有識別原合輯的值（例如部落格的 `translationKey`，兩本書共用會讓部落格建置失敗），MyGitNotes 分辨不出來，所以複本從乾淨開始；`description` 照樣複製。
 `description:` 沒有值或是空字串，都當作沒有說明。
 
-舊版 `.github-notes-screen.yaml` 只由 `migrate-workspace`（schema 2 → 3）讀取：每條河道轉成 `<筆記本根目錄>/<slug(名稱)>.compilation.yml`，名稱衝突加 `-2`、`-3`，保留 `id`、排列、項目或來源、排序、學習設定與關聯圖，並和新建合輯一樣帶入所屬筆記本的第一個狀態；Focus 的 `lane` 分頁改為指向新檔的路徑分頁，河道已不存在的分頁刪除；每個儲存庫提交一個遷移 commit。
+舊版 `.github-notes-screen.yaml` 只由 `migrate-workspace`（schema 2 → 3）讀取：每條河道轉成 `<筆記本根目錄>/<slug(名稱)>.compilation.yml`，名稱衝突加 `-2`、`-3`，保留 `id`、排列、項目或來源、排序、學習設定與關聯圖位置（現在以白板讀取），並和新建合輯一樣帶入所屬筆記本的第一個狀態；Focus 的 `lane` 分頁改為指向新檔的路徑分頁，河道已不存在的分頁刪除；每個儲存庫提交一個遷移 commit。
 `SUPPORTED_SCHEMA_VERSION` 為 3，本機啟動遇到 schema 2 會拒絕並指向 `pnpm migrate-workspace`。
 
 ### 學習資料所有權
