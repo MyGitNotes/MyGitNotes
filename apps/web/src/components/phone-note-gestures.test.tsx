@@ -8,6 +8,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { PlacedCard } from '../lib/board/placement.js';
 import { HOLD_MS } from '../lib/hold.js';
 import { I18nProvider } from '../lib/i18n/index.js';
+import { HOVER_CARD_OPEN_MS } from '../lib/use-note-hover-card.js';
 import { ROW_ACTION_PX } from '../lib/row-swipe.js';
 import { BoardCard } from './board/BoardCard.js';
 import { FocusNoteList } from './FocusNoteList.js';
@@ -89,7 +90,10 @@ function hold(target: Element, x = 150) {
 describe('holding a phone list row', () => {
   it("opens the note's menu, titled with the note, and the lift opens nothing", () => {
     const { props } = list();
-    hold(titleOf('a'));
+    touch(titleOf('a'), 'touchstart', 150);
+    act(() => void vi.advanceTimersByTime(HOLD_MS));
+    // The lift sends no click, which would land on the sheet's backdrop, now under the finger, and close it.
+    expect(touch(titleOf('a'), 'touchend').defaultPrevented).toBe(true);
     const sheet = screen.getByRole('dialog', { name: 'Title of a' });
     expect(within(sheet).getAllByRole('button').map(button => button.textContent)).toEqual(['', 'Open', 'Change status', 'Move note', 'Select', 'Delete note']);
     expect(props.onOpenNote).not.toHaveBeenCalled();
@@ -142,6 +146,15 @@ describe('holding a phone list row', () => {
     const { props } = list();
     fireEvent.click(titleOf('a'));
     expect(props.onOpenNote).toHaveBeenCalledWith(props.notes[0]);
+  });
+
+  it('pops up no hover card when focus comes back to a row from the menu', () => {
+    list();
+    hold(titleOf('a'));
+    fireEvent.click(document.querySelector('.phone-sheet-heading button')!);
+    fireEvent.focus(rowOf('a').querySelector('[data-focus-row]')!);
+    act(() => void vi.advanceTimersByTime(HOVER_CARD_OPEN_MS * 2));
+    expect(screen.queryByRole('group', { name: /^Details for/ })).toBeNull();
   });
 });
 
@@ -226,6 +239,7 @@ describe('holding a whiteboard card on a phone', () => {
     fireEvent.click(button);
     expect(onHold).toHaveBeenCalledWith(item, shown);
     expect(onOpen).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(600));
     fireEvent.click(button);
     expect(onOpen).toHaveBeenCalledTimes(1);
 

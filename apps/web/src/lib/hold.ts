@@ -68,3 +68,24 @@ export function createHoldRecognizer(onHold: () => void, timers: Timers = browse
     },
   };
 }
+
+/** How long after a hold, a drag or a closing tap the browser's compatibility click is swallowed. */
+export const CLICK_GUARD_MS = 500;
+
+/**
+ * Swallows the next click anywhere within `CLICK_GUARD_MS` of now: the one a lift sends after a hold (which would land on the sheet's
+ * backdrop that opened under the finger and close it), or after a touch that only closed something. Call it on the lift.
+ */
+export function swallowNextClick(): void {
+  const swallow = (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    done();
+  };
+  const timer = setTimeout(() => done(), CLICK_GUARD_MS);
+  function done() {
+    window.removeEventListener('click', swallow, true);
+    clearTimeout(timer);
+  }
+  window.addEventListener('click', swallow, true);
+}

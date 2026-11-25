@@ -122,8 +122,9 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
     const selected = !draft && (selectedKeys?.has(key) ?? false);
     const open = focusMode?.openPath === note.path;
     const hovered = hover.target?.note && noteRefKey(hover.target.note) === key;
-    const rowHandlers = hover.rowProps(note);
     const swipes = phoneRows && !draft;
+    // A phone's rows have no hover card: focus coming back from the note's menu would otherwise pop one up.
+    const rowHandlers = swipes ? { onKeyDown: () => {} } : hover.rowProps(note);
     const itemProps = touchSelection.itemProps(note, onOpenNote, !draft);
     const row = (
       <div

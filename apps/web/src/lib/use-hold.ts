@@ -1,8 +1,5 @@
 import { type MouseEvent, type TouchEvent, useEffect, useRef } from 'react';
-import { createHoldRecognizer, type HoldRecognizer } from './hold.js';
-
-/** How long after a hold the browser's compatibility click, which would open what was held, is swallowed. */
-const CLICK_GUARD_MS = 500;
+import { CLICK_GUARD_MS, createHoldRecognizer, type HoldRecognizer, swallowNextClick } from './hold.js';
 
 /**
  * Touch handlers that read a finger resting on an element as a hold (`createHoldRecognizer`) and call `onHold`, leaving every other touch
@@ -38,7 +35,15 @@ export function useHold(onHold: (() => void) | undefined) {
       if (event.touches.length !== 1) recognizer.current?.cancel();
       else recognizer.current?.move(point(event));
     },
-    onTouchEnd: () => recognizer.current?.cancel(),
+    onTouchEnd: (event: TouchEvent) => {
+      // After a hold the lift is no tap: no compatibility mouse events or click follow it, nor reach the sheet now under the finger.
+      if (recognizer.current?.fired) {
+        // A lift the browser lets us cancel sends no click at all; otherwise the click it sends is swallowed.
+        if (event.cancelable) event.preventDefault();
+        else swallowNextClick();
+      }
+      recognizer.current?.cancel();
+    },
     onTouchCancel: () => recognizer.current?.cancel(),
     onClickCapture: (event: MouseEvent) => {
       if (performance.now() >= guardUntil.current) return;

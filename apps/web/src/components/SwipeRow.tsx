@@ -1,26 +1,8 @@
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { lockAxis, overlayOpen, sideGestureOf } from '../lib/gesture-arbiter.js';
-import { createHoldRecognizer } from '../lib/hold.js';
+import { CLICK_GUARD_MS, createHoldRecognizer, swallowNextClick } from '../lib/hold.js';
 import { type Revealed, revealedOffset, ROW_ACTION_PX, rowOffset, settleRow } from '../lib/row-swipe.js';
 import './swipe-row.css';
-
-/** How long after a drag, a hold or a closing tap the browser's compatibility click is swallowed. */
-const CLICK_GUARD_MS = 500;
-
-/** Swallows the next click anywhere, within `CLICK_GUARD_MS`: the one a touch that only closed a row's actions sends. */
-function swallowNextClick() {
-  const swallow = (event: MouseEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    done();
-  };
-  const done = () => {
-    window.removeEventListener('click', swallow, true);
-    clearTimeout(timer);
-  };
-  window.addEventListener('click', swallow, true);
-  const timer = setTimeout(done, CLICK_GUARD_MS);
-}
 
 export interface SwipeRowProps {
   /** The row itself, which slides over the actions. */
@@ -111,7 +93,13 @@ export function SwipeRow({ children, start, startCount = start ? 1 : 0, end, end
       touch.offset = rowOffset(touch.from, dx, sizes);
       slide.style.transform = `translateX(${touch.offset}px)`;
     };
-    const onEnd = () => {
+    const onEnd = (event: TouchEvent) => {
+      // After a hold the lift is no tap: no compatibility mouse events or click follow it, nor reach the sheet now under the finger.
+      if (recognizer.fired) {
+        // A lift the browser lets us cancel sends no click at all; otherwise the click it sends is swallowed.
+        if (event.cancelable) event.preventDefault();
+        else swallowNextClick();
+      }
       recognizer.cancel();
       const ended = touch;
       touch = null;
