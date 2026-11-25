@@ -1,4 +1,4 @@
-import { type CSSProperties, type DragEvent, type ReactNode, useId, useState } from 'react';
+import { type CSSProperties, type DragEvent, type ReactNode, useCallback, useId, useState } from 'react';
 import type { CompilationItem } from '@mygitnotes/core/compilation';
 import type { NoteListItem, NoteRef } from '@mygitnotes/core/note-query';
 import type { BoardElementKey, DrawnArrow, NoteLinkLine } from '../../lib/board/connections.js';
@@ -7,6 +7,7 @@ import type { Point } from '../../lib/board/geometry.js';
 import type { PlacedBoard, PlacedCard } from '../../lib/board/placement.js';
 import { arrowLabelsShown, cardDetail, cardTitleStyle, screenToBoard, sectionTitleSize } from '../../lib/board/zoom.js';
 import { useTranslation } from '../../lib/i18n/index.js';
+import { useNoteActionSheet } from '../NoteActionSheet.js';
 import { BoardCard, type CardView } from './BoardCard.js';
 import { BoardControls } from './BoardControls.js';
 import { BoardContextMenu, BoardDialogs, BoardFieldEditor, BoardGestureOverlay } from './BoardEditors.js';
@@ -60,7 +61,11 @@ export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptio
   const layerStyle = { transform: `translate(${view.x}px, ${view.y}px) scale(${zoom})`, '--board-zoom': zoom, '--board-card-title-size': `${titleStyle.fontSize}px`, '--board-card-title-lines': titleStyle.lines, '--board-section-title-size': `${sectionTitleSize(zoom)}px` } as CSSProperties;
   const describedBy = (key: string) => descriptions.get(key) ? `${ids}-d-${key}` : undefined;
   const selected = (key: string) => selection.has(key as BoardElementKey) || undefined;
-  const card = (entry: PlacedCard, originX: number, originY: number) => <BoardCard key={entry.key} card={entry} view={views.get(entry.key)!} originX={originX} originY={originY} describedBy={describedBy(entry.key)} selected={selected(`card:${entry.key}`)} onOpen={onOpen} />;
+  // On a phone a note's card held opens the note's menu, the one a list row's hold opens.
+  const sheet = useNoteActionSheet();
+  const showSheet = sheet && phone ? sheet.show : undefined;
+  const holdCard = useCallback((item: CompilationItem, note: NoteListItem) => showSheet?.({ note, open: () => onOpen(item, note), source: 'board' }), [showSheet, onOpen]);
+  const card = (entry: PlacedCard, originX: number, originY: number) => <BoardCard key={entry.key} card={entry} view={views.get(entry.key)!} originX={originX} originY={originY} describedBy={describedBy(entry.key)} selected={selected(`card:${entry.key}`)} onOpen={onOpen} onHold={showSheet ? holdCard : undefined} />;
   // Item order: the cards before the first heading stand alone, then each section groups its chapter's cards.
   const free = board.cards.filter(entry => !entry.section);
   const cardsOf = new Map(board.sections.map(section => [section.key, board.cards.filter(entry => entry.section === section.key)]));

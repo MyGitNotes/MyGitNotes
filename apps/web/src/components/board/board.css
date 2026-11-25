@@ -32,6 +32,8 @@
 .board-card-initial { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px; background: var(--color-primary-soft); color: var(--color-text); font-size: 10px; font-weight: 600; }
 .board-card[data-other-notebook] .board-card-head { padding-right: 18px; }
 .board-layer[data-detail='title'] .board-card { justify-content: center; }
+/* A phone holds a note's card for its menu: no text selection or system callout comes up under the finger. */
+.board-card[data-holdable] { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .board-layer[data-detail='title'] :is(.board-card-excerpt, .board-card-thumbnail, .board-card-head > svg, .board-card-dot) { display: none; }
 .board-layer[data-detail='title'] .board-card-title { font-size: var(--board-card-title-size, 14px); -webkit-line-clamp: var(--board-card-title-lines, 3); }
 

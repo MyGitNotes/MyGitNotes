@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
-import { GalleryHorizontalEnd } from 'lucide-react';
+import { CircleCheck, GalleryHorizontalEnd, Trash2 } from 'lucide-react';
 import { isCompilationPath } from '@mygitnotes/core/compilation';
 import type { NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
@@ -15,6 +15,8 @@ import { NoteGroupHeading } from './NoteGroupHeading.js';
 import { NoteHoverCard } from './NoteHoverCard.js';
 import { NoteSelectBox } from './NoteSelectBox.js';
 import { NoteStatusSelect } from './NoteStatusSelect.js';
+import { useNoteActionSheet } from './NoteActionSheet.js';
+import { SwipeRow } from './SwipeRow.js';
 import { LiveBadge } from './live/LiveBadge.js';
 import { useLiveLock } from './live/live-drafts.js';
 import { type BrowseKind, NotesEmptyState } from './NotesEmptyState.js';
@@ -68,14 +70,21 @@ interface FocusNoteListProps {
   /** Group keys whose notes are hidden under their heading. */
   collapsedGroups?: ReadonlySet<string>;
   onToggleGroup?: (key: string) => void;
+  /**
+   * A phone's rows: pushed right a row offers 變更狀態, pushed left 刪除, and held it opens the note's menu (`NoteActionSheet`), all
+   * through the same status, move and delete actions as the rows' menus elsewhere. Without the page's note menu, rows stay as they are.
+   */
+  swipeActions?: boolean;
 }
 
-export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf, collapsedGroups, onToggleGroup }: FocusNoteListProps) {
+export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = false, loading = false, statuses, readOnly = false, canDelete = true, confirmDelete = false, onOpenNote, onDeleteNote, onMoveNote, onUpdateNoteStatus, onNewNote, newKind, focusMode, leading, highlightQuery = '', selectedKeys, onToggleSelect, groupOf, collapsedGroups, onToggleGroup, swipeActions = false }: FocusNoteListProps) {
   const { t } = useTranslation();
   const liveLock = useLiveLock();
   const touchSelection = useNoteTouchSelection(onToggleSelect, !readOnly && Boolean(onMoveNote));
   const list = useRef<HTMLDivElement>(null);
   const hover = useNoteHoverCard();
+  const sheet = useNoteActionSheet();
+  const phoneRows = swipeActions && sheet !== null;
   const { pendingDeletePath, requestDelete } = useDeleteConfirm(confirmDelete, path => {
     const note = [...uncommitted, ...notes].find(n => noteRefKey(n) === path);
     if (note) onDeleteNote(note);
@@ -114,10 +123,12 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
     const open = focusMode?.openPath === note.path;
     const hovered = hover.target?.note && noteRefKey(hover.target.note) === key;
     const rowHandlers = hover.rowProps(note);
-    return (
+    const swipes = phoneRows && !draft;
+    const itemProps = touchSelection.itemProps(note, onOpenNote, !draft);
+    const row = (
       <div
         key={key}
-        role='listitem'
+        role={swipes ? undefined : 'listitem'}
         data-focus-row=''
         data-open={open || undefined}
         data-selected={selected || undefined}
@@ -129,7 +140,7 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
           ? event => startNoteDrag(event, note, { focus: canDrag, move: canMove })
           : undefined}
         className='focus-row'
-        {...touchSelection.itemProps(note, onOpenNote, !draft)}
+        {...(swipes ? { onClick: itemProps.onClick } : itemProps)}
         {...rowHandlers}
         onKeyDown={event => {
           rowHandlers.onKeyDown(event);
@@ -147,6 +158,35 @@ export function FocusNoteList({ notes, uncommitted = [], hasFolderEntries = fals
         </span>
         <LiveBadge live={note.live} title={note.title} />
       </div>
+    );
+    if (!swipes || !sheet) return row;
+    const ask = (mode?: 'status' | 'delete') => sheet.show({ note, mode, open: () => onOpenNote(note), statuses, source: 'list', select: !mode && onToggleSelect ? () => onToggleSelect(note) : undefined });
+    const statusAction = !readOnly && !note.frontmatterInvalid && !liveLock(note, 'other');
+    const deleteAction = canDelete && !readOnly && !liveLock(note, 'delete');
+    return (
+      <SwipeRow
+        key={key}
+        onHold={() => ask()}
+        start={statusAction && (
+          <button
+            type='button'
+            className='swipe-row-action'
+            data-tone='primary'
+            onClick={() => ask('status')}
+          >
+            <CircleCheck aria-hidden='true' />
+            {t('noteActions.status')}
+          </button>
+        )}
+        end={deleteAction && (
+          <button type='button' className='swipe-row-action' data-tone='danger' onClick={() => ask('delete')}>
+            <Trash2 aria-hidden='true' />
+            {t('common.delete')}
+          </button>
+        )}
+      >
+        {row}
+      </SwipeRow>
     );
   };
 

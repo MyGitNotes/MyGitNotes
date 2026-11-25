@@ -1,0 +1,20 @@
+/* NoteActionSheet: a phone's menu of one note, opened by holding its list row or whiteboard card. */
+.note-action-list { display: flex; flex-direction: column; padding: 4px 8px 12px; border-top: 1px solid var(--color-line); }
+.note-action-item { display: flex; flex-wrap: wrap; align-items: center; column-gap: 14px; width: 100%; min-height: 56px; padding: 0 12px; border-bottom: 1px solid var(--color-line); color: var(--color-text); font-size: 16px; text-align: left; }
+.note-action-item:last-child { border-bottom: 0; }
+.note-action-item > svg { width: 20px; height: 20px; flex: none; color: var(--color-muted); }
+.note-action-item:disabled { opacity: 0.5; }
+.note-action-item[aria-pressed='true'] { color: var(--color-primary); }
+.note-action-item .status-dot { width: 10px; height: 10px; margin: 0 5px; flex: none; }
+.note-action-label { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.note-action-check { color: var(--color-primary) !important; }
+.note-action-reason { flex-basis: 100%; padding: 0 0 8px 34px; color: var(--color-muted); font-size: 12px; }
+.note-action-list > .note-action-reason { padding: 8px 12px; }
+.note-action-back { justify-content: center; color: var(--color-muted); }
+.note-action-danger, .note-action-danger > svg { color: var(--color-danger); }
+.note-action-confirm { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 16px; border-top: 1px solid var(--color-line); }
+.note-action-question { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.note-action-hint { margin: 0; color: var(--color-muted); font-size: 13px; }
+.note-action-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.note-action-button { min-height: 48px; border: 1px solid var(--color-line-strong); border-radius: 10px; font-size: 15px; }
+.note-action-button.note-action-danger { border-color: var(--color-danger); background: var(--color-danger); color: var(--color-on-danger); }

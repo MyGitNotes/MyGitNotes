@@ -5,6 +5,7 @@ import type { NoteListItem } from '@mygitnotes/core/note-query';
 import type { PlacedCard } from '../../lib/board/placement.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { useNotePaths } from '../../lib/use-note-queries.js';
+import { useHold } from '../../lib/use-hold.js';
 import type { CompilationAsset } from '../CompilationCard.js';
 import { hasNotebookMark, type MarkedNotebook, notebookInitial, NotebookMark } from '../NotebookMark.js';
 
@@ -36,15 +37,18 @@ function FolderCount({ item }: { item: Extract<CompilationItem, { kind: 'folder'
  * One card: a button of one size at its board position, relative to its section's corner, or the board's origin.
  * It shows the status dot, title and first two lines, or zoomed out the title only (the board's CSS decides from its
  * zoom), and the mark of another notebook in its corner. Pressing it opens the item where the compilation opens items;
- * on an editable board the press also selects it.
+ * on an editable board the press also selects it. With `onHold` (a phone), a finger resting on a note's card asks for the note's menu,
+ * while a finger that moves first still pans the board.
  */
-export const BoardCard = memo(function BoardCard({ card, view, originX, originY, describedBy, selected, onOpen }: { card: PlacedCard; view: CardView; originX: number; originY: number; describedBy?: string; selected?: boolean; onOpen: (item: CompilationItem, note?: NoteListItem) => void; }) {
+export const BoardCard = memo(function BoardCard({ card, view, originX, originY, describedBy, selected, onOpen, onHold }: { card: PlacedCard; view: CardView; originX: number; originY: number; describedBy?: string; selected?: boolean; onOpen: (item: CompilationItem, note?: NoteListItem) => void; onHold?: (item: CompilationItem, note: NoteListItem) => void; }) {
   const { t } = useTranslation();
   const { item } = card;
+  const { note } = view;
+  const hold = useHold(onHold && note ? () => onHold(item, note) : undefined);
   const thumbnail = item.kind === 'youtube' ? `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg` : view.asset && IMAGE.test(view.asset.name) ? view.asset.rawUrl : undefined;
   const icon = item.kind === 'folder' ? <Folder aria-hidden='true' /> : item.kind === 'asset' ? <ImageIcon aria-hidden='true' /> : item.kind === 'youtube' ? <Youtube aria-hidden='true' /> : view.dot ? <span className={`status-dot board-card-dot ${view.dot}`} aria-hidden='true' /> : <FileText aria-hidden='true' />;
   return (
-    <button type='button' className='board-card' data-board-card={card.key} data-board-key={`card:${card.key}`} data-selected={selected || undefined} data-kind={item.kind} data-missing={view.missing || undefined} data-other-notebook={view.notebook ? view.notebook.title : undefined} data-placed={card.placed || undefined} style={{ left: card.rect.x - originX, top: card.rect.y - originY }} aria-describedby={describedBy} onClick={() => onOpen(item, view.note)}>
+    <button type='button' className='board-card' data-board-card={card.key} data-board-key={`card:${card.key}`} data-selected={selected || undefined} data-kind={item.kind} data-missing={view.missing || undefined} data-other-notebook={view.notebook ? view.notebook.title : undefined} data-placed={card.placed || undefined} style={{ left: card.rect.x - originX, top: card.rect.y - originY }} aria-describedby={describedBy} data-holdable={hold.onTouchStart ? '' : undefined} {...hold} onClick={() => onOpen(item, view.note)}>
       <span className='board-card-head'>
         {icon}
         <span className='board-card-title'>{view.title}</span>

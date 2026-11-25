@@ -102,6 +102,8 @@ export function useBoardCamera({ board, bounds, loaded }: { /** The board's key 
       if (event.button === 2 || (event.target as Element).closest('.board-minimap, [data-board-control]')) return;
       // The middle button would start the browser's autoscroll.
       if (event.button === 1) event.preventDefault();
+      // A first finger starts afresh: a lift the board never heard (a sheet that opened over it on a hold) leaves no pointer behind.
+      if (event.isPrimary) pointers.current.clear();
       pointers.current.set(event.pointerId, local(event));
       if (pointers.current.size === 1) {
         start.current = local(event);

@@ -8,6 +8,7 @@ import { useFilterSidebar } from './app/useFilterSidebar.js';
 import { useTheme } from './app/useTheme.js';
 import { filesInitialPath } from './app/files-initial-path.js';
 import { usePhoneNotesValue } from './app/usePhoneNotesValue.js';
+import { noteSheetActions } from './app/noteSheetActions.js';
 import { useFilePanel } from './app/useFilePanel.js';
 import { useWorkspaceNotes } from './app/useWorkspaceNotes.js';
 import { useBrowseRoute } from './app/useBrowseRoute.js';
@@ -300,7 +301,7 @@ export const AppContent: React.FC = () => {
   const focusArea = <FocusArea focus={noteFocus} capacity={focusCapacity} notebookRoot={folderRoot ?? ''} notebook={selectedNotebook} folders={folders} renderCompilation={renderCompilation} searchMatches={focusMatches} onZoomNote={zoomFocusNote} documentPanel={focusDocumentPanel} />;
 
   return (
-    <WorkspaceProviders remote={remote} loading={loading} sourceId={sourceId} notebooks={config?.notebooks} folders={folders} repositories={repositories} agentEnabled={agentEnabled} webAgentTools={webAgentTools} outlineActions={outlineActions.value} statusEntries={statusEntries} phoneNotes={phoneNotesValue} syncTargets={syncTargets} onSynced={refreshAfterSync} onRevealChanges={() => setFileMetadataOpen(false)} liveEditTarget={liveEditTarget} compilationActions={compilationActions} liveDrafts={liveDrafts} openLink={(note, anchor, source) => void openLink(note, anchor, source)} locateNote={locateNote} noteEditing={{ register: editorRegistry.register, editorProps, flushEditors: editorRegistry.flushEditors, refreshNotes, closeZoom, addToFocus, moveNote: noteMove.moveNote, renameNote: noteMove.renameNote, renameNoteTo: noteMove.renameNoteTo }}>
+    <WorkspaceProviders remote={remote} loading={loading} sourceId={sourceId} notebooks={config?.notebooks} folders={folders} repositories={repositories} agentEnabled={agentEnabled} webAgentTools={webAgentTools} outlineActions={outlineActions.value} statusEntries={statusEntries} phoneNotes={phoneNotesValue} syncTargets={syncTargets} onSynced={refreshAfterSync} onRevealChanges={() => setFileMetadataOpen(false)} liveEditTarget={liveEditTarget} compilationActions={compilationActions} liveDrafts={liveDrafts} openLink={(note, anchor, source) => void openLink(note, anchor, source)} locateNote={locateNote} noteEditing={{ register: editorRegistry.register, editorProps, flushEditors: editorRegistry.flushEditors, refreshNotes, closeZoom, addToFocus, moveNote: noteMove.moveNote, renameNote: noteMove.renameNote, renameNoteTo: noteMove.renameNoteTo }} noteSheet={noteSheetActions({ phone, notebooks: config?.notebooks, canWriteNotebook, updateStatus: handleUpdateNoteStatus, moveNote: noteMove.moveNote, deleteNote: handleDeleteNote })}>
       <div className='app-shell h-dvh min-w-0 flex-1 overflow-hidden flex flex-col font-sans transition-colors duration-200' data-workspace-tab={activeTab} data-screen-focus={Boolean(route.study)} style={{ backgroundColor: 'var(--color-bg)', color: 'var(--color-text)' }}>
         <WorkspaceBanners coreBaseline={!remote && defaultRepositoryBranch === 'core'} legacyNotice={legacyImport.notice} defaultRepository={defaultRepository} manifestWritable={manifestWritable} onManifestCreated={() => refreshWorkspace(true)} />
         {/* Top Header */}

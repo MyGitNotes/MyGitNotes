@@ -1,6 +1,7 @@
 import type React from 'react';
 import { AgentFocusCommand } from '../components/pi-agent/AgentFocusCommand.js';
 import { LiveDraftsProvider } from '../components/live/live-drafts.js';
+import { NoteActionSheetProvider, type NoteSheetActions } from '../components/NoteActionSheet.js';
 import { WorkspaceLinks } from '../components/WorkspaceLinks.js';
 import { CompilationActionsProvider } from '../lib/compilation-actions.js';
 import { NoteEditingProvider } from '../lib/note-editing.js';
@@ -43,11 +44,13 @@ interface Props {
   locateNote: Prop<typeof NoteLocationProvider, 'locate'>;
   /** What every note editor shares: how it registers, its props, and the note actions it offers. */
   noteEditing: Omit<React.ComponentProps<typeof NoteEditingProvider>, 'children'>;
+  /** A phone's note menu, which its list rows and whiteboard cards open on a hold; none wider than a phone. */
+  noteSheet?: NoteSheetActions;
   children: React.ReactNode;
 }
 
-/** The contexts the workspace's views read: the agent, outlines, status colours, Typst preview, phone screens, git sync, live edit links, and note editing. */
-export function WorkspaceProviders({ remote, loading, sourceId, notebooks, folders, repositories, agentEnabled, webAgentTools, outlineActions, statusEntries, phoneNotes, syncTargets, onSynced, onRevealChanges, liveEditTarget, compilationActions, liveDrafts, openLink, locateNote, noteEditing, children }: Props) {
+/** The contexts the workspace's views read: the agent, outlines, status colours, Typst preview, phone screens, git sync, live edit links, note editing and a phone's note menu. */
+export function WorkspaceProviders({ remote, loading, sourceId, notebooks, folders, repositories, agentEnabled, webAgentTools, outlineActions, statusEntries, phoneNotes, syncTargets, onSynced, onRevealChanges, liveEditTarget, compilationActions, liveDrafts, openLink, locateNote, noteEditing, noteSheet, children }: Props) {
   // A local workspace starts its Pi agent in the background, so the agent tab opens onto a warm session.
   return (
     <PiAgentProvider webTools={remote ? webAgentTools : undefined} enabled={agentEnabled} defaultRepository={sourceId} notebooks={notebooks ?? NO_NOTEBOOKS} repositories={repositories}>
@@ -64,7 +67,9 @@ export function WorkspaceProviders({ remote, loading, sourceId, notebooks, folde
                       <LiveDraftsProvider value={liveDrafts}>
                         <WorkspaceLinks notebooks={notebooks || []} folders={folders} onOpenNote={openLink}>
                           <NoteLocationProvider locate={locateNote}>
-                            <NoteEditingProvider {...noteEditing}>{children}</NoteEditingProvider>
+                            <NoteEditingProvider {...noteEditing}>
+                              <NoteActionSheetProvider actions={noteSheet}>{children}</NoteActionSheetProvider>
+                            </NoteEditingProvider>
                           </NoteLocationProvider>
                         </WorkspaceLinks>
                       </LiveDraftsProvider>

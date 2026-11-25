@@ -1,0 +1,13 @@
+/* SwipeRow: a phone list row that slides aside over its actions. */
+.swipe-row { position: relative; overflow: hidden; touch-action: pan-y; }
+.swipe-row-front { position: relative; z-index: 1; background: var(--color-bg); transition: transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+.swipe-row[data-dragging] .swipe-row-front { transition: none; }
+.swipe-row-actions { position: absolute; z-index: 0; top: 0; bottom: 0; display: flex; }
+.swipe-row-actions[data-side='start'] { left: 0; }
+.swipe-row-actions[data-side='end'] { right: 0; }
+.swipe-row-action { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; padding: 0 4px; color: var(--color-text); background: color-mix(in srgb, var(--color-text) 14%, var(--color-bg)); font-size: 13px; font-weight: 600; text-align: center; }
+.swipe-row-action svg { width: 20px; height: 20px; flex: none; }
+.swipe-row-action[data-tone='primary'] { background: color-mix(in srgb, var(--color-primary) 38%, var(--color-bg)); }
+.swipe-row-action[data-tone='danger'] { background: var(--color-danger); color: var(--color-on-danger); }
+@media (prefers-reduced-motion: reduce) { .swipe-row-front { transition: none; } }
+.swipe-row-front { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
