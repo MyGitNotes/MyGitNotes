@@ -99,6 +99,28 @@ it('creates an untitled board and opens it; a read-only notebook or a phone has 
   expect(screen.queryByRole('button', { name: 'New whiteboard' })).toBeNull();
 });
 
+it('retains the legacy target until retry reads its compilation', async () => {
+  vi.mocked(fetch).mockRejectedValueOnce(new Error('offline'));
+  const url = '/graph?notebook=thesis&lanes=chapter';
+  page(url);
+  expect(await screen.findByRole('alert')).toHaveTextContent('offline');
+  expect(address()).toBe(url);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(address()).toBe(boardsRoute('thesis', listing[0]!.path)));
+});
+
+it('counts dynamic cards and folder sections from the current members', async () => {
+  const content = 'version: 1\nid: dyn\ntitle: Dynamic\narrangement: board\nsource: { kind: tag, tag: t }\ngroup: folder\n';
+  const path = 'notes/thesis/dyn.compilation.yml';
+  const dynamic = { ...listing[0], path, content, ...compilationFields(content, path, ['notes/thesis']) };
+  const notes = ['a', 'sub/b'].map(key => ({ id: key, path: `notes/thesis/${key}.md`, notebookId: 'thesis', title: key, tags: ['t'], metadata: {} }));
+  vi.mocked(fetch).mockImplementation(async input => Response.json(String(input).includes('kind=compilation') ? { notes: [dynamic], total: 1, nextCursor: null } : { notes }));
+  page(boardsRoute('thesis'));
+  const tile = await screen.findByRole('button', { name: /Dynamic/ });
+  await waitFor(() => expect(tile).toHaveTextContent('2 cards'));
+  expect(tile).toHaveTextContent('2 sections');
+});
+
 it.each([['/graph?notebook=thesis', boardsRoute('thesis')], ['/graph?notebook=thesis&lanes=chapter', boardsRoute('thesis', 'notes/thesis/chapter.compilation.yml')], ['/graph?notebook=thesis&lanes=kept', boardsRoute('thesis', 'notes/thesis/kept.compilation.yml')], ['/graph?notebook=thesis&lanes=reading', '/notebooks/thesis/notes/reading.compilation.yml?zoom']])('replaces the former graph address %s with %s', async (url, target) => {
   page(url);
   await waitFor(() => expect(address()).toBe(target));

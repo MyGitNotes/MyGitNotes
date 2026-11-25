@@ -6,6 +6,7 @@ import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { boardCardKey } from '../../lib/board/panel.js';
 import { clampPanelWidth, readBoardPanelWidth, saveBoardPanelWidth } from '../../lib/board/storage.js';
 import { useNotebookBoards } from '../../lib/board/use-notebook-boards.js';
+import { repositoryNotebooks } from '../../lib/compilation-rows.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { useNoteEditing } from '../../lib/note-editing.js';
 import { boardsRoute } from '../../lib/routes.js';
@@ -40,10 +41,9 @@ export function BoardSidePanel({ note, row, notebooks, actions, leaving = false,
   }, [leaving]);
   const lookup = useNoteLookup([note], false);
   const listed = lookup.notes[0];
-  // The boards of the board's notebook, and of the note's own when it lies in another notebook of the repository.
-  const own = useNotebookBoards(row.notebookId, notebooks).boards;
-  const theirs = useNotebookBoards(note.notebookId === row.notebookId ? null : note.notebookId, notebooks).boards;
-  const holding = boardsContaining(note, [...own ?? [], ...theirs ?? []], listed ? [listed] : []);
+  const repository = new Set(repositoryNotebooks(notebooks, row.notebookId).map(book => book.id));
+  const { boards } = useNotebookBoards('all', notebooks);
+  const holding = boardsContaining(note, (boards ?? []).filter(board => repository.has(board.notebookId)), listed ? [listed] : []);
   const otherNotebook = note.notebookId !== actions.focusNotebook;
   const resize = (next: number) => {
     const value = clampPanelWidth(next);

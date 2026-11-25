@@ -109,6 +109,12 @@ describe('the side panel of a board', () => {
     await waitFor(() => expect(panel()).toBeNull());
   });
 
+  it('includes a board outside the current board and note notebook', async () => {
+    const sibling = { ...note('reading', 'notes/reading/sibling.compilation.yml', 'Sibling', other.replace('Other board', 'Sibling')), kind: 'compilation' as const };
+    openBoard({ path: BOARD, notebookId: 'thesis', raw: example, notes: thesisNotes, compilations: [...compilations, sibling], view: { frame: 'page', sidePanel, url: boardsRoute('thesis', BOARD, { note: CAUSAL }) } });
+    expect(await within(await findPanel()).findByText(/On 3 whiteboards/)).toHaveTextContent('Sibling');
+  });
+
   it('lists the boards holding the note and jumps to one with its card named, saving first', async () => {
     open(boardsRoute('thesis', BOARD, { note: CAUSAL }));
     const aside = await findPanel();

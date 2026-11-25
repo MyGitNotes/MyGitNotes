@@ -172,6 +172,8 @@ export function notePathsOptions(scope: NoteQueryScope, query: Partial<NoteQuery
 }
 
 export interface NoteListResult {
+  retry: () => void;
+  placeholder: boolean;
   notes: NoteListItem[];
   uncommitted: NoteListItem[];
   total: number;
@@ -206,7 +208,21 @@ export function useNoteList(query: Partial<NoteQuery> | null, options: NoteListO
     if (hasNextPage && !fetchingNext) void fetchNextPage();
   }, [hasNextPage, fetchingNext, fetchNextPage]);
   const serverTotal = (input && result.data?.pages[0]?.total) || 0;
-  return { notes: overlay.notes, uncommitted: overlay.uncommitted, total: Math.max(0, serverTotal - (options.hide ? 1 : 0) - overlay.removed + overlay.uncommitted.length), loading: Boolean(input) && result.isPending, loadingMore: fetchingNext, hasMore: Boolean(hasNextPage), error: errorText(result.error), loadMore };
+  return {
+    retry: () => {
+      if (result.isFetchNextPageError) loadMore();
+      else void result.refetch();
+    },
+    placeholder: result.isPlaceholderData,
+    notes: overlay.notes,
+    uncommitted: overlay.uncommitted,
+    total: Math.max(0, serverTotal - (options.hide ? 1 : 0) - overlay.removed + overlay.uncommitted.length),
+    loading: Boolean(input) && result.isPending,
+    loadingMore: fetchingNext,
+    hasMore: Boolean(hasNextPage),
+    error: errorText(result.error),
+    loadMore,
+  };
 }
 
 /** Every note a query matches, by notebook and path. */

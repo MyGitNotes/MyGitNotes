@@ -39,7 +39,7 @@ export function BoardsPage({ notebookId, notebooks, folders, writable, sidePanel
   const phone = usePhone();
   const notebook = notebooks.find(candidate => candidate.id === notebookId);
   const { board } = boardsQuery(location.search);
-  const { entries, error } = useNotebookBoards(notebookId, notebooks);
+  const { entries, boards, error, retry } = useNotebookBoards(notebookId, notebooks);
   const tiles = useMemo(() => entries ? boardTiles(entries) : null, [entries]);
   const [createError, setCreateError] = useState('');
   const [creating, setCreating] = useState(false);
@@ -67,7 +67,15 @@ export function BoardsPage({ notebookId, notebooks, folders, writable, sidePanel
     }
   };
 
-  if (legacyGraph) return null;
+  if (legacyGraph) {
+    return error && !redirect
+      ? (
+        <div role='alert'>
+          {error} <button type='button' onClick={retry}>{t('auth.retry')}</button>
+        </div>
+      )
+      : null;
+  }
   if (board) {
     const lead = (
       <nav className='boards-breadcrumb' aria-label={t('boards.breadcrumb')}>
@@ -83,7 +91,7 @@ export function BoardsPage({ notebookId, notebooks, folders, writable, sidePanel
   }
   return (
     <div className='boards-page' data-view='list'>
-      <BoardList tiles={tiles} error={createError || error} busy={creating} onOpen={tile => navigate(boardsRoute(notebookId, tile.path))} onCreate={writable && !phone ? () => void create() : undefined} />
+      <BoardList rows={boards ?? []} notebooks={notebooks} folders={folders} tiles={tiles} error={createError || error} busy={creating} onOpen={tile => navigate(boardsRoute(notebookId, tile.path))} onCreate={writable && !phone ? () => void create() : undefined} />
     </div>
   );
 }
