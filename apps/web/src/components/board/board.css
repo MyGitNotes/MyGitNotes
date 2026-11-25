@@ -110,5 +110,6 @@ button.board-text { border: 0; border-radius: 4px; background: none; font-family
 .board-editor-label { min-width: 160px; padding: 4px 12px; border-radius: 999px; font-size: 13px; transform: translate(-50%, -50%); }
 .board-editor-text { padding: 8px; border-radius: 6px; line-height: 1.45; resize: none; }
 .board-notice { position: absolute; z-index: 6; bottom: 16px; left: 50%; max-width: min(560px, 90%); margin: 0; padding: 8px 14px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); box-shadow: var(--shadow-sm); color: var(--color-text); font-size: 13px; transform: translateX(-50%); }
+.board-menu-anchor { position: absolute; width: 1px; height: 1px; pointer-events: none; }
 .board-picker { display: grid; gap: 6px; max-height: 50vh; margin: 0; padding: 0; overflow: auto; list-style: none; }
 .board-picker-option { justify-content: flex-start; width: 100%; text-align: left; }

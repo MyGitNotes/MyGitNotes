@@ -825,6 +825,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'board.textLimit': '一塊白板最多 {limit} 段文字。',
   'board.arrowLimit': '一塊白板最多 {limit} 條箭頭。',
   'board.arrowItem': '箭頭：{text}',
+  'board.historyStale': '這塊白板之後在別處改過，之前的步驟無法再復原。',
   'board.selected': '已選取 {count} 個',
   'book.contents': '目錄',
   'book.showContents': '顯示目錄',

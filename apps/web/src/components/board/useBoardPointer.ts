@@ -19,7 +19,7 @@ export interface BoardOverlay {
   section?: Rect;
   arrow?: { from: Rect; to: Point; };
 }
-type Handlers = Pick<BoardCamera['handlers'], 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onClickCapture' | 'onFocus' | 'onScroll'> & { onDoubleClick: (event: ReactMouseEvent<HTMLDivElement>) => void; };
+type Handlers = Pick<BoardCamera['handlers'], 'onPointerDown' | 'onPointerMove' | 'onPointerUp' | 'onPointerCancel' | 'onClickCapture' | 'onFocus' | 'onScroll'> & { onDoubleClick: (event: ReactMouseEvent<HTMLDivElement>) => void; onContextMenu: (event: ReactMouseEvent<HTMLDivElement>) => void; };
 export interface BoardGestures {
   overlay: BoardOverlay;
   handlers: Handlers;
@@ -49,6 +49,8 @@ export interface PointerInput {
   newText: (x: number, y: number) => void;
   newArrow: (from: BoardElementKey, to: BoardElementKey) => void;
   edit: (key: BoardSelectionKey) => void;
+  /** Opens the context menu of an element at a viewport point. */
+  openMenu: (key: BoardSelectionKey, at: Point) => void;
   flushNudge: () => boolean;
   /** Whether a field, dialog or picker is open: the board takes no new gesture until it closes. */
   busy: boolean;
@@ -62,7 +64,7 @@ export interface PointerInput {
  * does on a board that cannot be edited.
  */
 export function useBoardPointer(input: PointerInput): BoardGestures {
-  const { row, placed, editable, camera, tool, selection, setSelection, setPreview, apply, used, newSection, newText, newArrow, edit, flushNudge, busy } = input;
+  const { row, placed, editable, camera, tool, selection, setSelection, setPreview, apply, used, newSection, newText, newArrow, edit, openMenu, flushNudge, busy } = input;
   const [overlay, setOverlay] = useState<BoardOverlay>({});
   const gesture = useRef<Gesture | undefined>(undefined);
   const suppressClick = useRef(false);
@@ -229,7 +231,7 @@ export function useBoardPointer(input: PointerInput): BoardGestures {
     }
   };
 
-  if (!editable) return { overlay, handlers: { ...camera.handlers, onDoubleClick: () => {} } };
+  if (!editable) return { overlay, handlers: { ...camera.handlers, onDoubleClick: () => {}, onContextMenu: () => {} } };
   const pans = (event: ReactPointerEvent<HTMLDivElement>) => event.button === 1 || space.current || event.pointerType === 'touch';
   return {
     overlay,
@@ -256,6 +258,16 @@ export function useBoardPointer(input: PointerInput): BoardGestures {
       onDoubleClick: event => {
         const key = boardKeyOf(event.target);
         if (tool === 'select' && key && !key.startsWith('card:')) edit(key);
+      },
+      // A selected element's context menu offers 「連到…」 and removal.
+      onContextMenu: event => {
+        const element = event.target as Element;
+        const section = element.closest('[data-board-section]')?.getAttribute('data-board-section');
+        const key = boardKeyOf(element) ?? (section ? `section:${section}` as const : undefined);
+        if (busy || !key) return;
+        event.preventDefault();
+        if (!selection.has(key)) setSelection(new Set([key]));
+        openMenu(key, local(event));
       },
       onFocus: camera.handlers.onFocus,
       onScroll: camera.handlers.onScroll,

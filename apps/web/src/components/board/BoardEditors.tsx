@@ -1,4 +1,6 @@
 import { type CSSProperties, type KeyboardEvent, useId } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+import { Link2, Trash2 } from 'lucide-react';
 import type { BoardElementKey, DrawnArrow } from '../../lib/board/connections.js';
 import { ARROW_LABEL_MAX, SECTION_TITLE_MAX, TEXT_MAX } from '../../lib/board/edit.js';
 import { BOARD_TEXT_DEFAULT_WIDTH, BOARD_TEXT_FONT, type Point, type Rect, rectCentre } from '../../lib/board/geometry.js';
@@ -75,6 +77,34 @@ export function BoardFieldEditor({ editor, board, arrows, camera, labels }: { ed
       <input className='board-editor board-editor-label' style={{ left: middle.x, top: middle.y }} aria-label={t('board.arrowLabel')} placeholder={t('board.arrowLabelHint')} list={labels.length ? list : undefined} value={draft.label} maxLength={ARROW_LABEL_MAX} autoFocus onFocus={select} onChange={event => editor.setDraft({ ...draft, label: event.target.value })} onKeyDown={event => keys(event)} onBlur={finish} />
       {labels.length > 0 && <datalist id={list}>{labels.map(label => <option key={label} value={label} />)}</datalist>}
     </>
+  );
+}
+
+/** The context menu of a selected element, at the pointer: 「連到…」 (when an arrow can start there) and removal. */
+export function BoardContextMenu({ editor }: { editor: BoardEditor; }) {
+  const { t } = useTranslation();
+  const { menu } = editor;
+  if (!menu) return null;
+  return (
+    <DropdownMenu.Root open onOpenChange={open => !open && editor.closeMenu()}>
+      <DropdownMenu.Trigger asChild>
+        <span className='board-menu-anchor' aria-hidden='true' style={{ left: menu.x, top: menu.y }} />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className='focus-menu' align='start' sideOffset={2} collisionPadding={8}>
+          {editor.linkable(menu.key) && (
+            <DropdownMenu.Item onSelect={() => editor.openPicker(menu.key)}>
+              <Link2 size={14} aria-hidden='true' />
+              <span>{t('board.link')}</span>
+            </DropdownMenu.Item>
+          )}
+          <DropdownMenu.Item onSelect={() => editor.requestRemove()}>
+            <Trash2 size={14} aria-hidden='true' />
+            <span>{t('board.remove')}</span>
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

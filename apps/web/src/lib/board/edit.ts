@@ -39,9 +39,10 @@ const contains = (rect: Rect, point: Point) => point.x >= rect.x && point.x < re
 const sameRef = (a: CardRef | SectionRef | BoardCard | BoardSection, b: CardRef | SectionRef) => ('item' in a && 'item' in b && a.item === b.item) || ('path' in a && 'path' in b && a.path === b.path) || ('folder' in a && 'folder' in b && a.folder === b.folder);
 const endKey = (end: BoardEnd) => 'item' in end ? `item:${end.item}` : 'path' in end ? `path:${end.path}` : `text:${end.text}`;
 
-/** A section rectangle as the file keeps it: whole units, never under the minimum size. */
+/** A section rectangle as the file keeps it: whole units inside the board's range, never under the minimum size. */
 export function sectionFrame(rect: Rect): Rect {
-  return { x: coordinate(rect.x), y: coordinate(rect.y), w: Math.max(BOARD_SECTION_MIN_WIDTH, Math.round(rect.w)), h: Math.max(BOARD_SECTION_MIN_HEIGHT, Math.round(rect.h)) };
+  const extent = (value: number, min: number) => Math.min(2 * BOARD_COORDINATE_LIMIT, Math.max(min, Math.round(value)));
+  return { x: coordinate(rect.x), y: coordinate(rect.y), w: extent(rect.w, BOARD_SECTION_MIN_WIDTH), h: extent(rect.h, BOARD_SECTION_MIN_HEIGHT) };
 }
 
 /** The row with another board; empty lists are left out, so a board emptied by edits writes no `cards: []`. */
@@ -191,9 +192,10 @@ export function removeSelection(row: CompilationRow, placed: PlacedBoard, select
   let cards = board.cards;
   let sections = board.sections;
   if (items) {
-    const removedCards = new Set(placed.cards.filter(card => ids.card.has(card.key)).map(card => card.key));
     const removedSections = placed.sections.filter(section => ids.section.has(section.key));
     const headings = new Set(removedSections.map(section => section.key));
+    // A section's cards stay on the board when it goes, even when the selection (a box around the section) holds them too.
+    const removedCards = new Set(placed.cards.filter(card => ids.card.has(card.key) && !(card.section !== undefined && headings.has(card.section))).map(card => card.key));
     const orphans = removedSections.flatMap(section => placed.cards.filter(card => card.section === section.key && !removedCards.has(card.key)));
     items = beforeFirstHeading(items.filter(item => !removedCards.has(item.id) && !headings.has(item.id)), new Set(orphans.map(card => card.key)));
     for (const id of [...removedCards, ...headings]) gone.add(`item:${id}`);

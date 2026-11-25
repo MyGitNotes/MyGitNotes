@@ -1,10 +1,11 @@
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BOARD_MAX_ARROWS, BOARD_MAX_SECTIONS, BOARD_MAX_TEXTS, type BoardText, type CompilationRow } from '@mygitnotes/core/compilation';
 import type { BoardElementKey } from '../../lib/board/connections.js';
 import { addArrow, addText, type BoardEdit, boardId, type BoardRefusal, type BoardSelectionKey, createSection, editText, endOf, labelArrow, moveSelection, removeSelection, renameSection, setTextColor, splitKey } from '../../lib/board/edit.js';
 import type { Rect } from '../../lib/board/geometry.js';
 import { type BoardHistory, emptyHistory, recordStep, redoStep, undoStep } from '../../lib/board/history.js';
 import type { PlacedBoard } from '../../lib/board/placement.js';
+import { writableCompilationText } from '../../lib/compilation-rows.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import type { BoardCamera } from './useBoardCamera.js';
 import { type BoardGestures, useBoardPointer } from './useBoardPointer.js';
@@ -16,6 +17,7 @@ export type BoardDraft = { kind: 'section'; id: string; rect: Rect; title: strin
 /** One arrow-key press moves the selection this far, with Shift farther; the run writes once the keys rest this long. */
 const NUDGE = 8, NUDGE_FAR = 40, NUDGE_SETTLE = 400;
 const NOTICE_TIME = 5000;
+type Nudge = { keys: BoardSelectionKey[]; dx: number; dy: number; };
 const ARROW_KEYS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 
 /** Whether a key event comes from a field typing text, whose keys are its own. */
@@ -44,7 +46,13 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const [tool, setToolState] = useState<{ tool: BoardTool; sticky: boolean; }>({ tool: 'select', sticky: false });
   const [selection, setSelection] = useState<ReadonlySet<BoardSelectionKey>>(new Set());
   const [gesturePreview, setGesturePreview] = useState<CompilationRow>();
-  const [nudge, setNudge] = useState<{ keys: BoardSelectionKey[]; dx: number; dy: number; }>();
+  const [nudge, setNudgeState] = useState<Nudge>();
+  // The run as last set, so the write that ends it happens once, whichever of the timer, a press or a blur ends it.
+  const nudgeRef = useRef<Nudge>(undefined);
+  const setNudge = (next: Nudge | undefined) => {
+    nudgeRef.current = next;
+    setNudgeState(next);
+  };
   const [draft, setDraftState] = useState<BoardDraft>();
   // The draft as last set, so a field's Enter and the blur that follows it write once.
   const draftRef = useRef<BoardDraft>(undefined);
@@ -53,14 +61,15 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
     setDraftState(next);
   };
   const [picker, setPicker] = useState<BoardElementKey>();
+  const [menu, setMenu] = useState<{ key: BoardSelectionKey; x: number; y: number; }>();
   const [confirm, setConfirm] = useState<BoardSelectionKey[]>();
   const [notice, setNotice] = useState('');
   // The undo stack belongs to this visit of this board; another board starts over.
   const [history, setHistory] = useState<{ board: string; steps: BoardHistory; }>({ board: row.path, steps: emptyHistory });
   const steps = history.board === row.path ? history.steps : emptyHistory;
-  const latest = useRef({ row, placed, nudge, steps });
+  const latest = useRef({ row, placed, steps });
   useLayoutEffect(() => {
-    latest.current = { row, placed, nudge, steps };
+    latest.current = { row, placed, steps };
   });
 
   useEffect(() => {
@@ -89,6 +98,13 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
     setNotice(edit.refused ? refusal(edit.refused) : '');
     const current = latest.current.row;
     if (edit.row === current || !onChange) return false;
+    // A row whose file would not open again (past a limit) is not written, and is no step to undo.
+    try {
+      writableCompilationText(edit.row);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : String(caught));
+      return false;
+    }
     setHistory(previous => ({ board: current.path, steps: recordStep(previous.board === current.path ? previous.steps : emptyHistory, current, edit.row) }));
     onChange(edit.row);
     return true;
@@ -97,6 +113,10 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
     const current = latest.current.row;
     const step = (direction === 'undo' ? undoStep : redoStep)(latest.current.steps, current);
     if (!step || !onChange) return;
+    if ('stale' in step) {
+      setHistory({ board: current.path, steps: emptyHistory });
+      return setNotice(t('board.historyStale'));
+    }
     setHistory({ board: current.path, steps: step.history });
     setNotice('');
     onChange(step.row);
@@ -113,13 +133,25 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const nudgeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const flushNudge = () => {
     clearTimeout(nudgeTimer.current);
-    const run = latest.current.nudge;
+    const run = nudgeRef.current;
     if (!run) return false;
     setNudge(undefined);
     apply(moveSelection(latest.current.row, latest.current.placed, run.keys, run.dx, run.dy));
     return true;
   };
   useEffect(() => () => clearTimeout(nudgeTimer.current), []);
+  // A press anywhere else (the arrangement switch, another pane) writes the run first, so leaving never drops it.
+  const flushRef = useRef(flushNudge);
+  useLayoutEffect(() => {
+    flushRef.current = flushNudge;
+  });
+  const nudging = nudge !== undefined;
+  useEffect(() => {
+    if (!nudging) return;
+    const press = () => flushRef.current();
+    document.addEventListener('pointerdown', press, true);
+    return () => document.removeEventListener('pointerdown', press, true);
+  }, [nudging]);
   const settleNudge = () => {
     clearTimeout(nudgeTimer.current);
     nudgeTimer.current = setTimeout(flushNudge, NUDGE_SETTLE);
@@ -133,6 +165,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const newText = (x: number, y: number) => startDraft({ kind: 'text', id: boardId(row), x, y, text: '', existing: false });
   const newArrow = (from: BoardElementKey, to: BoardElementKey) => {
     if (!endOf(row, placed, from) || !endOf(row, placed, to) || from === to) return setNotice(t('board.arrowEnds'));
+    if ((row.board?.arrows?.length ?? 0) >= BOARD_MAX_ARROWS) return setNotice(refusal('arrowLimit'));
     startDraft({ kind: 'label', id: boardId(row), label: '', existing: false, from, to });
   };
   /** Opens the element under a key for typing in place: a section's title, a text, an arrow's label. */
@@ -180,10 +213,10 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
     if (selection.size === 1 && key.startsWith('text:')) apply(setTextColor(row, splitKey(key).id, value));
   };
 
-  const gestures: BoardGestures = useBoardPointer({ row, placed, editable, camera, tool: tool.tool, selection, setSelection, setPreview: setGesturePreview, apply, used, newSection, newText, newArrow, edit, flushNudge, busy: Boolean(draft || confirm || picker) });
+  const gestures: BoardGestures = useBoardPointer({ row, placed, editable, camera, tool: tool.tool, selection, setSelection, setPreview: setGesturePreview, apply, used, newSection, newText, newArrow, edit, openMenu: (key, at) => setMenu({ key, ...at }), flushNudge, busy: Boolean(draft || confirm || picker || menu) });
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (!editable || typing(event.target) || draft || confirm || picker) return;
+    if (!editable || typing(event.target) || draft || confirm || picker || menu) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
     const mod = event.metaKey || event.ctrlKey;
     const target = boardKeyOf(event.target);
@@ -197,13 +230,14 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
       if (!keys.length) return;
       consume();
       const step = event.shiftKey ? NUDGE_FAR : NUDGE;
-      setNudge(current => ({ keys: current?.keys ?? keys, dx: (current?.dx ?? 0) + direction[0] * step, dy: (current?.dy ?? 0) + direction[1] * step }));
+      const current = nudgeRef.current;
+      setNudge({ keys: current?.keys ?? keys, dx: (current?.dx ?? 0) + direction[0] * step, dy: (current?.dy ?? 0) + direction[1] * step });
       settleNudge();
       return;
     }
     // Any other edit first writes the nudge run under way; the key that ended it does nothing more.
     const other = (mod && ['z', 'y', 'l'].includes(key)) || key === 'Delete' || key === 'Backspace';
-    if (other && latest.current.nudge) {
+    if (other && nudgeRef.current) {
       consume();
       flushNudge();
       return;
@@ -239,7 +273,11 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const onKeyUp = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (!editable || typing(event.target)) return;
     if (event.key === ' ' && boardKeyOf(event.target)) event.preventDefault();
-    if (ARROW_KEYS[event.key] && latest.current.nudge) settleNudge();
+    if (ARROW_KEYS[event.key] && nudgeRef.current) settleNudge();
+  };
+  // Focus leaving the board (Tab to the header) writes the nudge run under way.
+  const onBlur = (event: ReactFocusEvent<HTMLElement>) => {
+    if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) flushNudge();
   };
 
   // What the board draws: the gesture or nudge under way, or the element being created, over the stored row.
@@ -253,7 +291,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const preview = gesturePreview ?? nudgePreview ?? draftPreview;
   const previewBoard = useMemo(() => preview ? place(preview) : undefined, [preview, place]);
 
-  return { editable, tool: tool.tool, sticky: tool.sticky, setTool, selection, setSelection, preview, previewBoard, overlay: gestures.overlay, draft, setDraft, commitDraft, cancelDraft: () => setDraft(undefined), focusBoard: () => camera.viewport.current?.focus({ preventScroll: true }), picker, closePicker: () => setPicker(undefined), pick: (to: BoardElementKey) => picker && newArrow(picker, to), openPicker, canLink: selection.size === 1 && linkable([...selection][0]), confirm, confirmRemove, cancelRemove: () => setConfirm(undefined), requestRemove, recolor, notice, canUndo: steps.past.length > 0, canRedo: steps.future.length > 0, undo: () => travel('undo'), redo: () => travel('redo'), handlers: { ...gestures.handlers, onKeyDown, onKeyUp } };
+  return { editable, tool: tool.tool, sticky: tool.sticky, setTool, selection, setSelection, preview, previewBoard, overlay: gestures.overlay, draft, setDraft, commitDraft, cancelDraft: () => setDraft(undefined), focusBoard: () => camera.viewport.current?.focus({ preventScroll: true }), picker, closePicker: () => setPicker(undefined), pick: (to: BoardElementKey) => picker && newArrow(picker, to), openPicker, linkable, menu, closeMenu: () => setMenu(undefined), canLink: selection.size === 1 && linkable([...selection][0]), confirm, confirmRemove, cancelRemove: () => setConfirm(undefined), requestRemove, recolor, notice, canUndo: steps.past.length > 0, canRedo: steps.future.length > 0, undo: () => travel('undo'), redo: () => travel('redo'), handlers: { ...gestures.handlers, onKeyDown, onKeyUp, onBlur } };
 }
 export type BoardEditor = ReturnType<typeof useBoardEditor>;
 

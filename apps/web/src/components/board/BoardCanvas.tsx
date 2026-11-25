@@ -7,7 +7,7 @@ import { arrowLabelsShown, cardDetail, cardTitleStyle, sectionTitleSize } from '
 import { useTranslation } from '../../lib/i18n/index.js';
 import { BoardCard, type CardView } from './BoardCard.js';
 import { BoardControls } from './BoardControls.js';
-import { BoardDialogs, BoardFieldEditor, BoardGestureOverlay } from './BoardEditors.js';
+import { BoardContextMenu, BoardDialogs, BoardFieldEditor, BoardGestureOverlay } from './BoardEditors.js';
 import { BoardArrowLabels, BoardLines } from './BoardLines.js';
 import { BoardMinimap } from './BoardMinimap.js';
 import { BoardTools } from './BoardTools.js';
@@ -62,8 +62,8 @@ export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptio
   const renaming = draft?.kind === 'rename' ? draft.key : undefined, rewriting = draft?.kind === 'text' ? draft.id : undefined;
   const resizable = editable && !dynamic && selection.size === 1 ? board.sections.find(section => selection.has(`section:${section.key}`)) : undefined;
   return (
-    <div className='board-stage' data-phone={phone || undefined} data-editable={editable || undefined} data-tool={editable ? editor.tool : undefined} onKeyDown={editor.handlers.onKeyDown} onKeyUp={editor.handlers.onKeyUp}>
-      <div ref={viewport} role='region' aria-label={title} tabIndex={editable ? -1 : undefined} className='board-viewport' style={{ backgroundSize: `${gridStep}px ${gridStep}px`, backgroundPosition: `${view.x}px ${view.y}px` }} data-ready={ready || undefined} onPointerDown={editor.handlers.onPointerDown} onPointerMove={editor.handlers.onPointerMove} onPointerUp={editor.handlers.onPointerUp} onPointerCancel={editor.handlers.onPointerCancel} onClickCapture={editor.handlers.onClickCapture} onDoubleClick={editor.handlers.onDoubleClick} onFocus={editor.handlers.onFocus} onScroll={editor.handlers.onScroll}>
+    <div className='board-stage' data-phone={phone || undefined} data-editable={editable || undefined} data-tool={editable ? editor.tool : undefined} onKeyDown={editor.handlers.onKeyDown} onKeyUp={editor.handlers.onKeyUp} onBlur={editor.handlers.onBlur}>
+      <div ref={viewport} role='region' aria-label={title} tabIndex={editable ? -1 : undefined} className='board-viewport' style={{ backgroundSize: `${gridStep}px ${gridStep}px`, backgroundPosition: `${view.x}px ${view.y}px` }} data-ready={ready || undefined} onPointerDown={editor.handlers.onPointerDown} onPointerMove={editor.handlers.onPointerMove} onPointerUp={editor.handlers.onPointerUp} onPointerCancel={editor.handlers.onPointerCancel} onClickCapture={editor.handlers.onClickCapture} onDoubleClick={editor.handlers.onDoubleClick} onContextMenu={editor.handlers.onContextMenu} onFocus={editor.handlers.onFocus} onScroll={editor.handlers.onScroll}>
         <div className='board-layer' style={layerStyle} data-detail={cardDetail(zoom)} data-arrow-labels={arrowLabelsShown(zoom) || undefined} data-animated={animated || undefined}>
           {board.sections.map(section => <div key={section.key} className='board-section-frame' aria-hidden='true' data-selected={selected(`section:${section.key}`)} style={{ left: section.rect.x, top: section.rect.y, width: section.rect.w, height: section.rect.h }} />)}
           <BoardLines noteLinks={showNoteLinks ? noteLinks : []} arrows={arrows} editable={editable} selection={selection} focused={focusedArrow} />
@@ -105,6 +105,7 @@ export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptio
       </div>
       {editable && <BoardTools editor={editor} dynamic={dynamic} />}
       {editable && <BoardFieldEditor editor={editor} board={board} arrows={arrows} camera={view} labels={labels} />}
+      {editable && <BoardContextMenu editor={editor} />}
       {editable && <BoardDialogs editor={editor} board={board} titleOf={titleOf} dynamic={dynamic} />}
       {editor.notice && <p role='status' className='board-notice'>{editor.notice}</p>}
       {editable && <p className='sr-only' aria-live='polite'>{selection.size ? t('board.selected', { count: String(selection.size) }) : ''}</p>}

@@ -157,6 +157,35 @@ describe('editing the board', () => {
     expect(chapters(written())).toEqual(['·: n1', '·: n2', '二、德性知識論: n3 n4 n5']);
   });
 
+  it('deletes a section framed whole by a box, its cards staying with their arrows', async () => {
+    await ready();
+    drag(region(), [-20, -20], [300, 400]);
+    expect(selected().sort()).toEqual(['card:n1', 'card:n2', 'section:h1']);
+    fireEvent.keyDown(document.activeElement!, { key: 'Delete' });
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Delete section?' })).getByRole('button', { name: 'Delete section' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    const file = written();
+    expect(chapters(file)).toEqual(['·: n1', '·: n2', '二、德性知識論: n3 n4 n5']);
+    expect(file.board?.arrows?.map(arrow => arrow.id)).toEqual(['a3f9q', 'b7c1z']);
+  });
+
+  it('undoes nothing once the header’s arrange dialog changed the items, keeping that change', async () => {
+    await ready();
+    drag(at('n3'), [370, 60], [450, 160]);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Arrange contents: 第三章：德性與依據' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Arrange contents: 第三章：德性與依據' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Remove chapter heading (items stay): 一、問題' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+    region().focus();
+    fireEvent.keyDown(region(), { key: 'z', metaKey: true });
+    expect(await screen.findByText(/changed elsewhere since/)).toBeInTheDocument();
+    await settle();
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(written().items?.map(item => item.id)).toEqual(['n1', 'n2', 'h2', 'n3', 'n4', 'n5']);
+  });
+
   it('undoes and redoes a drag, one write each', async () => {
     await ready();
     drag(at('n3'), [370, 60], [450, 160]);
@@ -213,6 +242,25 @@ describe('editing the board', () => {
     fireEvent.blur(await screen.findByRole('combobox', { name: 'Arrow label' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(written().board?.arrows?.at(-1)).toMatchObject({ from: { item: 'n2' }, to: { item: 'h2' } });
+  });
+
+  it('offers 連到… on a selected element’s context menu', async () => {
+    await ready();
+    // jsdom fires a window blur, which closes a Radix menu, when focus moves on from an element an earlier test removed.
+    region().focus();
+    fireEvent.contextMenu(at('n2'), { clientX: 30, clientY: 220 });
+    expect(selected()).toEqual(['card:n2']);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Link to…' }));
+    expect(await screen.findByRole('dialog', { name: 'Draw an arrow from 依據關係的因果條件 to' })).toBeInTheDocument();
+  });
+
+  it('writes a nudge run at once when the pointer presses elsewhere, as on the arrangement switch', async () => {
+    await ready();
+    press(at('n1'), 30, 60);
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1), { timeout: 380 });
+    expect(written().board?.cards).toContainEqual({ item: 'n1', x: 32, y: 56 });
   });
 
   it('pans with the middle button instead of selecting', async () => {

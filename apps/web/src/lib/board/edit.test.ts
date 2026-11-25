@@ -144,6 +144,15 @@ describe('removeSelection', () => {
     expect(() => written(next)).not.toThrow();
   });
 
+  it('keeps a deleted section’s cards even when the selection holds them too, as a box around the section does', () => {
+    const row = two();
+    const { row: next } = removeSelection(row, place(row), ['section:h1', 'card:a', 'card:b', 'card:c']);
+    expect(book(next)).toEqual(['·: d', '·: a', '·: b', 'Two: ']);
+    // Only c (in a section that stays) and the arrows on c and h1 go.
+    expect(next.board?.arrows).toBeUndefined();
+    expect(card(next, 'a')).toEqual({ item: 'a', x: 24, y: 56 });
+  });
+
   it('removes texts and arrows, pruning arrows that end on a removed text; a dynamic board keeps its cards', () => {
     const row = custom([note('a')], { texts: [{ id: 't1', x: 0, y: 0, text: 'x' }], arrows: [{ id: 'q1', from: { text: 't1' }, to: { item: 'a' } }, { id: 'q2', from: { item: 'a' }, to: { text: 't1' } }] });
     expect(removeSelection(row, place(row), ['text:t1']).row.board).toEqual({});

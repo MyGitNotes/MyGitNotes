@@ -823,6 +823,7 @@ export const en = {
   'board.textLimit': 'A whiteboard holds at most {limit} texts.',
   'board.arrowLimit': 'A whiteboard holds at most {limit} arrows.',
   'board.arrowItem': 'Arrow: {text}',
+  'board.historyStale': 'This whiteboard changed elsewhere since, so its earlier steps can no longer be undone.',
   'board.selected': '{count} selected',
   'book.contents': 'Contents',
   'book.showContents': 'Show contents',
