@@ -23,6 +23,15 @@ describe('source-preserving outline relocation', () => {
   it.each(['- a\n  - b \n- c\n', '- a ', '1. a ', '- a\t', '> - a\n>   - b \n> - c\n', '- a\n  - b \n  - c \n- d\n'])('keeps a list whose line ends in a space Marked drops: %j', literal => {
     expect(relocateLinks(literal, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(literal);
   });
+  // Within a quote Marked hands back such a blank as a whole extra line, so its tokens hold one line more than the note.
+  it('rebases a link before a quoted list whose line ends in a space, with a lazy continuation after it', () => {
+    const raw = '[go](old.md)\n\n> - a \n\ttext';
+    expect(relocateLinks(raw, 'notes/old.md', 'notes/work/old.md', file => file)).toBe(raw.replace('[go](old.md)', '[go](../old.md)'));
+  });
+  it('keeps code that follows a quoted list whose line ends in a space', () => {
+    const raw = '> - a \n\ttext\n>\n> ```\n> [literal](a.md)\n> ```\n\n[after](a.md)\n';
+    expect(relocateLinks(raw, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(raw.replace('[after](a.md)', '[after](../a.md)'));
+  });
   it('rebases links around such a list and still keeps the code after it', () => {
     const raw = '- [a](a.md)\n  - [b](a.md) \n- c\n\n  ```\n  [literal](a.md)\n  ```\n\n[after](a.md)\n';
     expect(relocateLinks(raw, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(raw.replace('[a](a.md)', '[a](../a.md)').replace('[b](a.md)', '[b](../a.md)').replace('[after](a.md)', '[after](../a.md)'));

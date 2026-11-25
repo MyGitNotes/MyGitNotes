@@ -22,35 +22,54 @@ const inside = (file: string, dir: string) => file === dir || file.startsWith(di
 const parentOf = (file: string) => path.posix.dirname(file) === '.' ? '' : path.posix.dirname(file);
 
 /**
- * Where `raw` sits in `source` at or after `from`, as [start, end). Marked turns a lone space or tab that ends the text
- * it lexes into the newline it expected there, so a token can differ from the source in the blanks that end its lines.
+ * Where `raw` sits in `source` at or after `from`, as [start, end). Marked can hand a block back with a blank line the
+ * note does not have (after a quote's lazy continuation line), so a blank line of the token may stand for none, and
+ * with a newline that ends the text where the note has none.
  */
 function locate(source: string, raw: string, from: number): [number, number] | undefined {
   const exact = source.indexOf(raw, from);
   if (exact >= 0) return [exact, exact + raw.length];
   const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(raw.split('\n').map(line => escape(line.replace(/[ \t]+$/, ''))).join('[ \\t]*(?:\\n|$)'), 'g');
+  const lines = raw.split('\n');
+  const pattern = new RegExp(lines.map((line, index) => index === lines.length - 1 ? escape(line.trimEnd()) + '[ \\t]*' : line.trim() ? escape(line.trimEnd()) + '[ \\t]*(?:\\n|$)' : '(?:[ \\t]*\\n)?').join(''), 'g');
   pattern.lastIndex = from;
   const match = pattern.exec(source);
   return match ? [match.index, match.index + match[0].length] : undefined;
 }
 
-/** Block token line ranges survive list/quote prefix removal and CRLF normalization. */
+/**
+ * For each line of the text Marked made of a quote (its prefixes removed), the line of the quote's `block` it came from.
+ * Marked can add blank lines there; one it added stands for the line before it, so nothing after it shifts.
+ */
+function quoteLines(text: string, block: string): number[] {
+  const source = block.split('\n').map(line => line.replace(/^ {0,3}> ?/, '').trim());
+  const map: number[] = [];
+  let next = 0;
+  for (const line of text.split('\n').map(line => line.trim())) {
+    if (next < source.length && line === source[next]) map.push(next++);
+    else if (!line) map.push(Math.max(0, next - 1));
+    else map.push(Math.min(next++, source.length - 1));
+  }
+  return map;
+}
+
+/** Block token line ranges survive list/quote prefix removal, lines Marked adds, and CRLF normalization. */
 function markdownCodeRanges(raw: string): [number, number][] {
   const lineOffsets = [0];
   for (const match of raw.matchAll(/\r\n|\r|\n/g)) lineOffsets.push(match.index + match[0].length);
   const ranges: [number, number][] = [];
   const lines = (text: string) => (text.match(/\n/g) || []).length;
-  const visit = (source: string, tokens: Token[], firstLine: number) => {
-    let cursor = 0, line = firstLine;
+  // `at` names the note's line for each line of `source`, which Marked may have derived from the note's text.
+  const visit = (source: string, tokens: Token[], at: (line: number) => number) => {
+    let cursor = 0, line = 0;
     for (const token of tokens) {
       const span = locate(source, token.raw, cursor);
       if (!span) throw new Error('Markdown block could not be located in the source.');
       const [offset, end] = span, block = source.slice(offset, end);
       line += lines(source.slice(cursor, offset));
       if (token.type === 'code') {
-        const endLine = line + lines(block) + (block.endsWith('\n') ? 0 : 1);
-        ranges.push([lineOffsets[line], lineOffsets[endLine] ?? raw.length]);
+        const last = line + lines(block) - (block.endsWith('\n') ? 1 : 0);
+        ranges.push([lineOffsets[at(line)], lineOffsets[at(last) + 1] ?? raw.length]);
       } else if (token.type === 'list') {
         let itemCursor = 0, itemLine = line;
         for (const item of token.items) {
@@ -63,17 +82,24 @@ function markdownCodeRanges(raw: string): [number, number][] {
           // checkbox prefix instead of re-lexing the stripped item.text.
           const first = item.tokens[0];
           const checkbox = first?.type === 'checkbox' ? first : first?.type === 'paragraph' && first.tokens[0]?.type === 'checkbox' ? first.tokens[0] : undefined;
-          visit((checkbox?.raw ?? '') + item.text, item.tokens, itemLine);
+          const start = itemLine;
+          visit((checkbox?.raw ?? '') + item.text, item.tokens, inner => at(start + inner));
           itemCursor = itemEnd;
           itemLine += lines(block.slice(itemOffset, itemEnd));
         }
-      } else if (token.type === 'blockquote') visit(token.text, token.tokens ?? Lexer.lex(token.text), line);
+      } else if (token.type === 'blockquote') {
+        const start = line, map = quoteLines(token.text, block);
+        visit(token.text, token.tokens ?? Lexer.lex(token.text), inner => at(start + (map[inner] ?? map.at(-1) ?? 0)));
+      }
       cursor = end;
       line += lines(block);
     }
   };
-  const source = raw.replace(/\r\n?/g, '\n');
-  visit(source, Lexer.lex(source), 0);
+  // Marked hands back a space or tab that ends what it lexes as the newline it expected there, and inside a quote as a
+  // whole extra line. Blanks that end a line never decide where a block or a code span starts or ends, so the note is
+  // lexed without them: every line keeps its number.
+  const source = raw.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '');
+  visit(source, Lexer.lex(source), line => line);
   return ranges;
 }
 
