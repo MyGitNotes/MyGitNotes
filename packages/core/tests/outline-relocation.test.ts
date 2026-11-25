@@ -28,6 +28,11 @@ describe('source-preserving outline relocation', () => {
     const raw = '[go](old.md)\n\n> - a \n\ttext';
     expect(relocateLinks(raw, 'notes/old.md', 'notes/work/old.md', file => file)).toBe(raw.replace('[go](old.md)', '[go](../old.md)'));
   });
+  // A quote whose trimmed lines would lex differently: the note as written is located, as before such lists were handled.
+  it('rebases a link after a quoted list item opening a fence whose line ends in spaces', () => {
+    const raw = '> - a \n> - ```  \ntext\n\n[go](old.md)';
+    expect(relocateLinks(raw, 'notes/old.md', 'notes/new.md', file => file === 'notes/old.md' ? 'notes/new.md' : file)).toBe(raw.replace('[go](old.md)', '[go](new.md)'));
+  });
   it('keeps code that follows a quoted list whose line ends in a space', () => {
     const raw = '> - a \n\ttext\n>\n> ```\n> [literal](a.md)\n> ```\n\n[after](a.md)\n';
     expect(relocateLinks(raw, 'notes/ex/plan.outline.md', 'notes/ex/work/plan.outline.md', file => file)).toBe(raw.replace('[after](a.md)', '[after](../a.md)'));

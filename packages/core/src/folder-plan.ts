@@ -95,11 +95,19 @@ function markdownCodeRanges(raw: string): [number, number][] {
       line += lines(block);
     }
   };
-  // Marked hands back a space or tab that ends what it lexes as the newline it expected there, and inside a quote as a
-  // whole extra line. Blanks that end a line never decide where a block or a code span starts or ends, so the note is
-  // lexed without them: every line keeps its number.
-  const source = raw.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '');
-  visit(source, Lexer.lex(source), line => line);
+  // The note is lexed as written first. Marked can hand back a space or tab that ends a line as the newline it expected
+  // there, and inside a quote as a whole extra line, which then lies nowhere in the note: only then is the note lexed
+  // again without the blanks that end its lines, which never decide where a block or a code span starts or ends, so
+  // every line keeps its number.
+  const source = raw.replace(/\r\n?/g, '\n');
+  try {
+    visit(source, Lexer.lex(source), line => line);
+  } catch (error) {
+    const trimmed = source.replace(/[ \t]+$/gm, '');
+    if (trimmed === source) throw error;
+    ranges.length = 0;
+    visit(trimmed, Lexer.lex(trimmed), line => line);
+  }
   return ranges;
 }
 
