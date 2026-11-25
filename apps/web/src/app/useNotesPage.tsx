@@ -21,6 +21,7 @@ import { NotebookTree } from '../components/NotebookTree.js';
 import { type FolderChoice, NoteListColumn } from '../components/NoteListColumn.js';
 import { NoteListSentinel } from '../components/NoteListSentinel.js';
 import { PhoneBrowseList } from '../components/PhoneBrowseList.js';
+import { PhoneNoteScreen } from '../components/PhoneNoteScreen.js';
 import { PhoneFilterSheet, PhoneListBar } from '../components/PhoneListBar.js';
 import { Sidebar } from '../components/Sidebar.js';
 import { Tooltip } from '../components/Tooltip.js';
@@ -318,6 +319,14 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
         </button>
       </Tooltip>
     );
+    /** A phone's list screen: its bar, the chips of the filters in force, and the list; without `searchRef` it is the one under a note pulled back. */
+    const phoneListScreen = (searchRef?: typeof noteSearch) => (
+      <>
+        <PhoneListBar searchRef={searchRef} notebooks={config?.notebooks || []} selectedNotebookId={selectedNotebookId} onSelectNotebook={id => void setSelectedNotebookId(id)} notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy} unavailableNotebooks={unavailableNotebooks} notebookGroups={notebookGroups} query={searchQuery} onQueryChange={value => changeFilters({ q: value })} filtersOpen={filtersOpen} onToggleFilters={() => setFiltersOpen(open => !open)} />
+        {layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
+        {noteFocus.layout && !focusEmpty ? <div className='phone-notes-screen'>{phoneList(layout.path)}</div> : phoneList(false)}
+      </>
+    );
     return (phone
       ? (
         <>
@@ -325,27 +334,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
             <HeaderUtilities className='phone-drawer-utilities' activeTab={activeTab} setActiveTab={setActiveTab} navigationDisabled={navigationDisabled} onOpenCommands={() => setShortcutMode('palette')} accountControls={<AccountControls local={!remote} />} /> {renderSidebar()}
           </WorkspaceSidebarPortal>
           {/* A phone's list and note take turns filling the screen, each with its own bars. */}
-          <main className='workspace-main notes-main'>
-            {!phoneNoteScreen && (
-              <>
-                <PhoneListBar
-                  searchRef={noteSearch}
-                  notebooks={config?.notebooks || []}
-                  selectedNotebookId={selectedNotebookId}
-                  onSelectNotebook={id => void setSelectedNotebookId(id)}
-                  notebookDisabled={loading || resourceNavigationBusy || notebookSwitchBusy}
-                  unavailableNotebooks={unavailableNotebooks}
-                  notebookGroups={notebookGroups}
-                  query={searchQuery}
-                  onQueryChange={value => changeFilters({ q: value })}
-                  filtersOpen={filtersOpen}
-                  onToggleFilters={() => setFiltersOpen(open => !open)}
-                />
-                {layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
-              </>
-            )}
-            {noteFocus.layout && !focusEmpty ? <div className='phone-notes-screen'>{phoneNoteScreen ? <div className='phone-notes-focus'>{focusArea}</div> : phoneList(layout.path)}</div> : phoneList(false)}
-          </main>
+          <main className='workspace-main notes-main'>{phoneNoteScreen && noteFocus.layout && !focusEmpty ? <PhoneNoteScreen list={() => phoneListScreen()}>{focusArea}</PhoneNoteScreen> : phoneListScreen(noteSearch)}</main>
         </>
       )
       : (
