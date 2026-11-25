@@ -13,7 +13,8 @@
 /* Sections: a titled rounded rectangle under its cards. The group that holds its cards is transparent above it. */
 .board-section-frame { position: absolute; border: 1px solid var(--color-line); border-radius: 16px; background: color-mix(in srgb, var(--color-text) 4%, transparent); }
 .board-section { position: absolute; }
-.board-section-title { position: absolute; z-index: 2; top: 14px; left: 20px; right: 20px; overflow: hidden; color: var(--color-text); font-size: var(--board-section-title-size, 15px); font-weight: 650; line-height: 1.25; white-space: nowrap; text-overflow: ellipsis; }
+/* The title draws over the cards: zoomed out it grows past its band (never under 13 px on screen), and a card under it must not hide it. */
+.board-section-title { position: absolute; z-index: 3; top: 14px; left: 14px; max-width: calc(100% - 28px); overflow: hidden; padding: 0 6px; border-radius: 6px; background: color-mix(in srgb, var(--color-bg) 82%, transparent); color: var(--color-text); font-size: var(--board-section-title-size, 15px); font-weight: 650; line-height: 1.25; white-space: nowrap; text-overflow: ellipsis; }
 
 /* Cards: one size; title and two lines, or zoomed out the title only, never under 12 px on screen. */
 .board-card { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 8px; width: 240px; height: 128px; padding: 12px; overflow: hidden; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); box-shadow: var(--shadow-sm); color: var(--color-text); text-align: left; cursor: pointer; }
@@ -71,4 +72,43 @@
 .board-minimap-frame { fill: none; stroke: var(--color-primary); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 @media (max-width: 767px) { .board-minimap { display: none; } }
 
-.board-empty { position: absolute; top: 55%; left: 50%; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--color-muted); transform: translate(-50%, -50%); }
+.board-empty { pointer-events: none; position: absolute; top: 55%; left: 50%; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--color-muted); transform: translate(-50%, -50%); }
+.board-empty button { pointer-events: auto; }
+
+/* Editing (wider screens, writable boards): the tools, the selection, and what a gesture draws. */
+.board-stage[data-editable] .board-viewport, .board-stage[data-editable] .board-viewport:active { cursor: default; }
+.board-stage[data-tool='text'] .board-viewport { cursor: text; }
+.board-stage[data-tool='section'] .board-viewport, .board-stage[data-tool='arrow'] .board-viewport { cursor: crosshair; }
+.board-card[data-selected] { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.board-section-frame[data-selected] { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+button.board-section-title { border: 0; font-family: inherit; text-align: left; cursor: grab; }
+button.board-section-title:focus-visible, button.board-text:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.board-section-title[data-selected] { color: var(--color-primary); }
+:is(.board-section-title, .board-text)[data-editing] { visibility: hidden; }
+button.board-text { border: 0; border-radius: 4px; background: none; font-family: inherit; text-align: left; cursor: default; }
+.board-text[data-selected] { outline: 2px dashed var(--color-primary); outline-offset: 0; }
+.board-arrow-hits path { fill: none; stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
+.board-arrows path[data-selected] { stroke: var(--color-primary); stroke-width: 2.5; opacity: 1; }
+.board-stage[data-editable] .board-arrow-label[data-board-key] { pointer-events: auto; cursor: pointer; }
+.board-arrow-label[data-selected] { border-color: var(--color-primary); color: var(--color-primary); }
+.board-resize { position: absolute; z-index: 4; width: calc(14px / var(--board-zoom, 1)); height: calc(14px / var(--board-zoom, 1)); border: calc(2px / var(--board-zoom, 1)) solid var(--color-primary); border-radius: calc(3px / var(--board-zoom, 1)); background: var(--color-surface); cursor: nwse-resize; transform: translate(-75%, -75%); }
+.board-marquee { position: absolute; z-index: 6; border: calc(1px / var(--board-zoom, 1)) solid var(--color-primary); background: color-mix(in srgb, var(--color-primary) 10%, transparent); pointer-events: none; }
+.board-section-draft { position: absolute; z-index: 1; border: calc(1.5px / var(--board-zoom, 1)) dashed var(--color-primary); border-radius: 16px; background: color-mix(in srgb, var(--color-primary) 6%, transparent); pointer-events: none; }
+.board-rubber { z-index: 6; }
+.board-rubber line { stroke: var(--color-primary); stroke-width: 1.5; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+.board-tools { position: absolute; z-index: 5; top: 8px; left: 8px; display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--surface-glass); box-shadow: var(--shadow-sm); backdrop-filter: var(--surface-blur); }
+.board-tool-group { display: flex; gap: 2px; }
+.board-tool[aria-pressed='true'] { background: var(--color-primary-soft); color: var(--color-primary); }
+.board-tool[data-sticky] { box-shadow: inset 0 -2px 0 var(--color-primary); }
+.board-tool[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+.board-tool-separator { width: 1px; height: 20px; margin: 0 4px; background: var(--color-line); }
+@media (pointer: coarse) { .board-tools .ui-icon-button { min-width: 44px; min-height: 44px; } }
+.board-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 999px; background: currentColor; color: var(--color-text); }
+/* Fields typed in place sit over the board in screen pixels, so they stay readable at any zoom. */
+.board-editor { position: absolute; z-index: 7; margin: 0; border: 1px solid var(--color-primary); background: var(--color-surface); box-shadow: var(--shadow-sm); color: var(--color-text); font-family: inherit; outline: none; }
+.board-editor-title { padding: 4px 8px; border-radius: 6px; font-size: 15px; font-weight: 650; }
+.board-editor-label { min-width: 160px; padding: 4px 12px; border-radius: 999px; font-size: 13px; transform: translate(-50%, -50%); }
+.board-editor-text { padding: 8px; border-radius: 6px; line-height: 1.45; resize: none; }
+.board-notice { position: absolute; z-index: 6; bottom: 16px; left: 50%; max-width: min(560px, 90%); margin: 0; padding: 8px 14px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); box-shadow: var(--shadow-sm); color: var(--color-text); font-size: 13px; transform: translateX(-50%); }
+.board-picker { display: grid; gap: 6px; max-height: 50vh; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.board-picker-option { justify-content: flex-start; width: 100%; text-align: left; }

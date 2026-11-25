@@ -18,6 +18,8 @@ export interface PlacedCard extends BoardCardEntry {
 export interface PlacedSection extends BoardSectionEntry {
   /** The rectangle as drawn: the stored or derived one, grown to include every card of the section. */
   rect: Rect;
+  /** The stored or derived rectangle before it grows to include its cards. */
+  frame: Rect;
 }
 export interface PlacedText extends BoardText {
   rect: Rect;
@@ -33,7 +35,7 @@ export interface PlacedBoard {
 
 const cardRect = (x: number, y: number): Rect => ({ x, y, w: CARD_W, h: CARD_H });
 /** The room a card takes inside a section: its rectangle with the inner margin around it and the title band above. */
-const roomOf = (card: Rect): Rect => ({ x: card.x - BOARD_GAP, y: card.y - SECTION_TITLE_BAND, w: card.w + 2 * BOARD_GAP, h: card.h + SECTION_TITLE_BAND + BOARD_GAP });
+export const roomOf = (card: Rect): Rect => ({ x: card.x - BOARD_GAP, y: card.y - SECTION_TITLE_BAND, w: card.w + 2 * BOARD_GAP, h: card.h + SECTION_TITLE_BAND + BOARD_GAP });
 const columnsIn = (width: number) => Math.max(1, Math.floor((width - 2 * BOARD_GAP + BOARD_GAP) / (CARD_W + BOARD_GAP)));
 /** A section's size when its cards decide it: up to three columns, as many rows as they need, never under the minimum. */
 function derivedSize(count: number): { w: number; h: number; } {
@@ -122,6 +124,6 @@ export function placeBoard(entries: BoardEntries, texts: readonly BoardText[] = 
   }
 
   const cards: PlacedCard[] = entries.cards.map(card => ({ ...card, ...positions.get(card.key)! }));
-  const sections: PlacedSection[] = entries.sections.map(section => ({ ...section, rect: unionRects([sectionRects.get(section.key)!, ...section.cards.map(key => roomOf(positions.get(key)!.rect))])! }));
+  const sections: PlacedSection[] = entries.sections.map(section => ({ ...section, frame: sectionRects.get(section.key)!, rect: unionRects([sectionRects.get(section.key)!, ...section.cards.map(key => roomOf(positions.get(key)!.rect))])! }));
   return { cards, sections, texts: placedTexts, bounds: unionRects([...sections.map(section => section.rect), ...cards.map(card => card.rect), ...placedTexts.map(text => text.rect)]) };
 }

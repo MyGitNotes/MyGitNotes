@@ -281,7 +281,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
         const context = createLaneNoteContext(current, notebooks);
         if (context) actions.createNote?.(context);
       };
-      return <CompilationBoard row={current} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={open} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} hideQuery />;
+      return <CompilationBoard row={current} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={open} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} onChange={writable ? change : undefined} hideQuery />;
     }
     return (
       <CompilationLane

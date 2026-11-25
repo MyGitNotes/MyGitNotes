@@ -1,10 +1,11 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NotebookFacets, NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
 import { type BoardElementKey, drawnArrows, noteLinkLines, noteLinkNeighbours } from '../../lib/board/connections.js';
 import { arrowText, cardDescription } from '../../lib/board/describe.js';
+import { usedLabels } from '../../lib/board/edit.js';
 import { boardEntries } from '../../lib/board/model.js';
 import { placeBoard } from '../../lib/board/placement.js';
 import { readBoardNoteLinks, saveBoardNoteLinks } from '../../lib/board/storage.js';
@@ -22,6 +23,8 @@ import { LoadingStatus } from '../LoadingStatus.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import type { CardView } from './BoardCard.js';
 import { cardView } from './card-view.js';
+import { useBoardCamera } from './useBoardCamera.js';
+import { useBoardEditor } from './useBoardEditor.js';
 import './board.css';
 
 type BoardHeader = Omit<CompilationHeaderProps, 'row' | 'count' | 'notebooks' | 'scrollButton' | 'extra'>;
@@ -29,10 +32,11 @@ type BoardHeader = Omit<CompilationHeaderProps, 'row' | 'count' | 'notebooks' | 
 /**
  * The whiteboard arrangement of a compilation, drawn: its cards where the file places them and the rest auto-placed,
  * its sections, free text and arrows, the dashed links written inside its notes, and the minimap. A card opens where
- * the compilation's host opens items (`onOpen`). Nothing here edits the board or writes the file; on a phone the
- * board is for looking, without the arrangement switch or the minimap.
+ * the compilation's host opens items (`onOpen`). With `onChange` on a writable board wider than a phone the board is
+ * edited in place, each gesture one `onChange`; on a phone it is for looking, without the arrangement switch, the
+ * minimap or the tools.
  */
-export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; }) {
+export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, onChange, facets, extra, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; onChange?: (row: CompilationRow) => void; }) {
   const { t } = useTranslation();
   const phone = usePhone();
   // A board places every member, so it reads them all, with the body each card's first lines come from. The status
@@ -40,9 +44,17 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
   const unfiltered = useMemo(() => row.study?.status ? { ...row, study: { ...row.study, status: undefined } } : row, [row]);
   const lane = useLaneNotes(unfiltered, { content: true, all: true });
   const notes = lane.notes;
-  const items = useMemo(() => compilationRowItems(row, notes, assets, notebooks, folders), [row, notes, assets, notebooks, folders]);
-  const board = useMemo(() => placeBoard(boardEntries(row, items), row.board?.texts), [row, items]);
-  const arrows = useMemo(() => drawnArrows(board, row.board?.arrows), [board, row.board?.arrows]);
+  const place = useCallback((value: CompilationRow) => placeBoard(boardEntries(value, compilationRowItems(value, notes, assets, notebooks, folders)), value.board?.texts), [notes, assets, notebooks, folders]);
+  const placed = useMemo(() => place(row), [place, row]);
+  // Custom positions are known at once; a dynamic board's members arrive with the query.
+  const loaded = row.kind === 'custom' || !lane.loading;
+  const camera = useBoardCamera({ board: `${row.notebookId}:${row.path}`, bounds: placed.bounds, loaded });
+  const editable = Boolean(onChange) && !phone && !header.readOnly && !header.disabled;
+  const editor = useBoardEditor({ row, placed, place, editable, onChange, camera });
+  // A gesture under way is drawn from the row it would write.
+  const shown = editor.preview ?? row;
+  const board = editor.previewBoard ?? placed;
+  const arrows = useMemo(() => drawnArrows(board, shown.board?.arrows), [board, shown.board?.arrows]);
   const [showNoteLinks, setShowNoteLinks] = useState(readBoardNoteLinks);
   const graph = useNoteGraph(showNoteLinks && board.cards.filter(card => card.item.kind === 'note').length > 1);
   const noteLinks = useMemo(() => graph.graph ? noteLinkLines(board.cards, graph.graph.links) : [], [board, graph.graph]);
@@ -69,17 +81,15 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
     setShowNoteLinks(shown);
     saveBoardNoteLinks(shown);
   };
-  // Custom positions are known at once; a dynamic board's members arrive with the query.
-  const loaded = row.kind === 'custom' || !lane.loading;
   const empty = !board.cards.length && !board.texts.length;
   return (
     <section id={`screen-lane-${row.id}`} className={`screen-lane screen-view-board board-arrangement ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`}>
       <CompilationHeader {...header} row={row} count={board.cards.length} notebooks={notebooks} facets={facets} extra={phone ? undefined : extra} hideArrangement={phone} />
       {lane.error && <p role='alert' className='screen-error'>{lane.error}</p>}
       {graph.error && showNoteLinks && <p role='alert' className='screen-error'>{graph.error}</p>}
-      <BoardCanvas boardKey={`${row.notebookId}:${row.path}`} title={row.name} board={board} arrows={arrows} noteLinks={noteLinks} views={views} descriptions={descriptions} arrowTexts={arrowTexts} loaded={loaded} phone={phone} showNoteLinks={showNoteLinks} onNoteLinks={changeNoteLinks} onOpen={onOpen} />
+      <BoardCanvas title={row.name} board={board} arrows={arrows} noteLinks={noteLinks} views={views} descriptions={descriptions} arrowTexts={arrowTexts} phone={phone} showNoteLinks={showNoteLinks} onNoteLinks={changeNoteLinks} onOpen={onOpen} camera={camera} editor={editor} dynamic={row.kind === 'dynamic'} labels={usedLabels(row)} titleOf={titleOf} />
       {lane.loading && !board.cards.length && <LoadingStatus className='board-empty'>{t('notes.loading')}</LoadingStatus>}
-      {empty && !lane.loading && (
+      {empty && !lane.loading && !editor.draft && (
         <div className='board-empty'>
           <p>{t('board.empty')}</p>
           {!header.readOnly && !header.disabled && row.kind === 'custom' && header.onAdd && (
