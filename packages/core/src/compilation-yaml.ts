@@ -128,7 +128,8 @@ const lineEnd = (raw: string, at: number) => {
 function plainKey(raw: string, pair: Pair) {
   const key = pair.key;
   if (!YAML.isScalar(key) || key.type !== 'PLAIN' || key.anchor || key.tag || !key.range) return;
-  const start = lineStart(raw, key.range[0]);
+  // A byte order mark belongs before the first line, not to it.
+  const start = Math.max(lineStart(raw, key.range[0]), raw.startsWith('\uFEFF') ? 1 : 0);
   const colon = /^[ \t]*:/.exec(raw.slice(key.range[1], key.range[1] + 64));
   if (raw.slice(start, key.range[0]).trim() || !colon) return;
   return { start, column: key.range[0] - start, colon: key.range[1] + colon[0].length };
@@ -166,20 +167,30 @@ export function spliceTopLevelField(raw: string, key: string, value: string | re
     const at = plainKey(raw, pair);
     if (!at) return;
     if (value === undefined) return raw.slice(0, at.start) + raw.slice(lineEnd(raw, old?.range?.[2] ?? at.colon));
-    const end = old?.range ? old.range[1] : at.colon;
+    // An empty value ends where its field line does, before the line break and after any comment on it.
+    const empty = !old?.range || old.range[0] === old.range[1];
+    const lineEndAt = raw.slice(at.colon, lineEnd(raw, at.colon)).replace(/\r?\n$/, '').length + at.colon;
+    const end = empty ? lineEndAt : old.range![1];
     if (end < at.colon) return;
+    // A comment on the field's own line stays there, the value then starting the next line.
+    const fieldLine = raw.slice(at.colon, empty ? lineEndAt : Math.min(old.range![0], lineEndAt));
+    const comment = /(?:^|[ \t])#/.exec(fieldLine);
+    const kept = comment ? fieldLine.slice(comment.index) : '';
+    const below = (source: string, column: number) => kept + eol + ' '.repeat(column) + source;
     let source: string;
     if (typeof value === 'string') {
       const scalar = document.createNode(value) as YAML.Scalar;
       if (YAML.isScalar(old) && (old.type === 'QUOTE_DOUBLE' || old.type === 'QUOTE_SINGLE')) scalar.type = old.type;
-      source = ` ${nodeSource(document, scalar)}`;
+      source = kept ? below(nodeSource(document, scalar), at.column + 2) : ` ${nodeSource(document, scalar)}`;
     } else if (YAML.isSeq(old) && old.flow) {
-      const seq = document.createNode([...value], { flow: true });
-      source = ` ${nodeSource(document, seq, raw[old.range![0] + 1] === ' ')}`;
+      const seq = nodeSource(document, document.createNode([...value], { flow: true }), raw[old.range![0] + 1] === ' ');
+      source = kept ? below(seq, old.range![0] - lineStart(raw, old.range![0])) : ` ${seq}`;
     } else {
       const column = YAML.isSeq(old) ? old.range![0] - lineStart(raw, old.range![0]) : at.column + 2;
-      source = eol + block(column) + (raw.slice(at.colon, end).endsWith('\n') ? eol : '');
+      source = kept + eol + block(column);
     }
+    // A block value's source ends with its line break, which the next line needs whatever replaces it.
+    if (raw.slice(at.colon, end).endsWith('\n')) source += eol;
     return raw.slice(0, at.colon) + source + raw.slice(end);
   }
   if (value === undefined) return raw;

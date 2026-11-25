@@ -179,4 +179,19 @@ describe('compilations over the note routes', () => {
     const listed = (await json(`/api/notes/query?notebookId=${nb('example')}&kind=compilation`)).body.notes;
     expect(listed.find((note: any) => note.path.endsWith('bad.compilation.yml'))?.invalid).toContain('YAML');
   });
+
+  it('restores an uncommitted compilation that does not open, as the undo of its deletion sends it back', async () => {
+    const file = 'notes/example/draft.compilation.yml';
+    const raw = 'version: 1\nid: draft\ntitle: Draft\ntags: [clue]\nsource:\n  kind: tag\n  tag: clue\n';
+    write(file, raw);
+    const read = await json(`/api/notes/read?path=${encodeURIComponent(file)}&notebookId=${nb('example')}`);
+    expect(read.status).toBe(200);
+    expect(read.body.note.invalid).toContain('arrangement');
+    expect((await send('DELETE', `/api/notes?path=${encodeURIComponent(file)}&notebookId=${nb('example')}&noCommit=true`)).body).toMatchObject({ success: true, pending: false });
+    expect(fs.existsSync(path.join(root, file))).toBe(false);
+    const restored = await send('POST', '/api/notes/restore', { path: file, content: read.body.note.content, metadata: read.body.note.metadata, notebookId: nb('example') });
+    expect(restored.status).toBe(200);
+    expect(restored.body.note.invalid).toContain('arrangement');
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(raw);
+  });
 });

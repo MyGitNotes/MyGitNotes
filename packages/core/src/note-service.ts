@@ -4,7 +4,7 @@ import { NotebookConfig, NoteItem, NoteMetadata } from './types.js';
 import { resolveSafePath } from './path-guard.js';
 import { isNotebookContent } from './folders.js';
 import { isCompilationPath } from './compilation.js';
-import { checkedNoteFile, NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
+import { NOTE_EXTENSIONS, parseNoteFile, serializeNoteFile } from './note-file.js';
 import { loadWorkspaceConfig } from './config.js';
 
 /**
@@ -39,7 +39,7 @@ export function writeNoteFile(repoRoot: string, relPath: string, content: string
   }
 
   const existingRaw = isNew ? undefined : fs.readFileSync(safePath, 'utf-8');
-  const finalOutput = checkedNoteFile(relPath, metadata ? serializeNoteFile(relPath, metadata, content, isNew, new Date(), existingRaw) : content, existingRaw, scope);
+  const finalOutput = metadata ? serializeNoteFile(relPath, metadata, content, isNew, new Date(), existingRaw, scope) : content;
 
   fs.writeFileSync(safePath, finalOutput, 'utf-8');
 

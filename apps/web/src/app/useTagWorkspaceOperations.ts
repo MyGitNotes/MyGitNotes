@@ -84,13 +84,24 @@ export function useTagWorkspaceOperations({ queryClient, queryScope, repositorie
       }
       const entries = validEntries.map(({ path, notebookId, nextTags }) => ({ path, notebookId, tags: nextTags }));
       let skipped: Awaited<ReturnType<typeof applyEntries>>;
+      let failure: PartialTagChangeError | undefined;
       try {
         skipped = await applyEntries(entries, `${t('common.undo')}: ${t(record.label.key, record.label.params)}`);
+      } catch (error) {
+        // Repositories committed before the failure restored their part; the rest stays in the record below.
+        if (!(error instanceof PartialTagChangeError)) throw error;
+        failure = error;
+        skipped = error.skipped;
       } finally {
         if (!remote) invalidateNotes();
       }
-      tagOperations.dismiss(id);
-      if (skipped.length) setActionError(skippedTagNotice(t, skipped));
+      // What a committed repository wrote is restored; a skipped compilation and a repository that failed stay undoable.
+      const restored = (entry: { path: string; notebookId: string; }) => (!failure || failure.committed.includes(repositoryOf(repositories, entry.notebookId)?.id ?? '')) && !wasSkipped(skipped, entry);
+      const left = record.plan.affected.filter(entry => validEntries.some(valid => valid.path === entry.path && valid.notebookId === entry.notebookId) && !restored(entry));
+      if (left.length) tagOperations.narrow(id, { ...record.plan, affected: left });
+      else tagOperations.dismiss(id);
+      const notice = [failure?.message, skippedTagNotice(t, skipped)].filter(Boolean).join(' ');
+      if (notice) setActionError(notice);
     } catch (error) {
       // Keep the record so the user can retry; a silently vanished undo with no feedback
       // would leave them unable to tell whether the undo happened.

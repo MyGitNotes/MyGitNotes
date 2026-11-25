@@ -92,6 +92,19 @@ describe('local /api/tags/apply', () => {
     expect(Number(git('rev-list', '--count', 'HEAD').toString().trim())).toBe(commits + 1);
   });
 
+  it('skips a compilation whose folder source lies outside every notebook root, as reading it reports', async () => {
+    const file = 'notes/blog/shelf.compilation.yml';
+    const raw = 'version: 1\nid: shelf\ntitle: Shelf\narrangement: lane\ntags: [todo]\nsource: { kind: folder, path: elsewhere }\n';
+    fs.writeFileSync(path.join(root, file), raw);
+    git('add', '.');
+    git('commit', '-m', 'add a compilation outside the roots');
+    const res = await post({ entries: [{ path: 'notes/blog/b.md', notebookId: 'blog', tags: ['doing'] }, { path: file, notebookId: 'blog', tags: ['doing'] }] });
+    const body = await res.json();
+    expect(body.changedPaths).toEqual(['notes/blog/b.md']);
+    expect(body.skipped).toEqual([{ path: file, reason: expect.stringMatching(/^Tags not written: the compilation would not open/) }]);
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(raw);
+  });
+
   it('renames a tag across notebooks in one commit, preserving every other byte', async () => {
     const before = fs.readFileSync(path.join(root, 'notes/blog/a.md'), 'utf8');
     const commitsBefore = git('rev-list', '--count', 'HEAD').toString().trim();
@@ -179,8 +192,9 @@ describe('local /api/tags/apply', () => {
 
 describe.each(['github', 'gitlab'])('remote /api/tags/apply (%s)', provider => {
   const brokenCompilation = 'version: 1\nid: broken\ntitle: Broken\ntags: [todo]\nsource:\n  kind: tag\n  tag: todo\n';
+  const outsideCompilation = 'version: 1\nid: shelf\ntitle: Shelf\narrangement: lane\ntags: [todo]\nsource: { kind: folder, path: elsewhere }\n';
   it('applies one atomic commit across notebooks and preserves other frontmatter bytes', async () => {
-    const files = new Map([['.mygitnotes.yaml', Buffer.from('schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: blog\nnotebooks:\n  - id: blog\n    title: Blog\n    root: notes/blog\n  - id: thesis\n    title: Thesis\n    root: notes/thesis\n')], ['notes/blog/a.md', Buffer.from('---\nid: a\ncustom: {x: 1,y: 2}\ntags: [todo, x]\ntitle: A\n---\n\nBody A\n')], ['notes/thesis/c.md', Buffer.from('---\nid: c\ntags:\n  - todo\n---\n\nBody C\n')], ['notes/blog/broken.compilation.yml', Buffer.from(brokenCompilation)]]);
+    const files = new Map([['.mygitnotes.yaml', Buffer.from('schema_version: 1\nworkspace:\n  title: Test\n  default_notebook: blog\nnotebooks:\n  - id: blog\n    title: Blog\n    root: notes/blog\n  - id: thesis\n    title: Thesis\n    root: notes/thesis\n')], ['notes/blog/a.md', Buffer.from('---\nid: a\ncustom: {x: 1,y: 2}\ntags: [todo, x]\ntitle: A\n---\n\nBody A\n')], ['notes/thesis/c.md', Buffer.from('---\nid: c\ntags:\n  - todo\n---\n\nBody C\n')], ['notes/blog/broken.compilation.yml', Buffer.from(brokenCompilation)], ['notes/blog/shelf.compilation.yml', Buffer.from(outsideCompilation)]]);
     let revision = 'one';
     let canPush = true;
     const published: RemoteChange[][] = [];
@@ -216,13 +230,14 @@ describe.each(['github', 'gitlab'])('remote /api/tags/apply (%s)', provider => {
       return fetch(`${base}/api/tags/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repository: defaultRepository, ...body }) });
     };
     try {
-      const res = await post({ entries: [{ path: 'notes/blog/a.md', notebookId: 'blog', tags: ['doing', 'x'] }, { path: 'notes/blog/broken.compilation.yml', notebookId: 'blog', tags: ['doing'] }, { path: 'notes/thesis/c.md', notebookId: 'thesis', tags: ['doing'] }], revision, message: 'rename todo to doing' });
+      const res = await post({ entries: [{ path: 'notes/blog/a.md', notebookId: 'blog', tags: ['doing', 'x'] }, { path: 'notes/blog/broken.compilation.yml', notebookId: 'blog', tags: ['doing'] }, { path: 'notes/blog/shelf.compilation.yml', notebookId: 'blog', tags: ['doing'] }, { path: 'notes/thesis/c.md', notebookId: 'thesis', tags: ['doing'] }], revision, message: 'rename todo to doing' });
       expect(res.status).toBe(200);
       // A compilation that would not open with its new tags is skipped and listed; the rest are committed.
       const body = await res.json();
       expect(body.changedPaths).toEqual(['notes/blog/a.md', 'notes/thesis/c.md']);
-      expect(body.skipped).toEqual([{ path: 'notes/blog/broken.compilation.yml', reason: 'Tags not written: the compilation would not open (arrangement: Required)' }]);
+      expect(body.skipped).toEqual([{ path: 'notes/blog/broken.compilation.yml', reason: 'Tags not written: the compilation would not open (arrangement: Required)' }, { path: 'notes/blog/shelf.compilation.yml', reason: expect.stringMatching(/^Tags not written: the compilation would not open/) }]);
       expect(files.get('notes/blog/broken.compilation.yml')!.toString()).toBe(brokenCompilation);
+      expect(files.get('notes/blog/shelf.compilation.yml')!.toString()).toBe(outsideCompilation);
       expect(published).toHaveLength(1); // one atomic commit for both notebooks
       expect(published[0]).toHaveLength(2);
       const updatedA = files.get('notes/blog/a.md')!.toString();

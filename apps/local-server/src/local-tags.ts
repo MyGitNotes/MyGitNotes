@@ -29,6 +29,7 @@ export function createLocalTagsRouter(): Router {
         // later entry failing validation cannot leave an earlier one written but uncommitted.
         const planned: { path: string; safePath: string; patched: string; }[] = [];
         const skipped: { path: string; reason: string; }[] = [];
+        const roots = config.notebooks.map(item => item.root);
         for (const entry of entries) {
           let safePath: string;
           try {
@@ -38,7 +39,7 @@ export function createLocalTagsRouter(): Router {
             throw Object.assign(new Error(`Not a configured note: ${entry.path}`), { status: 403 });
           }
           const raw = fs.readFileSync(safePath, 'utf-8');
-          const patched = skipRefusedCompilation(skipped, entry.path, () => replaceFileTags(raw, entry.path, entry.tags));
+          const patched = skipRefusedCompilation(skipped, entry.path, () => replaceFileTags(raw, entry.path, entry.tags, roots));
           if (patched === undefined || patched === raw) continue;
           planned.push({ path: entry.path, safePath, patched });
         }

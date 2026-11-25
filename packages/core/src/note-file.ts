@@ -1,4 +1,4 @@
-import { applyCompilationMetadata, CompilationError, compilationFields, isCompilationPath, parseCompilation, replaceCompilationTags } from './compilation.js';
+import { applyCompilationMetadata, CompilationError, compilationFields, isCompilationPath, replaceCompilationTags } from './compilation.js';
 import { noteFrontmatterSpan, parseNoteContent, replaceNoteTags, serializeNoteContent } from './frontmatter.js';
 import { isOutlinePath, OUTLINE_SUFFIX } from './outline.js';
 import type { NoteMetadata } from './types.js';
@@ -53,27 +53,12 @@ function compilationWrite(filePath: string, write: () => string): string {
 /**
  * The stored form of a save: a note's frontmatter and body, or a compilation's YAML carrying the caller's tags and
  * status, refused with a `CompilationError` naming the file when that YAML would not open (`applyCompilationMetadata`).
+ * `scope`, the repository's notebook roots, is what the compilation must open for. Content saved without metadata is
+ * stored as it is: a compilation that does not open is saved and read back as invalid.
  */
-export function serializeNoteFile(filePath: string, metadata: NoteMetadata, content: string, isNew: boolean, now: Date, existingRaw?: string): string {
-  if (isCompilationPath(filePath)) return compilationWrite(filePath, () => applyCompilationMetadata(content, metadata));
+export function serializeNoteFile(filePath: string, metadata: NoteMetadata, content: string, isNew: boolean, now: Date, existingRaw?: string, scope?: readonly string[]): string {
+  if (isCompilationPath(filePath)) return compilationWrite(filePath, () => applyCompilationMetadata(content, metadata, scope));
   return serializeNoteContent(metadata, content, isNew, now, existingRaw, isOutlinePath(filePath));
-}
-
-/**
- * The text a save stores, as it is. A compilation's text that differs from the stored one (`existingRaw`, none for a new
- * file) must open, as every other compilation write must, or the save is refused with a `CompilationError` naming the
- * file; the stored text sent back unchanged passes whatever it holds. `scope` holds the repository's notebook roots.
- */
-export function checkedNoteFile(filePath: string, text: string, existingRaw: string | undefined, scope?: readonly string[]): string {
-  if (!isCompilationPath(filePath) || text === existingRaw) return text;
-  return compilationWrite(filePath, () => {
-    try {
-      parseCompilation(text, scope);
-    } catch (error) {
-      throw new CompilationError(`Compilation not saved: ${(error as Error).message}`);
-    }
-    return text;
-  });
 }
 
 /**
@@ -89,11 +74,12 @@ export function keptNoteMetadata(filePath: string, existingRaw: string | undefin
 
 /**
  * Replaces only the tags of a stored file: a compilation's `tags` key, or a note's frontmatter `tags`; every other field
- * stays as it is. A compilation whose YAML would not open is refused with a `CompilationError` naming the file.
+ * stays as it is. A compilation whose YAML would not open (for the notebook roots `scope`) is refused with a
+ * `CompilationError` naming the file.
  */
-export function replaceFileTags(raw: string, filePath: string, tags: string[]): string {
+export function replaceFileTags(raw: string, filePath: string, tags: string[], scope?: readonly string[]): string {
   if (!isCompilationPath(filePath)) return replaceNoteTags(raw, tags);
-  return compilationWrite(filePath, () => replaceCompilationTags(raw, tags));
+  return compilationWrite(filePath, () => replaceCompilationTags(raw, tags, scope));
 }
 
 /** A file a batch write left as it is, and why. */
