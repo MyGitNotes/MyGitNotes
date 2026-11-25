@@ -2,8 +2,8 @@ import { addToChapter, BOARD_CARD_HEIGHT as CARD_H, BOARD_CARD_WIDTH as CARD_W, 
 import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { isLivePendingPath } from '../live-api.js';
 import { type BoardEdit, boardId } from './edit.js';
-import { type Point, type Rect, rectsOverlap, unionRects } from './geometry.js';
-import { BOARD_GAP, type PlacedBoard, roomOf } from './placement.js';
+import { type Point, type Rect, rectsOverlap } from './geometry.js';
+import { BOARD_GAP, type PlacedBoard } from './placement.js';
 
 /** What adding notes to a board did: the row to write, why it refused, the items it added, or the card of a note already there. */
 export interface BoardAddition extends BoardEdit {
@@ -101,17 +101,12 @@ export function addNote(row: CompilationRow, placed: PlacedBoard, note: AddableN
   return withNotes(row, [{ note, ...(chapter !== undefined ? { section: chapter } : {}), ...(rect ? { rect } : {}) }], makeId);
 }
 
-/** How many columns right of a card, and rows below it, a tidy place for 「＋N 相連」 is looked for. */
-const BESIDE_COLUMNS = 4, BESIDE_ROWS = 20;
-
 /**
  * Adds notes beside a card (「＋N 相連」): items of the card's chapter (none when it is in none), their cards in one
- * column next to it. The column goes to the right of the card, top aligned with it, in the nearest place clear of
- * every other card, of free text and of every other section, where the card's own section, drawn grown to hold the
- * column, overlaps no other section; when the right side is taken (a section beside it), the column goes below the
- * card instead. With no such place nearby it falls back to the first column to the right clear of other cards. Notes
- * the board already shows and pending live notes are skipped; a dynamic board refuses, and so does a custom one the
- * notes would take past its item limit.
+ * column to the right of the card, top aligned with it. The column starts one gap right of the card and shifts on
+ * right past whatever it would cover (another card, free text, another section) until it covers none; the card's
+ * section is drawn grown to hold the column when it lands outside it. Notes the board already shows and pending live
+ * notes are skipped; a dynamic board refuses, and so does a custom one the notes would take past its item limit.
  */
 export function addBeside(row: CompilationRow, placed: PlacedBoard, cardKey: string, notes: readonly AddableNote[], makeId: (row: CompilationRow) => string = boardId): BoardAddition {
   const card = placed.cards.find(candidate => candidate.key === cardKey);
@@ -123,17 +118,13 @@ export function addBeside(row: CompilationRow, placed: PlacedBoard, cardKey: str
   const cards = placed.cards.filter(candidate => candidate.key !== card.key).map(candidate => candidate.rect);
   const sections = placed.sections.filter(section => section.key !== card.section).map(section => section.rect);
   const obstacles = [...cards, ...placed.texts.map(text => text.rect), ...sections];
-  const own = placed.sections.find(section => section.key === card.section)?.rect;
-  const column = (x: number, y: number) => fresh.map((_, index) => cardAt(x, y + index * (CARD_H + BOARD_GAP)));
-  const tidy = (slots: Rect[]) => !slots.some(slot => obstacles.some(other => rectsOverlap(other, slot))) && (!own || !sections.some(other => rectsOverlap(other, unionRects([own, ...slots.map(roomOf)])!)));
-  const right = card.rect.x + card.rect.w + BOARD_GAP, below = card.rect.y + card.rect.h + BOARD_GAP;
-  const candidates = [...Array.from({ length: BESIDE_COLUMNS }, (_, step) => column(right + step * (CARD_W + BOARD_GAP), card.rect.y)), ...Array.from({ length: BESIDE_ROWS }, (_, step) => column(card.rect.x, below + step * (CARD_H + BOARD_GAP)))];
-  let slots = candidates.find(tidy);
-  if (!slots) {
-    let x = right;
-    for (let step = 0; step < SEARCH_STEPS && column(x, card.rect.y).some(slot => cards.some(other => rectsOverlap(other, slot))); step++) x += CARD_W + BOARD_GAP;
-    slots = column(x, card.rect.y);
+  const column = (x: number) => fresh.map((_, index) => cardAt(x, card.rect.y + index * (CARD_H + BOARD_GAP)));
+  let x = card.rect.x + card.rect.w + BOARD_GAP;
+  for (let step = 0; step < SEARCH_STEPS; step++) {
+    const covered = obstacles.filter(other => column(x).some(slot => rectsOverlap(other, slot)));
+    if (!covered.length) break;
+    x = Math.max(...covered.map(other => other.x + other.w)) + BOARD_GAP;
   }
-  const placedSlots = slots;
-  return withNotes(row, fresh.map((note, index) => ({ note, ...(card.section !== undefined ? { section: card.section } : {}), rect: placedSlots[index] })), makeId);
+  const slots = column(x);
+  return withNotes(row, fresh.map((note, index) => ({ note, ...(card.section !== undefined ? { section: card.section } : {}), rect: slots[index] })), makeId);
 }

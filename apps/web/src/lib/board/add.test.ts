@@ -107,16 +107,19 @@ describe('addBeside', () => {
     const result = addBeside(row, place(row), 'd', [ref('p'), ref('a'), ref('p')], ids('n1'));
     expect(result.added).toEqual(['n1']);
     expect(book(result.row)).toEqual(['·: d', '·: n1', 'One: a b', 'Two: c']);
-    // Right of d the nearby columns lie in a section, so the column goes below the card.
-    expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: -400, y: 152 });
+    // Right of d stand both sections, so the column goes on past them, top aligned with d.
+    expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 984, y: 0 });
   });
 
-  it('goes below the card when another section stands beside its own, so the sections do not overlap', () => {
+  it('keeps the column right of the card when another section stands beside its own, past that section and its cards', () => {
     const row = two();
     const result = addBeside(row, place(row), 'a', [ref('p')], ids('n1'));
     expect(book(result.row)).toEqual(['·: d', 'One: a b n1', 'Two: c']);
-    // Below a, past b.
-    expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 24, y: 360 });
+    // Past Two (to 960), top aligned with a.
+    expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 984, y: 56 });
+    const drawn = place(result.row), added = drawn.cards.find(entry => entry.key === 'n1')!.rect;
+    expect(drawn.cards.filter(other => other.key !== 'n1').some(other => rectsOverlap(other.rect, added))).toBe(false);
+    expect(rectsOverlap(drawn.sections.find(section => section.key === 'h2')!.rect, added)).toBe(false);
   });
 
   it('skips pending live notes', () => {
@@ -128,7 +131,8 @@ describe('addBeside', () => {
 
   it('keeps the column clear of free text', () => {
     const row = custom([note('a')], { cards: [{ item: 'a', x: 0, y: 0 }], texts: [{ id: 't1', x: 300, y: 40, text: 'note to self' }] });
-    expect(card(addBeside(row, place(row), 'a', [ref('p')], ids('n1')).row, 'n1')).toEqual({ item: 'n1', x: 792, y: 0 });
+    // Shifted right past the text's 240 units from 300.
+    expect(card(addBeside(row, place(row), 'a', [ref('p')], ids('n1')).row, 'n1')).toEqual({ item: 'n1', x: 564, y: 0 });
   });
 
   it('refuses notes that would take the board past its item limit', () => {

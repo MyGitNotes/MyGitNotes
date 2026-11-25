@@ -184,8 +184,8 @@ describe('「＋N 相連」', () => {
     await waitFor(() => expect(save).toHaveBeenCalled(), SLOW);
     const file = written();
     expect(chapters(file)[0]).toBe('一、問題: 第三章導論.md 依據關係的因果條件.md greco-2010.md');
-    // The section 二 stands right beside the card's own, so the column goes below the card at (24, 216).
-    expect(file.board!.cards).toContainEqual({ item: idOf(file, GRECO), x: 24, y: 368 });
+    // Right of the card at (24, 216): past the section 二 beside its own (to 896) and the free text (to 1160), top aligned with it.
+    expect(file.board!.cards).toContainEqual({ item: idOf(file, GRECO), x: 1184, y: 216 });
   });
 
   it('offers the notes again once the addition is undone', async () => {
