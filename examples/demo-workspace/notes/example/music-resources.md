@@ -17,4 +17,4 @@ tags: [example, graph-demo, media]
 
 The media swimlane also contains standalone images, a video, and a folder shortcut. Switch it to graph mode to show just its notes.
 
-Return to the [Graph Playground](graph-playground.md).
+Return to the [Whiteboard Playground](graph-playground.md).

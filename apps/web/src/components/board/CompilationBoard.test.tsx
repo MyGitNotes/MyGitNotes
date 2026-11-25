@@ -14,6 +14,39 @@ const cardButtons = (root: HTMLElement = document.body) => [...root.querySelecto
 const titles = (root?: HTMLElement) => cardButtons(root).map(button => button.querySelector('.board-card-title')!.textContent);
 const description = (button: HTMLElement) => document.getElementById(button.getAttribute('aria-describedby')!)?.textContent ?? '';
 
+// The demo workspace's example as it shipped before it became a board: a dynamic compilation in the graph arrangement with a graph layout.
+const LEGACY_GRAPH_EXAMPLE = `version: 1
+id: example-graph
+title: Graph Playground
+arrangement: graph
+source:
+  kind: tag
+  tag: graph-demo
+graph:
+  nodes:
+    - path: notes/example/graph-playground.md
+      x: -220
+      y: -160
+      width: 380
+      height: 320
+      expanded: true
+    - path: notes/example/river-reading.md
+      x: 220
+      y: -160
+      width: 380
+      height: 320
+      expanded: true
+    - path: notes/example/evening-ideas.md
+      x: 260
+      y: 260
+    - path: notes/example/music-resources.md
+      x: -50
+      y: 330
+    - path: notes/example/todo-demo.md
+      x: -330
+      y: 260
+`;
+
 beforeEach(resetBoardTest);
 afterEach(() => {
   cleanup();
@@ -116,8 +149,36 @@ describe('the board, drawn', () => {
     expect(written.board?.arrows).toHaveLength(2);
   });
 
-  it('draws the legacy graph example without overlapping cards, and opening it writes nothing', async () => {
+  it("draws the demo workspace's example board: its sections, free text and labelled arrows, with no card overlapping another, and writes nothing", async () => {
     const raw = readFileSync(resolve(__dirname, '../../../../../examples/demo-workspace/notes/example/graph-playground.compilation.yml'), 'utf8');
+    const paths = ['graph-playground', 'river-reading', 'evening-ideas', 'music-resources', 'todo-demo'].map(name => `notes/example/${name}.md`);
+    const example = [{ id: 'example', title: 'Example', root: 'notes/example' }];
+    notebooks.push(...example);
+    try {
+      open({ path: 'notes/example/graph-playground.compilation.yml', notebookId: 'example', raw, notes: paths.map(path => note('example', path, path.split('/').pop()!, `Body of ${path}`)) });
+      const region = await screen.findByRole('region', { name: 'Whiteboard Playground' });
+      await waitFor(() => expect(cardButtons()).toHaveLength(paths.length));
+      expect(titles(screen.getByRole('group', { name: 'Start here' }))).toEqual(['graph-playground.md']);
+      expect(titles(screen.getByRole('group', { name: 'Read and listen' }))).toEqual(['river-reading.md', 'evening-ideas.md', 'music-resources.md']);
+      expect(titles(screen.getByRole('group', { name: 'Plan' }))).toEqual(['todo-demo.md']);
+      expect(region.querySelector('[data-board-text]')).toHaveTextContent('Switch to Book to read the sections as chapters.');
+      expect([...region.querySelectorAll('.board-arrow-label')].map(label => label.textContent)).toEqual(['start reading', 'continues in', 'then listen', 'plan the week', 'try it here']);
+      // A card inside a section is placed relative to the section.
+      const offset = (button: HTMLElement, side: 'left' | 'top') => Number.parseFloat(button.style[side]) + Number.parseFloat(button.closest<HTMLElement>('[data-board-section]')?.style[side] ?? '0');
+      const rects = cardButtons().map(button => ({ x: offset(button, 'left'), y: offset(button, 'top') }));
+      for (let a = 0; a < rects.length; a++) {
+        for (let b = a + 1; b < rects.length; b++) expect(Math.abs(rects[a].x - rects[b].x) >= 240 || Math.abs(rects[a].y - rects[b].y) >= 128).toBe(true);
+      }
+      expect(cardButtons().every(button => button.hasAttribute('data-placed'))).toBe(true);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      expect(save).not.toHaveBeenCalled();
+    } finally {
+      notebooks.splice(-example.length);
+    }
+  });
+
+  it('draws the legacy graph example without overlapping cards, and opening it writes nothing', async () => {
+    const raw = LEGACY_GRAPH_EXAMPLE;
     const paths = ['graph-playground', 'river-reading', 'evening-ideas', 'music-resources', 'todo-demo', 'extra-member'].map(name => `notes/example/${name}.md`);
     const members = paths.map(path => ({ ...note('example', path, path.split('/').pop()!, `Body of ${path}`), tags: ['graph-demo'] }));
     const example = [{ id: 'example', title: 'Example', root: 'notes/example' }];

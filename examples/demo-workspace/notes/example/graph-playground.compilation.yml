@@ -1,30 +1,48 @@
 version: 1
 id: example-graph
-title: Graph Playground
-arrangement: graph
-source:
-  kind: tag
-  tag: graph-demo
-graph:
-  nodes:
-    - path: notes/example/graph-playground.md
-      x: -220
-      y: -160
-      width: 380
-      height: 320
-      expanded: true
-    - path: notes/example/river-reading.md
-      x: 220
-      y: -160
-      width: 380
-      height: 320
-      expanded: true
-    - path: notes/example/evening-ideas.md
-      x: 260
-      y: 260
-    - path: notes/example/music-resources.md
-      x: -50
-      y: 330
-    - path: notes/example/todo-demo.md
-      x: -330
-      y: 260
+title: Whiteboard Playground
+arrangement: board
+items:
+  - id: example-board-start
+    kind: heading
+    title: Start here
+  - id: example-board-playground
+    path: notes/example/graph-playground.md
+    kind: note
+  - id: example-board-read
+    kind: heading
+    title: Read and listen
+  - id: example-board-river
+    path: notes/example/river-reading.md
+    kind: note
+  - id: example-board-evening
+    path: notes/example/evening-ideas.md
+    kind: note
+  - id: example-board-music
+    path: notes/example/music-resources.md
+    kind: note
+  - id: example-board-plan
+    kind: heading
+    title: Plan
+  - id: example-board-todo
+    path: notes/example/todo-demo.md
+    kind: note
+board:
+  sections:
+    - { item: example-board-start, x: 0, y: 0, w: 288, h: 208 }
+    - { item: example-board-read, x: 384, y: 0, w: 288, h: 592 }
+    - { item: example-board-plan, x: 0, y: 304, w: 288, h: 208 }
+  cards:
+    - { item: example-board-playground, x: 24, y: 56 }
+    - { item: example-board-river, x: 408, y: 56 }
+    - { item: example-board-evening, x: 408, y: 248 }
+    - { item: example-board-music, x: 408, y: 440 }
+    - { item: example-board-todo, x: 24, y: 360 }
+  texts:
+    - { id: t4m8q2zk, x: 0, y: 632, w: 640, text: "Drag a card to move it. The Section tool draws a new section; the Arrow tool joins two cards, and an arrow takes a label.\nSwitch to Book to read the sections as chapters.", color: amber }
+  arrows:
+    - { id: a7r2k9wd, from: { item: example-board-playground }, to: { item: example-board-river }, label: start reading }
+    - { id: b3n6x1qp, from: { item: example-board-river }, to: { item: example-board-evening }, label: continues in }
+    - { id: c8v5h2mt, from: { item: example-board-evening }, to: { item: example-board-music }, label: then listen }
+    - { id: d1j4s7yf, from: { item: example-board-playground }, to: { item: example-board-todo }, label: plan the week }
+    - { id: e6p9c3lb, from: { text: t4m8q2zk }, to: { item: example-board-plan }, label: try it here }
