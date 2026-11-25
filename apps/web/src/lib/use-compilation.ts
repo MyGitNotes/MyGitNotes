@@ -20,6 +20,14 @@ export interface CompilationController {
   change: (next: CompilationPage) => boolean;
   /** Writes what is waiting and resolves once nothing is in flight: true when every write succeeded. */
   save: () => Promise<boolean>;
+  /**
+   * Holds every other caller's writes off until `release`: while held, `change` and `save` are refused with `reason`
+   * as the error, so a write the holder may yet take back (the 卡片 tool's new card, rolled back when its write fails)
+   * reaches no file through another edit. One hold at a time.
+   */
+  hold: (reason: string) => CompilationHold;
+  /** Why the rows shown may not be written anywhere just now (a hold is taken: a copy would keep the holder's write too), or nothing. */
+  held: () => string | undefined;
   loading: boolean;
   saving: boolean;
   error: string;
@@ -28,6 +36,16 @@ export interface CompilationController {
   writable: boolean;
   /** Files drawn but never written or copied, by path, with the reason: a legacy graph layout whose positions a whiteboard cannot keep. */
   upgradeLoss: ReadonlyMap<string, string>;
+}
+
+/** A hold on a compilation's writes, see `CompilationController.hold`. */
+export interface CompilationHold {
+  /** Runs `edit`, its `change` calls taken as the holder's. */
+  admit: <T>(edit: () => T) => T;
+  /** Writes what is waiting, as `save` does, for the holder. */
+  save: () => Promise<boolean>;
+  /** Ends the hold: the other callers write again. */
+  release: () => void;
 }
 
 interface ControllerInput {
@@ -69,6 +87,10 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const inflight = useRef<Promise<boolean>>(Promise.resolve(true));
   const queued = useRef(new Map<string, CompilationRow | null>());
+  // The hold on the writes, if one is taken; `admitting` while the holder's own edit runs.
+  const held = useRef<{ reason: string; admitting: boolean; }>(undefined);
+  /** Why a write of a caller other than the holder is refused just now, or nothing. */
+  const refusal = useCallback(() => held.current && !held.current.admitting ? held.current.reason : undefined, []);
 
   // A pending edit ends once the stored file shows it.
   useEffect(() => {
@@ -117,12 +139,23 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     });
     return inflight.current;
   }, [write]);
-  const save = useCallback(() => flush(), [flush]);
+  const save = useCallback(() => {
+    const waiting = refusal();
+    if (!waiting) return flush();
+    setError(waiting);
+    return Promise.resolve(false);
+  }, [flush, refusal]);
 
   const change = useCallback((next: CompilationPage) => {
     const { rows: current, actions: api, newPath: placeNew, initialStatus: startStatus } = latest.current;
     const writes = planCompilationWrites(current, next.rows);
     if (!writes.save.length && !writes.create.length && !writes.remove.length) return true;
+    // The rows shown may hold the holder's write, which it may yet take back: nothing else writes them meanwhile.
+    const waiting = refusal();
+    if (waiting) {
+      setError(waiting);
+      return false;
+    }
     const taken = new Set([...current.map(row => row.path), ...Object.keys(latest.current.pending)]);
     const created = writes.create.flatMap(row => {
       if (row.path) return [row];
@@ -160,6 +193,26 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), WRITE_DELAY);
     return !refused.length;
+  }, [flush, refusal]);
+
+  const hold = useCallback((reason: string): CompilationHold => {
+    if (held.current) throw new Error('The compilation writes are already held.');
+    const token = { reason, admitting: false };
+    held.current = token;
+    return {
+      admit: edit => {
+        token.admitting = true;
+        try {
+          return edit();
+        } finally {
+          token.admitting = false;
+        }
+      },
+      save: flush,
+      release: () => {
+        if (held.current === token) held.current = undefined;
+      },
+    };
   }, [flush]);
 
   // Edits waiting for the pause are written before the view goes away, and before the app saves its editors.
@@ -174,7 +227,7 @@ function useCompilationController({ entries, notebooks, loading, error: loadErro
   }, [flush]);
 
   const writable = rows.length > 0 ? rows.every(row => actions.canWrite(row.notebookId)) : false;
-  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, loading, saving, error: error || loadError, setError, writable, upgradeLoss: lossy };
+  return { page: { rows }, invalid: parsed.filter(entry => entry.error), change, save, hold, held: refusal, loading, saving, error: error || loadError, setError, writable, upgradeLoss: lossy };
 }
 
 /**

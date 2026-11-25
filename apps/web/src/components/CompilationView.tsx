@@ -131,6 +131,9 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
     // A copy written from a legacy layout a whiteboard cannot keep would lose positions as a save would.
     const loss = compilation.upgradeLoss.get(row.path);
     if (loss) return compilation.setError(loss);
+    // Nor while a held write may yet be taken back (the 卡片 tool's new card): the copy would keep it.
+    const waiting = compilation.held();
+    if (waiting) return compilation.setError(waiting);
     try {
       const next = await planCompilationCopy(row, initialCompilationStatus(notebooks, notebookId, facets.facets));
       await actions.create(notebookId, next.path, next.content, next.metadata);
@@ -299,7 +302,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       const drawn = page && shownView(current.view) !== 'board' ? { ...current, view: 'board' as const } : current;
       // The 卡片 tool: a blank note at the notebook root, or in a dynamic board's folder or with its tag.
       const context = current.kind === 'custom' ? { notebookId: current.notebookId, folder: '' } : createLaneNoteContext(current, notebooks);
-      const cardNote: BoardCardNote | undefined = actions.createBoardNote && context ? { create: () => actions.createBoardNote!({ ...context, notebookId: context.notebookId ?? current.notebookId }), live: actions.newNotesLive?.(context.notebookId ?? current.notebookId) ?? false, open: host.openCreated((note: NoteListItem) => onOpenNote(note)), save: compilation.save } : undefined;
+      const cardNote: BoardCardNote | undefined = actions.createBoardNote && context ? { create: () => actions.createBoardNote!({ ...context, notebookId: context.notebookId ?? current.notebookId }), live: actions.newNotesLive?.(context.notebookId ?? current.notebookId) ?? false, open: host.openCreated((note: NoteListItem) => onOpenNote(note)), hold: compilation.hold } : undefined;
       const edit = drawn === current ? change : (next: CompilationRow) => change({ ...next, view: current.view });
       const board = <CompilationBoard row={drawn} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={host.openCard(open)} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} onChange={writable ? edit : undefined} hideQuery lead={lead} reveal={host.reveal} drawer={page ? host.panelNote ? { panel: host.panelNote } : {} : undefined} cardNote={cardNote} />;
       return host.withPanel(board, current);

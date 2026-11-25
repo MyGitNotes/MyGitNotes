@@ -7,6 +7,7 @@ import type { PlacedBoard } from '../../lib/board/placement.js';
 import { screenToBoard } from '../../lib/board/zoom.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import type { BoardNoteReceipt } from '../../lib/compilation-actions.js';
+import type { CompilationHold } from '../../lib/use-compilation.js';
 import type { NoteItem } from '../../lib/types.js';
 import type { BoardCamera } from './useBoardCamera.js';
 import type { BoardEditor } from './useBoardEditor.js';
@@ -19,8 +20,8 @@ export interface BoardCardNote {
   live: boolean;
   /** Opens the new note: in the side panel with its title selected, or where the host opens notes. */
   open: (note: NoteItem) => void;
-  /** Writes the board's pending edits now; false when the write failed. */
-  save: () => Promise<boolean>;
+  /** Holds the compilation's other writes off, refused with `reason`, until the new card's write settles (`CompilationController.hold`). */
+  hold: (reason: string) => CompilationHold;
 }
 
 /**
@@ -31,8 +32,9 @@ export interface BoardCardNote {
  *
  * The 卡片 tool asks first whether the board can take one more item, then creates the note, places it and writes the
  * board at once; only once the board holds it does the note open. A note the board could not take (refused, its
- * write failed, or the board went away meanwhile) is rolled back. From its placing until that write settles the board
- * takes no other edit (`held` says why), so no later write can carry the new card past a rollback.
+ * write failed, or the board went away meanwhile) is rolled back. From its placing until that write settles the
+ * compilation takes no other write, from the board (`held` says why) or anywhere else (the header's dialogs), so no
+ * later write can carry the new card past a rollback.
  */
 export function useBoardAdding({ row, placed, camera, cardNote }: { row: CompilationRow; placed: PlacedBoard; camera: BoardCamera; cardNote?: BoardCardNote; }) {
   const { t } = useTranslation();
@@ -44,7 +46,7 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
   const creating = useRef(false);
   // Set while the 卡片 tool's card waits for its write; `admitting` lets its own placing through.
   const [holding, setHolding] = useState(false);
-  const hold = useRef(false), admitting = useRef(false);
+  const hold = useRef<CompilationHold>(undefined), admitting = useRef(false);
   const held = () => hold.current && !admitting.current ? t('board.cardSaving') : undefined;
   const mounted = useRef(true);
   useEffect(() => {
@@ -85,7 +87,7 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
     try {
       const { note, rollback } = await cardNote.create();
       // A dynamic board's new member is auto-placed once its query takes it.
-      const kept = !custom || (mounted.current && placeNew(note, at) && await cardNote.save());
+      const kept = !custom || (mounted.current && placeNew(cardNote, note, at) && await hold.current!.save());
       if (!kept) {
         await rollback();
         return;
@@ -95,17 +97,18 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
       if (mounted.current) editor.current?.setNotice(caught instanceof Error ? caught.message : String(caught));
     } finally {
       creating.current = false;
-      hold.current = false;
+      hold.current?.release();
+      hold.current = undefined;
       if (mounted.current) setHolding(false);
     }
   };
   /** Places the 卡片 tool's note where it was clicked, holding other edits off until it is written; false when the board did not take it. */
-  const placeNew = (note: NoteItem, at: Point) => {
+  const placeNew = (host: BoardCardNote, note: NoteItem, at: Point) => {
     const result = addNote(latest.current.row, latest.current.placed, note, { at });
-    hold.current = true;
+    const taken = hold.current = host.hold(t('board.cardSaving'));
     setHolding(true);
     admitting.current = true;
-    const applied = Boolean(editor.current?.apply(result));
+    const applied = taken.admit(() => Boolean(editor.current?.apply(result)));
     admitting.current = false;
     if (!applied || !result.added.length) return false;
     editor.current!.setSelection(new Set(result.added.map(id => `card:${id}` as BoardSelectionKey)));

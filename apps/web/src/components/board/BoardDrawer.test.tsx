@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest';
 import { compilationChapters, type CompilationFile, parseCompilation } from '@mygitnotes/core/compilation';
 import { BOARD_NOTE_TYPE, draggedNote } from '../../lib/board/drawer.js';
 import { boardsRoute } from '../../lib/routes.js';
-import { editing, example, note, openBoard, resetBoardTest, save, thesisNotes } from './board-test-helpers.js';
+import { create, editing, example, note, openBoard, resetBoardTest, save, thesisNotes } from './board-test-helpers.js';
 
 vi.mock('../../lib/note-editing.js', async importOriginal => ({ ...await importOriginal<typeof import('../../lib/note-editing.js')>(), useEditorRegistry: () => () => () => {}, useNoteEditing: () => editing }));
 /** The hosted editor, standing in with its title button, which opens the title for renaming. */
@@ -295,6 +295,53 @@ describe('the 卡片 tool', () => {
     fireEvent.click(within(drawer()).getByRole('button', { name: 'Add to the whiteboard: 待讀：Greco 2010' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(2), SLOW);
     expect(chapters(written())).not.toContainEqual(expect.stringContaining('untitled.md'));
+  });
+
+  it('refuses 編輯合輯 while the new card is written, so its rollback leaves no write naming the deleted note', async () => {
+    const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
+    const rollback = vi.fn(async () => {});
+    // jsdom has no modal dialogs.
+    HTMLDialogElement.prototype.showModal ??= function(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close ??= function(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    await ready({ actions: { createBoardNote: vi.fn(async () => ({ note: created, rollback })), newNotesLive: () => false } });
+    let fail!: (error: Error) => void;
+    save.mockImplementationOnce(() => new Promise((_, reject) => fail = reject));
+    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
+    press(region(), 800, 300);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce(), SLOW);
+    // The header's menu builds its dialog apart from the board, and its Apply writes the compilation directly.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More compilation actions: 第三章：德性與依據' }), { key: 'ArrowDown' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit compilation' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit compilation' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Compilation name' }), { target: { value: '第三章：改名' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByText(/being written to the whiteboard/)).toBeInTheDocument();
+    fail(new Error('The disk is full.'));
+    await waitFor(() => expect(rollback).toHaveBeenCalledOnce(), SLOW);
+    await new Promise(resolve => setTimeout(resolve, 600));
+    expect(save.mock.calls.slice(1).map(call => call[1])).not.toContainEqual(expect.stringContaining('untitled.md'));
+  });
+
+  it('refuses 複製合輯 while the new card is written, so no copy keeps a card the rollback deletes', async () => {
+    const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
+    const rollback = vi.fn(async () => {});
+    await ready({ actions: { createBoardNote: vi.fn(async () => ({ note: created, rollback })), newNotesLive: () => false } });
+    let fail!: (error: Error) => void;
+    save.mockImplementationOnce(() => new Promise((_, reject) => fail = reject));
+    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
+    press(region(), 800, 300);
+    await waitFor(() => expect(save).toHaveBeenCalledOnce(), SLOW);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More compilation actions: 第三章：德性與依據' }), { key: 'ArrowDown' });
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Duplicate compilation' }));
+    expect(await screen.findByText(/being written to the whiteboard/)).toBeInTheDocument();
+    fail(new Error('The disk is full.'));
+    await waitFor(() => expect(rollback).toHaveBeenCalledOnce(), SLOW);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(create.mock.calls.map(call => call[2])).not.toContainEqual(expect.stringContaining('untitled.md'));
   });
 
   it('rolls the new note back when the board went away while it was created', async () => {
