@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { createQaWorkspace, launchQaBrowser, product, qaRequire, startQaServer } from './lib/qa-harness.mjs';
 
 // Phase 1 of the keyboard and navigation redesign: the registry-driven quick open and help, the fixed note list search,
-// Go to Graph, Mod+/ inside the Markdown editor, the header button's chord, and the note leader, find and outline keys.
+// Go to Whiteboards, Mod+/ inside the Markdown editor, the header button's chord, and the note leader, find and outline keys.
 // Keys are synthesized through CDP, so this proves page behaviour only; browser accelerators need real OS keys.
 const require = qaRequire();
 const { root, write, commitFixture } = createQaWorkspace('github-notes-keyboard-');
@@ -55,17 +55,17 @@ try {
   await closed();
   assert(await page.$eval('.header-nav button[aria-label="Notes"]', node => node === document.activeElement), 'Escape did not restore focus');
 
-  // The command list comes from the registry: pages including Graph, new note, note list search, help.
+  // The command list comes from the registry: pages including Whiteboards, new note, note list search, help.
   await chord(mod, 'Shift', 'KeyP');
   await page.waitForSelector(palette);
   const ids = await page.$$eval(`${palette} [data-command-id]`, rows => rows.map(row => row.getAttribute('data-command-id')));
-  for (const id of ['nav.notes', 'nav.graph', 'nav.assets', 'nav.agent', 'nav.settings', 'note.new', 'note.searchList', 'help.open']) assert(ids.includes(id), `Quick open lacks ${id}: ${ids.join(',')}`);
+  for (const id of ['nav.notes', 'nav.boards', 'nav.assets', 'nav.agent', 'nav.settings', 'note.new', 'note.searchList', 'help.open']) assert(ids.includes(id), `Quick open lacks ${id}: ${ids.join(',')}`);
   assert(!ids.includes('palette.notes') && !ids.includes('palette.commands'), 'Quick open lists its own opening chords');
   await page.keyboard.press('Escape');
   await closed();
 
-  await runCommand('graph', 'nav.graph');
-  await page.waitForFunction(() => location.pathname === '/graph');
+  await runCommand('whiteboards', 'nav.boards');
+  await page.waitForFunction(() => location.pathname === '/boards');
   await page.click('.header-nav button[aria-label="Notes"]');
   await page.waitForFunction(() => location.pathname.startsWith('/notebooks/') || location.pathname === '/notes');
   await page.waitForSelector('.note-toolbar-search input');
@@ -86,8 +86,8 @@ try {
   await page.type(`${help} input[type="search"]`, mac ? '⌘⇧P' : 'ctrl+shift+p');
   assert((await page.$$eval(`${help} [data-shortcut-id]`, rows => rows.map(row => row.getAttribute('data-shortcut-id')))).join(',') === 'palette.commands', 'Help filter by key text did not find only the command chord');
   await page.$eval(`${help} input[type="search"]`, input => input.select());
-  await page.keyboard.type('graph');
-  assert((await page.$$eval(`${help} [data-shortcut-id]`, rows => rows.map(row => row.getAttribute('data-shortcut-id')))).includes('nav.graph'), 'Help filter by name did not find Go to Graph');
+  await page.keyboard.type('whiteboards');
+  assert((await page.$$eval(`${help} [data-shortcut-id]`, rows => rows.map(row => row.getAttribute('data-shortcut-id')))).includes('nav.boards'), 'Help filter by name did not find Go to Whiteboards');
   await chord(mod, 'Slash');
   await closed();
 
@@ -140,7 +140,7 @@ try {
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.activeElement === document.querySelector('.note-toolbar-search input') && document.querySelector('.note-toolbar-search').hasAttribute('data-open'));
   await page.screenshot({ path: `${shots}/keyboard-search-list-phone.png` });
-  console.log('PASS registry quick open and help (count equals the registry, grouped, filtered by name and key), header chord tooltip and aria-keyshortcuts, Go to Graph, note list search at 1440 and 390 px, Mod+/ help inside the Markdown editor, leader find and J/K outline');
+  console.log('PASS registry quick open and help (count equals the registry, grouped, filtered by name and key), header chord tooltip and aria-keyshortcuts, Go to Whiteboards, note list search at 1440 and 390 px, Mod+/ help inside the Markdown editor, leader find and J/K outline');
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

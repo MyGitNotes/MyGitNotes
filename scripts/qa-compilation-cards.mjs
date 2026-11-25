@@ -4,7 +4,7 @@ import path from 'node:path';
 import { SUPPORTED_SCHEMA_VERSION } from '../packages/core/dist/config.js';
 import { assertReadingLayout, createQaWorkspace, launchQaBrowser, MOD_KEY, pressChord, product, qaRequire, slotReading, startQaServer } from './lib/qa-harness.mjs';
 
-// Lane cards of a compilation: the narrow vertical layout (L1-L5) and that changing layout never writes a file (S7), then editing a note in its card (E1-E12, E15, E16, L6, L7) and the Graph arrangement's own in-place editing (G1).
+// Lane cards of a compilation: the narrow vertical layout (L1-L5) and that changing layout never writes a file (S7), then editing a note in its card (E1-E12, E15, E16, L6, L7).
 // A compilation is read in zoom, which its link asks for with `?zoom` (a plain note link opens it in the Focus), or in the panes of a saved Focus.
 const require = qaRequire();
 const { root, write, commitFixture, git } = createQaWorkspace('github-notes-compilation-cards-qa-');
@@ -20,9 +20,6 @@ custom('thumbs', 'Thumbs', 'thumbnail', noteIds);
 custom('medium', 'Medium', 'medium', noteIds);
 custom('short', 'Short', 'thumbnail', ['a', 'b', 'c']);
 custom('unpin', 'Unpin', 'small', ['d', 'e']);
-// The Graph fixture's notes are not edited anywhere else, so no recovery draft from an earlier step waits on them.
-for (const id of ['ga', 'gb']) write(`notes/work/${id}.md`, `---\ntitle: Graph ${id.toUpperCase()}\n---\nGraph note ${id}.\n`);
-write('notes/work/graphed.compilation.yml', 'version: 1\nid: graphed\ntitle: Graphed\narrangement: graph\nitems:\n  - id: pin-ga\n    kind: note\n    path: notes/work/ga.md\n  - id: pin-gb\n    kind: note\n    path: notes/work/gb.md\n');
 for (const [n, day] of [[1, '03'], [2, '02'], [3, '01']]) write(`notes/work/recent/r${n}.md`, `---\ntitle: Recent ${n}\nupdated: "2026-01-${day}T10:00:00.000Z"\n---\nRecent note ${n} body.\n`);
 write('notes/work/recent.compilation.yml', 'version: 1\nid: recent\ntitle: Recent\narrangement: lane\nsize: small\nsource:\n  kind: folder\n  path: notes/work/recent\n  recursive: true\nsort:\n  field: updated\n  order: desc\n');
 write('notes/work/many.compilation.yml', 'version: 1\nid: many\ntitle: Many\narrangement: lane\nsize: small\nsource:\n  kind: folder\n  path: notes/work/many\n  recursive: true\nsort:\n  field: title\n  order: asc\n');
@@ -45,7 +42,7 @@ await page.evaluateOnNewDocument(() => localStorage.setItem('github-notes:langua
 await page.setViewport(size);
 
 const fileText = rel => fs.readFileSync(path.join(root, rel), 'utf8');
-const compilationFiles = ['pins', 'thumbs', 'medium', 'short', 'many', 'recent', 'graphed', 'unpin'].map(id => `notes/work/${id}.compilation.yml`);
+const compilationFiles = ['pins', 'thumbs', 'medium', 'short', 'many', 'recent', 'unpin'].map(id => `notes/work/${id}.compilation.yml`);
 // --no-optional-locks keeps this check from refreshing the index under the running server.
 const untouched = () => assert.equal(git('--no-optional-locks', 'status', '--porcelain').toString().trim(), '', 'A layout change wrote a file');
 /** The box of the element `selector` names, read in one step so a card that re-renders between two calls cannot leave a stale handle behind. */
@@ -593,64 +590,6 @@ try {
   await assertReadingLayout(page, cardSel('c'), readingPhone, 'card at 390px', { fills: true });
   await finalShot('card-editing-390');
   console.log('PASS on a phone a touch tap opens zoom and the Edit button edits the card (E1, E2)');
-
-  // G1: in the Graph arrangement a node expanded from its hover button edits in place, and the note saves as it does outside a compilation.
-  await viewport(1440, 900);
-  await load(zoomUrl('graphed'), '.compilation-view [data-graph-nodes="2"]');
-  await settle(2500);
-  // The graph is drawn on a canvas, so the node dots are found by their colour.
-  const dots = await page.evaluate(() => {
-    const canvas = [...document.querySelectorAll('.compilation-view canvas')].sort((a, b) => b.width * b.height - a.width * a.height)[0];
-    const box = canvas.getBoundingClientRect(), scale = canvas.width / box.width;
-    const { data, width, height } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-    const cells = new Map();
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
-        if (data[i + 3] > 200 && data[i] > 120 && data[i] - data[i + 1] > 40 && data[i] - data[i + 2] > 40) {
-          const key = `${Math.floor(x / 24)},${Math.floor(y / 24)}`;
-          const cell = cells.get(key) ?? { x: 0, y: 0, n: 0 };
-          cell.x += x;
-          cell.y += y;
-          cell.n++;
-          cells.set(key, cell);
-        }
-      }
-    }
-    const clusters = [];
-    for (const cell of [...cells.values()].filter(cell => cell.n > 20).map(cell => ({ x: cell.x / cell.n, y: cell.y / cell.n, n: cell.n }))) {
-      const near = clusters.find(cluster => Math.hypot(cluster.x - cell.x, cluster.y - cell.y) < 40);
-      if (near) {
-        near.x = (near.x * near.n + cell.x * cell.n) / (near.n + cell.n);
-        near.y = (near.y * near.n + cell.y * cell.n) / (near.n + cell.n);
-        near.n += cell.n;
-      } else clusters.push({ ...cell });
-    }
-    return clusters.map(cluster => ({ x: box.left + cluster.x / scale, y: box.top + cluster.y / scale }));
-  });
-  assert.ok(dots.length >= 2, `Found ${dots.length} graph nodes on the canvas`);
-  await page.mouse.move(dots[0].x, dots[0].y, { steps: 4 });
-  await page.waitForSelector('.compilation-view button[aria-label^="Expand notes: "]', { timeout: 10000 });
-  await click('.compilation-view button[aria-label^="Expand notes: "]');
-  await page.waitForSelector('[data-graph-note] .cm-content', { timeout: 10000 });
-  const graphNote = await page.$eval('[data-graph-note]', element => element.dataset.graphNote);
-  const graphFile = noteFile(graphNote.endsWith('ga.md') ? 'ga' : 'gb');
-  await settle(1500);
-  await page.click('[data-graph-note] .cm-content');
-  await page.keyboard.type('GRAPH-EDIT ');
-  assert.ok((await page.$eval('[data-graph-note] .cm-content', element => element.textContent)).includes('GRAPH-EDIT'), 'The typed text did not land in the node editor');
-  // The card's own debounced autosave writes the note while the compilation stays open, as a lane card's does.
-  await waitFile(graphFile, 'GRAPH-EDIT');
-  assert.ok(await page.$('.compilation-view [data-graph-note] .cm-content'), 'The compilation closed before the card saved');
-  // Closing the compilation then leaves nothing more to save (E8).
-  await page.keyboard.press('Escape');
-  if (await dialogOpen('Compilation')) {
-    await settle(300);
-    await page.keyboard.press('Escape');
-  }
-  await page.waitForFunction(() => !document.querySelector('[role="dialog"][aria-label="Compilation"]'), { timeout: 10000 });
-  assert.ok(fileText(graphFile).includes('GRAPH-EDIT'), "Closing the compilation lost the card's edit");
-  console.log('PASS a Graph node expands and edits in place inside a compilation, and its debounced autosave writes the note while the compilation stays open (G1)');
 
   // A compilation made from the toolbar starts with the first status of its notebook, as a new note does.
   await viewport(1440, 900);

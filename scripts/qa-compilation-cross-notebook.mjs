@@ -6,7 +6,7 @@ import { collectPageErrors, createQaWorkspace, launchQaBrowser, product, qaRequi
 // A Book in one notebook built from notes of other notebooks of the same repository, against the built app and a disposable
 // local workspace: the add-item dialog's notebook selector pins by repository path, the book reads and edits each chapter as
 // its own notebook's note, a rename in another notebook follows into the compilation, studying reviews another notebook's
-// note, and the graph arrangement counts what it does not draw. Screenshots go to QA_SHOTS (default artifacts/qa/cross-notebook).
+// note, and the board arrangement draws the items of other notebooks marked with their notebook. Screenshots go to QA_SHOTS (default artifacts/qa/cross-notebook).
 const require = qaRequire();
 const { SUPPORTED_SCHEMA_VERSION, WORKSPACE_CONFIG_FILENAME } = await import(`${product}/packages/core/dist/index.js`);
 const { root, write, git, commitFixture } = createQaWorkspace('mygitnotes-cross-notebook-qa-');
@@ -167,29 +167,30 @@ try {
   await waitFile('.github-notes-study.yaml', 'notes/training/drill.md');
   console.log("PASS studying the book reviews another notebook's note and writes its status and the study file");
 
-  // AC11: the graph arrangement draws the compilation's own notebook and counts the rest without writing the file.
-  write(BOOK, read(BOOK).replace('arrangement: book', 'arrangement: graph'));
-  await commitAll('Graph arrangement');
+  // AC11: the board arrangement draws the items of other notebooks, each marked with its notebook, without writing the file.
+  write(BOOK, read(BOOK).replace('arrangement: book', 'arrangement: board'));
+  await commitAll('Board arrangement');
   const before = read(BOOK);
+  const marked = () => page.$$eval('.board-card[data-other-notebook]', cards => cards.length);
   await openBook();
-  await page.waitForSelector('.graph-notice-outside', { timeout: 20000 });
-  assert.equal(await page.$eval('.graph-notice-outside', notice => notice.textContent.trim()), '2 items in other notebooks are not shown in the graph');
+  await page.waitForSelector('.board-card[data-other-notebook]', { timeout: 20000 });
+  assert.equal(await marked(), 2);
   await pause(1500);
-  await shot('graph-notice-1440-light');
+  await shot('board-other-notebooks-1440-light');
   await theme('dark');
   await openBook();
-  await page.waitForSelector('.graph-notice-outside', { timeout: 20000 });
+  await page.waitForSelector('.board-card[data-other-notebook]', { timeout: 20000 });
   await pause(1000);
-  await shot('graph-notice-1440-dark');
+  await shot('board-other-notebooks-1440-dark');
   await page.evaluate(() => localStorage.setItem('qa-language', 'zh-TW'));
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true });
   await openBook();
-  await page.waitForSelector('.graph-notice-outside', { timeout: 20000 });
-  assert.equal(await page.$eval('.graph-notice-outside', notice => notice.textContent.trim()), '另有 2 個項目在其他筆記本，關聯圖不顯示');
+  await page.waitForSelector('.board-card[data-other-notebook]', { timeout: 20000 });
+  assert.equal(await marked(), 2);
   await pause(1000);
-  await shot('graph-notice-390-dark-zh-TW');
-  assert.equal(read(BOOK), before, 'Opening the graph arrangement wrote the compilation');
-  console.log('PASS the graph arrangement shows a notice counting the items of other notebooks, in English and Traditional Chinese, and leaves the file alone');
+  await shot('board-other-notebooks-390-dark-zh-TW');
+  assert.equal(read(BOOK), before, 'Opening the board arrangement wrote the compilation');
+  console.log('PASS the board arrangement draws the items of other notebooks marked with their notebook, at 1440 and 390 wide, and leaves the file alone');
 
   assert.deepEqual(errors, []);
 } finally {
