@@ -329,15 +329,32 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
     return true;
   };
 
+  // The moves this device's named Focuses have yet to follow, in order: a move heard while the layout loads waits for it.
+  const deviceMoves = useRef<{ notebookId: string; move: (path: string) => string; }[]>([]);
+  const relocateDevice = () => {
+    if (!page.device || !page.writable || deviceMoves.current.length === 0) return;
+    const next = structuredClone(page.page);
+    let moved = false;
+    for (const { notebookId: movedNotebookId, move } of deviceMoves.current.splice(0)) moved = relocateFocusPaths(next, movedNotebookId, move) || moved;
+    if (moved) page.change(next);
+  };
+  const pendingDevice = useRef(relocateDevice);
+  useEffect(() => {
+    pendingDevice.current = relocateDevice;
+  });
+  useEffect(() => {
+    pendingDevice.current();
+  }, [page.device, page.writable]);
   /**
    * Points the tabs of this browser's (current) Focus at the path `move` gives them, as a file move does for the named
    * Focus it rewrites in the workspace, and the tab each pane of any Focus shows with them, so a moved note stays shown.
    */
   const relocatePaths = (movedNotebookId: string, move: (path: string) => string) => {
-    // Online, the named Focuses are this device's layout, which no server rewrites: they follow the files here.
-    if (page.device && page.writable) {
-      const next = structuredClone(page.page);
-      if (relocateFocusPaths(next, movedNotebookId, move)) page.change(next);
+    // Online, the named Focuses are this device's layout, which no server rewrites: they follow the files here, once
+    // the layout can be written if it is still loading.
+    if (page.device) {
+      deviceMoves.current.push({ notebookId: movedNotebookId, move });
+      relocateDevice();
     }
     if (movedNotebookId !== notebookId) return;
     const layout = structuredClone(viewRef.current.current);

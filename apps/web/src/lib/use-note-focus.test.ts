@@ -468,6 +468,23 @@ describe('useNoteFocus relocatePaths', () => {
     }
   });
 
+  it("moves this device's named Focuses once their layout has loaded, when the move was heard while it loaded", async () => {
+    const named = { version: 2 as const, focuses: [{ id: 'f1', notebookId: NOTEBOOK, name: 'Reading', root: { kind: 'pane' as const, id: 'p1', tabs: [{ kind: 'note' as const, path: 'notes/old.md' }] } }] };
+    const changes: unknown[] = [];
+    const loaded = (writable: boolean): FocusPageController => ({ ...fakeController(), device: true, writable, loading: !writable, page: named, change: next => changes.push(next) });
+    const { result, rerender } = renderHook(({ page }) => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper, initialProps: { page: loaded(false) } });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/mid.md' : path));
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/mid.md' ? 'notes/new.md' : path));
+    expect(changes).toEqual([]);
+    rerender({ page: loaded(true) });
+    expect(changes).toEqual([{ ...named, focuses: [{ ...named.focuses[0], root: { ...named.focuses[0].root, tabs: [{ kind: 'note', path: 'notes/new.md' }] } }] }]);
+    // Nothing is left to apply again.
+    rerender({ page: loaded(false) });
+    rerender({ page: loaded(true) });
+    expect(changes).toHaveLength(1);
+  });
+
   it('keeps the moved note the shown tab of its pane, in the (current) Focus and a named one, instead of showing another tab', async () => {
     const layout: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/ideas.md' }, { kind: 'note', path: 'notes/big.md' }] } };
     const entry = { activePane: 'p1', shown: { p1: 'note:notes/big.md' }, recent: ['p1'], history: { p1: ['note:notes/big.md', 'note:notes/ideas.md'] }, ratios: {}, hideToolbar: { p1: false } };
