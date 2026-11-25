@@ -82,6 +82,17 @@ export function updateWorkingNote(store: DraftStore, path: string, entry: Workin
   return keyedEntries(entries, store.alias);
 }
 
+/**
+ * Drops the draft at `path` only while storage still holds `shown`, the version the person was shown and confirmed (or
+ * that was just found to hold nothing but its base): one another tab wrote since stays. The entries come back as stored.
+ */
+export function discardShownWorkingNote(store: DraftStore, path: string, shown: WorkingNote): { entries: WorkingNotes; dropped: boolean; } {
+  const entries = readStoredWorkingNotes(store.scope);
+  const stored = entries[path];
+  if (!stored || !sameValue(keyedWorkingNote(stored, store.alias), shown)) return { entries: keyedEntries(entries, store.alias), dropped: false };
+  return { entries: updateWorkingNote(store, path, null), dropped: true };
+}
+
 /** Clear only the committed version, preserving any edit made during the request. */
 export function clearCommittedNotes(store: DraftStore, sent: WorkingNotes): WorkingNotes {
   const entries = readStoredWorkingNotes(store.scope);

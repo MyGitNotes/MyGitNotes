@@ -77,8 +77,9 @@ export interface LiveNoteEditing {
   /** The note's conflict draft, kept until the person compares, copies or discards it. */
   mergeConflict?: LiveMergeConflict;
   /**
-   * A draft this browser kept of the note from before the live editor held it (staged before the note went live, or kept
-   * when a read of it failed): offered beside the live note to download or discard, never shown as its text.
+   * A draft this browser kept of the note from before the live editor held it (staged before the note went live, kept
+   * when a read of it failed, or the conflict draft a refresh of the remote version kept): offered beside the live note
+   * to download or discard, never shown as its text.
    */
   staleDraft?: LiveStaleDraft;
 }
@@ -91,7 +92,10 @@ export interface LiveStaleDraft {
   savedAt?: number;
   /** Whether it holds anything of the person's own; one that equals the note it was made from is dropped without asking. */
   differs: boolean;
-  /** Drops the draft and the conflict draft kept beside it. */
+  /**
+   * Drops the draft as it was offered, and the conflict draft beside it when that holds the same text. A draft another
+   * tab wrote since is not dropped: the notice offers it instead.
+   */
   discard: () => void;
 }
 

@@ -11,7 +11,7 @@ import { CHANGES_DOCUMENT_CLIENTS, WORKSPACE_DOCUMENT_CLIENTS } from './workspac
 import { AssetItem, FolderItem, GitStatus, NoteItem, WorkspaceConfig } from './types.js';
 import { fetchAssets, fetchFolders, fetchGitStatus, fetchWorkspace, openWorkspaceEvents } from './api.js';
 import { followPage } from './page-events.js';
-import { clearCommittedNotes, LIVE_MERGE_CONFLICT, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
+import { clearCommittedNotes, discardShownWorkingNote, LIVE_MERGE_CONFLICT, readWorkingNotes, updateWorkingNote, type WorkingNote, type WorkingNotes } from './working-notes.js';
 import { isNotebookKey, resolveBareId } from './notebook-keys.js';
 import { sameValue } from './merge-note.js';
 import { invalidateNoteQueries, NOTE_QUERY_KEY } from './use-note-queries.js';
@@ -132,6 +132,16 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     const { repository, store } = draftStoreFor(notebookId);
     const entries = updateWorkingNote(store, path, entry);
     setWorkingNotes(previous => ({ ...previous, [repository.id]: entries }));
+  };
+  /**
+   * Drops the draft at a path only while storage still holds `shown`, the version the person saw; without one it drops
+   * nothing. Either way the drafts are read again, so what the page offers next is what storage keeps.
+   */
+  const discardShownDraft = (notebookId: string, path: string, shown?: WorkingNote): boolean => {
+    const { repository, store } = draftStoreFor(notebookId);
+    const { entries, dropped } = shown ? discardShownWorkingNote(store, path, shown) : { entries: readWorkingNotes(store), dropped: false };
+    setWorkingNotes(previous => ({ ...previous, [repository.id]: entries }));
+    return dropped;
   };
   /** Clears the drafts a commit to `repository` sent, keeping any edit made meanwhile. */
   const clearCommittedDrafts = (repository: WorkspaceRepository, sent: WorkingNotes) => {
@@ -321,5 +331,5 @@ export function useWorkspaceSync(options: UseWorkspaceSyncOptions) {
     return note;
   };
 
-  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
+  return { selectedNotebookId, resolveBareNotebook, folders, foldersLoading, setFolders, sourceId, remote, repositories, defaultRepository, defaultRepositoryBranch, repositoryFor, canWriteNotebook, canChangeFiles, revisionFor, setRepositoryRevision, setNotebookRevision, setManifestRevision, loadError, loading, setLoading, actionError, setActionError, repoRoot, repositoryChoice, coreUpdate, config, setConfig, serverGitStatus, gitStatus, setGitStatus, assets, setAssets, workingNotes, activeWorkingNotes, readDraft, readDraftIn, updateDraft, discardShownDraft, clearCommittedDrafts, draftsUnder, focus, documents, pendingDocuments, refreshWorkspace, membershipChanged, stageWorkingNote };
 }

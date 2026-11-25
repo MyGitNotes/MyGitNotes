@@ -5,7 +5,7 @@ import { EditorNotice } from '../EditorNotice.js';
 
 /**
  * 「這則筆記有一份 11/24 的舊草稿」 beside the live editor: the browser still holds a draft of the note from before the live
- * editor held it. 下載 saves it as a Markdown file; 捨棄 drops it, and the conflict draft kept beside it, once confirmed.
+ * editor held it. 下載 saves it as a Markdown file; 捨棄 drops it once confirmed, unless another tab wrote a newer one since.
  */
 export function LiveStaleDraftNotice({ draft, fileName }: { draft: LiveStaleDraft; fileName: string; }) {
   const { t, language } = useTranslation();

@@ -36,6 +36,14 @@ export function clearLocalDraft(branch: string, notePath: string): void {
   }
 }
 
+/** Clears the draft kept for a note only while it is one `matches` names, as read now; true when it was cleared. */
+export function clearLocalDraftIf(branch: string, notePath: string, matches: (draft: LocalDraft) => boolean): boolean {
+  const draft = getLocalDraft(branch, notePath);
+  if (!draft || !matches(draft)) return false;
+  clearLocalDraft(branch, notePath);
+  return true;
+}
+
 /** Moves the draft kept for `from` to `to` within a scope, with the dismissed notice of a conflict copy; nothing when there is none. */
 export function moveLocalDraft(scope: string, from: string, to: string): void {
   try {
