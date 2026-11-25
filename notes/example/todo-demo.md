@@ -17,4 +17,4 @@ These sample dates use September 15, 2026 as a reference day. They cover overdue
 - [ ] Pick a song for a reading session
 - [x] Prepare sample notes and resources 📅 2026-09-14 ✅ 2026-09-14
 
-Start with the [Graph Playground](graph-playground.md) or the [Weekly Review](projects/weekly-review.md).
+Start with the [Whiteboard Playground](graph-playground.md) or the [Weekly Review](projects/weekly-review.md).

@@ -16,4 +16,4 @@ Capture ideas as short notes, then connect them as their relationships become cl
 - Which idea could become a note of its own?
 - Which excerpts belong in the same swimlane?
 
-Continue to [Evening Ideas](evening-ideas.md), or return to the [Graph Playground](graph-playground.md).
+Continue to [Evening Ideas](evening-ideas.md), or return to the [Whiteboard Playground](graph-playground.md).
