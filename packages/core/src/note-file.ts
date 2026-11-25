@@ -53,8 +53,9 @@ function compilationWrite(filePath: string, write: () => string): string {
 /**
  * The stored form of a save: a note's frontmatter and body, or a compilation's YAML carrying the caller's tags and
  * status, refused with a `CompilationError` naming the file when that YAML would not open (`applyCompilationMetadata`).
- * `scope`, the repository's notebook roots, is what the compilation must open for. Content saved without metadata is
- * stored as it is: a compilation that does not open is saved and read back as invalid.
+ * `scope`, the repository's notebook roots, is what the compilation must open for. Content saved without metadata, or
+ * with the tags and status it reads as itself, is stored as it is: a compilation that does not open is saved and read
+ * back as invalid.
  */
 export function serializeNoteFile(filePath: string, metadata: NoteMetadata, content: string, isNew: boolean, now: Date, existingRaw?: string, scope?: readonly string[]): string {
   if (isCompilationPath(filePath)) return compilationWrite(filePath, () => applyCompilationMetadata(content, metadata, scope));

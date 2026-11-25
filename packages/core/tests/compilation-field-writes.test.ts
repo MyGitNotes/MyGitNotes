@@ -252,6 +252,32 @@ describe('a full save of a compilation', () => {
     expect(saved.note.invalid).toContain('arrangement');
     expect(f.files.get(remote)).toBe(broken);
   });
+
+  // The display metadata of a compilation that does not open leaves out what it cannot show: sent back with the text it
+  // was read from, as an undo, a move or an editor save does, it changes nothing, and the text is stored as it is.
+  const unshown = 'version: 1\nid: draft\ntitle: Draft\ntags: [clue, 7]\nstatus: 3\nsource:\n  kind: tag\n  tag: clue\n';
+  const shown = { title: 'Draft', id: 'draft', tags: ['clue'] };
+
+  it('stores an invalid text sent with the metadata read from it, and checks a real change of its tags or status', () => {
+    expect(serializeNoteFile(file, shown, unshown, false, new Date(), unshown)).toBe(unshown);
+    expect(serializeNoteFile(file, shown, unshown, true, new Date())).toBe(unshown);
+    expect(serializeNoteFile(file, {}, 'version: 1\ntags: 7\n', true, new Date())).toBe('version: 1\ntags: 7\n');
+    expect(() => serializeNoteFile(file, { ...shown, tags: ['clue', 'new'] }, unshown, false, new Date(), unshown)).toThrow(`${file}: Tags and status not written: `);
+    expect(() => serializeNoteFile(file, { ...shown, status: 'done' }, unshown, false, new Date(), unshown)).toThrow(CompilationError);
+    expect(() => serializeNoteFile(file, { ...shown, tags: [] }, unshown, false, new Date(), unshown)).toThrow(CompilationError);
+  });
+
+  it('stores an invalid text sent with the metadata read from it remotely, by a save and a commit of working notes', async () => {
+    const remote = 'notes/ex/c.compilation.yml';
+    const f = gitlabFixture(undefined, { [remote]: unshown });
+    const { reader } = openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'fixture-token', f.request);
+    const edited = unshown.replace('title: Draft', 'title: Draft two');
+    const saved = await reader.save(remote, edited, shown, f.head);
+    expect(saved.note.invalid).toContain('arrangement');
+    expect(f.files.get(remote)).toBe(edited);
+    await reader.commitNotes([{ path: remote, content: unshown, metadata: shown }], saved.revision, 'docs: restore');
+    expect(f.files.get(remote)).toBe(unshown);
+  });
 });
 
 // A compilation opens only with a folder source inside one of the repository's notebooks; a tag or status write given

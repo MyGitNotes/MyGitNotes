@@ -194,4 +194,43 @@ describe('compilations over the note routes', () => {
     expect(restored.body.note.invalid).toContain('arrangement');
     expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(raw);
   });
+
+  // An invalid compilation's display metadata leaves out what it cannot show (the tag 7, the status 3): sent back with
+  // the text it was read from, it asks for no change, and the text is stored byte for byte.
+  const unshown = 'version: 1\nid: draft\ntitle: Draft\ntags: [clue, 7]\nstatus: 3\nsource:\n  kind: tag\n  tag: clue\n';
+
+  it('restores an uncommitted invalid compilation whose display metadata leaves out a tag and the status', async () => {
+    const file = 'notes/example/draft.compilation.yml';
+    write(file, unshown);
+    const read = await json(`/api/notes/read?path=${encodeURIComponent(file)}&notebookId=${nb('example')}`);
+    expect(read.body.note).toMatchObject({ tags: ['clue'], metadata: { tags: ['clue'] }, invalid: expect.stringContaining('arrangement') });
+    expect(read.body.note.metadata.status).toBeUndefined();
+    expect((await send('DELETE', `/api/notes?path=${encodeURIComponent(file)}&notebookId=${nb('example')}&noCommit=true`)).body).toMatchObject({ success: true, pending: false });
+    const restored = await send('POST', '/api/notes/restore', { path: file, content: read.body.note.content, metadata: read.body.note.metadata, notebookId: nb('example') });
+    expect(restored.body.error ?? '').toBe('');
+    expect(restored.status).toBe(200);
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(unshown);
+  });
+
+  it('saves the raw text of an invalid compilation with its display metadata, and still checks a real tag change', async () => {
+    const file = 'notes/example/draft.compilation.yml';
+    write(file, unshown);
+    const { note } = (await json(`/api/notes/read?path=${encodeURIComponent(file)}&notebookId=${nb('example')}`)).body;
+    const save = (content: string, metadata: Record<string, unknown>) => send('POST', '/api/notes', { path: file, content, metadata, notebookId: nb('example'), noCommit: true });
+    const same = await save(note.content, note.metadata);
+    expect(same.body.error ?? '').toBe('');
+    expect(same.status).toBe(200);
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(unshown);
+    // Typing elsewhere in the text keeps what the metadata reads, so the edited text is stored as it is.
+    const edited = unshown.replace('title: Draft', 'title: Draft two');
+    const typed = await save(edited, note.metadata);
+    expect(typed.status).toBe(200);
+    expect(typed.body.note).toMatchObject({ title: 'Draft two', invalid: expect.stringContaining('arrangement') });
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(edited);
+    // A tag change is a field write into a file that does not open: refused, the file as it was.
+    const retagged = await save(edited, { ...note.metadata, tags: ['clue', 'new'] });
+    expect(retagged.status).toBe(400);
+    expect(retagged.body.error).toContain('Tags and status not written');
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(edited);
+  });
 });

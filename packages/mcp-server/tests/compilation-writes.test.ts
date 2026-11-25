@@ -68,6 +68,18 @@ it('answers a refused local compilation write as a tool error and leaves the fil
   }
   expect(fs.readFileSync(path.join(repo, file), 'utf8')).toBe(outside);
   expect(await head()).toBe(outsideHead);
+
+  // A compilation that does not open shows only some of its tags; a requested change of them is still refused, not dropped.
+  const unshown = 'version: 1\nid: c\ntitle: C\ntags: [clue, 7]\nsource: { kind: tag, tag: clue }\n';
+  fs.writeFileSync(path.join(repo, file), unshown);
+  await stageAndCommit(repo, [file], 'invalid compilation');
+  const unshownHead = await head();
+  for (const answer of [await tool('update_note_metadata', { path: file, tags: ['clue', 'new'] }), await tool('update_note_metadata', { path: file, status: 'done' }), await tool('save_note', { path: file, content: unshown, tags: ['new'] })]) {
+    expect(answer.isError).toBe(true);
+    expect(JSON.parse(answer.content[0].text).error).toMatch(new RegExp(`^${file}: Tags and status not written: `));
+  }
+  expect(fs.readFileSync(path.join(repo, file), 'utf8')).toBe(unshown);
+  expect(await head()).toBe(unshownHead);
 });
 
 it('refuses a remote compilation write that would not open, writing nothing', async () => {
