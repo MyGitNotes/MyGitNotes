@@ -1,17 +1,18 @@
 import type { ReactNode } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { Frame, Link2, MousePointer2, MoveUpRight, Palette, Redo2, Trash2, Type, Undo2 } from 'lucide-react';
+import { Frame, Link2, MousePointer2, MoveUpRight, Palette, Redo2, SquarePlus, Trash2, Type, Undo2 } from 'lucide-react';
 import { BOARD_TEXT_COLORS } from '@mygitnotes/core/compilation';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { Tooltip } from '../Tooltip.js';
 import type { BoardEditor, BoardTool } from './useBoardEditor.js';
 
-const TOOLS: readonly { tool: BoardTool; label: 'board.tool.select' | 'board.tool.text' | 'board.tool.section' | 'board.tool.arrow'; icon: ReactNode; }[] = [{ tool: 'select', label: 'board.tool.select', icon: <MousePointer2 size={16} aria-hidden='true' /> }, { tool: 'text', label: 'board.tool.text', icon: <Type size={16} aria-hidden='true' /> }, { tool: 'section', label: 'board.tool.section', icon: <Frame size={16} aria-hidden='true' /> }, { tool: 'arrow', label: 'board.tool.arrow', icon: <MoveUpRight size={16} aria-hidden='true' /> }];
+const TOOLS: readonly { tool: BoardTool; label: 'board.tool.select' | 'board.tool.card' | 'board.tool.text' | 'board.tool.section' | 'board.tool.arrow'; icon: ReactNode; }[] = [{ tool: 'select', label: 'board.tool.select', icon: <MousePointer2 size={16} aria-hidden='true' /> }, { tool: 'card', label: 'board.tool.card', icon: <SquarePlus size={16} aria-hidden='true' /> }, { tool: 'text', label: 'board.tool.text', icon: <Type size={16} aria-hidden='true' /> }, { tool: 'section', label: 'board.tool.section', icon: <Frame size={16} aria-hidden='true' /> }, { tool: 'arrow', label: 'board.tool.arrow', icon: <MoveUpRight size={16} aria-hidden='true' /> }];
 
 /**
- * The tools of an editable board, floating at its top left: 選取, 文字, 區塊 and 箭頭 (a tool returns to 選取 after
- * one use unless it was double-clicked), undo and redo, and for the selection 「連到…」, 刪除 and a text's colour.
- * A dynamic board's sections come from its folders, so its 區塊 is off and says why.
+ * The tools of an editable board, floating at its top left: 選取, 卡片, 文字, 區塊 and 箭頭 (a tool returns to 選取
+ * after one use unless it was double-clicked), undo and redo, and for the selection 「連到…」, 刪除 and a text's colour.
+ * A dynamic board's sections come from its folders, so its 區塊 is off and says why; 卡片 is off where a new note
+ * would have no Git path yet, and says why, and missing where the board cannot create notes.
  */
 export function BoardTools({ editor, dynamic }: { editor: BoardEditor; dynamic: boolean; }) {
   const { t } = useTranslation();
@@ -20,12 +21,13 @@ export function BoardTools({ editor, dynamic }: { editor: BoardEditor; dynamic: 
   return (
     <div className='board-tools' role='toolbar' aria-label={t('board.tools')} data-board-control=''>
       <div className='board-tool-group' role='group' aria-label={t('board.toolGroup')}>
-        {TOOLS.map(({ tool, label, icon }) => {
-          const off = tool === 'section' && dynamic;
-          const hint = off ? t('board.dynamicSections') : editor.tool === tool && editor.sticky ? t('board.toolSticky', { tool: t(label) }) : t('board.toolHint', { tool: t(label) });
+        {TOOLS.filter(({ tool }) => tool !== 'card' || editor.card).map(({ tool, label, icon }) => {
+          const reason = tool === 'section' && dynamic ? t('board.dynamicSections') : tool === 'card' ? editor.card?.off : undefined;
+          const off = Boolean(reason);
+          const hint = reason ?? (editor.tool === tool && editor.sticky ? t('board.toolSticky', { tool: t(label) }) : t('board.toolHint', { tool: t(label) }));
           return (
             <Tooltip key={tool} label={hint}>
-              <button type='button' className='ui-icon-button board-tool' aria-label={t(label)} aria-pressed={editor.tool === tool} aria-disabled={off || undefined} data-sticky={editor.tool === tool && editor.sticky || undefined} onClick={() => !off && editor.setTool(tool)} onDoubleClick={() => !off && editor.setTool(tool, tool !== 'select')}>{icon}</button>
+              <button type='button' className='ui-icon-button board-tool' aria-label={t(label)} aria-pressed={editor.tool === tool} aria-disabled={off || undefined} data-sticky={editor.tool === tool && editor.sticky || undefined} onClick={() => reason ? editor.setNotice(reason) : editor.setTool(tool)} onDoubleClick={() => !off && editor.setTool(tool, tool !== 'select')}>{icon}</button>
             </Tooltip>
           );
         })}

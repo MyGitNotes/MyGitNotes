@@ -1,8 +1,9 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import type { NotebookFacets, NoteListItem } from '@mygitnotes/core/note-query';
 import { noteRefKey } from '@mygitnotes/core/note-query';
+import { boardNotes } from '../../lib/board/add.js';
 import { type BoardElementKey, drawnArrows, noteLinkLines, noteLinkNeighbours } from '../../lib/board/connections.js';
 import { arrowText, cardDescription } from '../../lib/board/describe.js';
 import { usedLabels } from '../../lib/board/edit.js';
@@ -21,8 +22,11 @@ import type { CompilationContentProps } from '../CompilationCard.js';
 import { CompilationHeader, type CompilationHeaderProps } from '../CompilationHeader.js';
 import { LoadingStatus } from '../LoadingStatus.js';
 import { BoardCanvas } from './BoardCanvas.js';
+import { BoardDrawer, useDrawerFold } from './BoardDrawer.js';
+import { BoardLinked } from './BoardLinked.js';
 import type { CardView } from './BoardCard.js';
 import { cardView } from './card-view.js';
+import { type BoardCardNote, useBoardAdding } from './useBoardAdding.js';
 import { useBoardCamera } from './useBoardCamera.js';
 import { useBoardEditor } from './useBoardEditor.js';
 import './board.css';
@@ -35,9 +39,10 @@ type BoardHeader = Omit<CompilationHeaderProps, 'row' | 'count' | 'notebooks' | 
  * the compilation's host opens items (`onOpen`). With `onChange` on a writable board wider than a phone the board is
  * edited in place, each gesture one `onChange`; on a phone it is for looking, without the arrangement switch, the
  * minimap or the tools. `reveal` names a card to centre and select once the board is drawn, once per `key` (an
- * arrival at an address that names it).
+ * arrival at an address that names it). On the 白板 page (`drawer`) an editable board has the 筆記庫 drawer on its
+ * left, folded while a side panel is open (`drawer.panel` names its note); `cardNote` gives it the 卡片 tool.
  */
-export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, onChange, facets, extra, reveal, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; onChange?: (row: CompilationRow) => void; reveal?: { card: string; key: string; }; }) {
+export function CompilationBoard({ row, notebooks, assets, assetsLoading = false, folders = [], onOpen, onChange, facets, extra, reveal, drawer, cardNote, ...header }: Omit<CompilationContentProps, 'notes'> & BoardHeader & { row: CompilationRow; assetsLoading?: boolean; facets?: Record<string, NotebookFacets>; extra?: ReactNode; folders?: FolderItem[]; onChange?: (row: CompilationRow) => void; reveal?: { card: string; key: string; }; drawer?: { panel?: string; }; cardNote?: BoardCardNote; }) {
   const { t } = useTranslation();
   const phone = usePhone();
   // A board places every member, so it reads them all, with the body each card's first lines come from. The status
@@ -51,7 +56,12 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
   const loaded = row.kind === 'custom' || !lane.loading;
   const camera = useBoardCamera({ board: `${row.notebookId}:${row.path}`, bounds: placed.bounds, loaded });
   const editable = Boolean(onChange) && !phone && !header.readOnly && !header.disabled;
-  const editor = useBoardEditor({ row, placed, place, editable, onChange, camera });
+  const adding = useBoardAdding({ row, placed, camera, ...(editable && cardNote ? { cardNote } : {}) });
+  const editor = useBoardEditor({ row, placed, place, editable, onChange, camera, ...(adding.card ? { card: adding.card } : {}) });
+  useLayoutEffect(() => {
+    adding.bind(editor);
+  });
+  const fold = useDrawerFold(drawer?.panel);
   const revealed = useRef<string>(undefined);
   const { ready, centreOn, viewport } = camera, { setSelection } = editor;
   useEffect(() => {
@@ -97,12 +107,18 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
     saveBoardNoteLinks(shown);
   };
   const empty = !board.cards.length && !board.texts.length;
-  return (
+  const onBoard = useMemo(() => new Set(boardNotes(placed).keys()), [placed]);
+  // 「＋N 相連」 shows on the one selected note card of an editable custom board; a selected element an undo took away does not count.
+  const drawnKeys = new Set<string>([...board.cards.map(card => `card:${card.key}`), ...board.sections.map(section => `section:${section.key}`), ...board.texts.map(text => `text:${text.id}`), ...arrows.map(arrow => `arrow:${arrow.id}`)]);
+  const live = [...editor.selection].filter(key => drawnKeys.has(key));
+  const only = live.length === 1 ? live[0] : undefined;
+  const linked = editable && row.kind === 'custom' && !editor.draft && !editor.preview ? board.cards.find(card => `card:${card.key}` === only && card.item.kind === 'note') : undefined;
+  const section = (
     <section id={`screen-lane-${row.id}`} className={`screen-lane screen-view-board board-arrangement ${row.kind === 'dynamic' ? 'screen-lane-dynamic' : ''}`}>
       <CompilationHeader {...header} row={row} count={board.cards.length} notebooks={notebooks} facets={facets} extra={phone ? undefined : extra} hideArrangement={phone} />
       {lane.error && <p role='alert' className='screen-error'>{lane.error}</p>}
       {graph.error && showNoteLinks && <p role='alert' className='screen-error'>{graph.error}</p>}
-      <BoardCanvas title={row.name} board={board} arrows={arrows} noteLinks={noteLinks} views={views} descriptions={descriptions} arrowTexts={arrowTexts} phone={phone} showNoteLinks={showNoteLinks} onNoteLinks={changeNoteLinks} onOpen={onOpen} camera={camera} editor={editor} dynamic={row.kind === 'dynamic'} labels={usedLabels(row)} titleOf={titleOf} />
+      <BoardCanvas title={row.name} board={board} arrows={arrows} noteLinks={noteLinks} views={views} descriptions={descriptions} arrowTexts={arrowTexts} phone={phone} showNoteLinks={showNoteLinks} onNoteLinks={changeNoteLinks} onOpen={onOpen} camera={camera} editor={editor} dynamic={row.kind === 'dynamic'} labels={usedLabels(row)} titleOf={titleOf} onDropNote={drawer && editable ? adding.dropAt : undefined} overlay={linked?.item.kind === 'note' && <BoardLinked key={linked.key} card={linked} note={linked.item} camera={camera.camera} shown={onBoard} onAdd={notes => adding.addLinked(linked.key, notes)} />} />
       {lane.loading && !board.cards.length && <LoadingStatus className='board-empty'>{t('notes.loading')}</LoadingStatus>}
       {empty && !lane.loading && !editor.draft && (
         <div className='board-empty'>
@@ -116,5 +132,12 @@ export function CompilationBoard({ row, notebooks, assets, assetsLoading = false
         </div>
       )}
     </section>
+  );
+  if (!drawer || !editable) return section;
+  return (
+    <div className='board-page-body'>
+      <BoardDrawer row={row} placed={placed} selection={editor.selection} notebooks={notebooks} adding={adding} folded={fold.folded} onFold={fold.onFold} />
+      {section}
+    </div>
   );
 }

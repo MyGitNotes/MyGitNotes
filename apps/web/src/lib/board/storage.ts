@@ -74,3 +74,20 @@ export function saveBoardPanelWidth(width: number, store: Store = storage()): vo
     store?.setItem(BOARD_PANEL_WIDTH_STORAGE_KEY, String(clampPanelWidth(width)));
   } catch { /* The width holds for this visit. */ }
 }
+
+/** Whether this device keeps the 白板 page's 筆記庫 drawer folded to its strip; open unless folded. */
+export const BOARD_DRAWER_STORAGE_KEY = 'mygitnotes:board-drawer';
+
+export const readBoardDrawerFolded = (store: Store = storage()): boolean => {
+  try {
+    return store?.getItem(BOARD_DRAWER_STORAGE_KEY) === 'folded';
+  } catch {
+    return false;
+  }
+};
+
+export function saveBoardDrawerFolded(folded: boolean, store: Store = storage()): void {
+  try {
+    store?.setItem(BOARD_DRAWER_STORAGE_KEY, folded ? 'folded' : 'open');
+  } catch { /* The choice holds for this visit. */ }
+}

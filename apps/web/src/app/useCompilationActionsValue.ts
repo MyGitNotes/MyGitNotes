@@ -15,10 +15,12 @@ interface Params {
   invalidateNotes: () => void;
   setGitStatus: (status: GitStatus) => void;
   createNote: CompilationActions['createNote'];
+  createBoardNote: CompilationActions['createBoardNote'];
+  newNotesLive: CompilationActions['newNotesLive'];
 }
 
 /** What compilation views may do to the workspace, wired to the same handlers notes use. */
-export function useCompilationActionsValue({ remote, canWriteNotebook, repositoryId, revisionFor, save, remove, stageWorkingNote, invalidateNotes, setGitStatus, createNote }: Params): CompilationActions {
+export function useCompilationActionsValue({ remote, canWriteNotebook, repositoryId, revisionFor, save, remove, stageWorkingNote, invalidateNotes, setGitStatus, createNote, createBoardNote, newNotesLive }: Params): CompilationActions {
   return useMemo(() => ({
     canWrite: canWriteNotebook,
     save: (note, content, metadata) => save({ path: note.path, notebookId: note.notebookId, content, metadata }),
@@ -36,5 +38,7 @@ export function useCompilationActionsValue({ remote, canWriteNotebook, repositor
     remove,
     repository: repositoryId,
     createNote,
-  }), [remote, canWriteNotebook, repositoryId, revisionFor, save, remove, stageWorkingNote, invalidateNotes, setGitStatus, createNote]);
+    createBoardNote,
+    newNotesLive,
+  }), [remote, canWriteNotebook, repositoryId, revisionFor, save, remove, stageWorkingNote, invalidateNotes, setGitStatus, createNote, createBoardNote, newNotesLive]);
 }

@@ -1,0 +1,41 @@
+/* The 白板 page's board beside its 筆記庫 drawer (BoardDrawer), the drawer folding to a strip. */
+.board-page-body { display: flex; flex: 1 1 auto; gap: 12px; min-width: 0; min-height: 0; }
+.board-page-body > .board-arrangement, .board-with-panel > .board-page-body { flex: 1 1 auto; min-width: 0; }
+.board-drawer { display: flex; flex: none; flex-direction: column; gap: 10px; width: 264px; min-height: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: var(--radius-panel); background: var(--color-sidebar); }
+.board-drawer[data-folded] { width: auto; padding: 6px; align-items: center; }
+.board-drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.board-drawer-head h2 { color: var(--color-text); font-size: 15px; font-weight: 650; }
+.board-drawer-notebook { width: 100%; }
+.board-drawer-search { position: relative; display: flex; align-items: center; }
+.board-drawer-search > svg { position: absolute; left: 10px; color: var(--color-muted); pointer-events: none; }
+.board-drawer-search input { width: 100%; padding-left: 30px; }
+.board-drawer-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.board-drawer-chip { min-height: 28px; padding: 0 10px; border: 1px solid var(--color-line-strong); border-radius: 999px; background: var(--color-surface); color: var(--color-text); font-size: 12px; }
+.board-drawer-chip[aria-pressed='true'] { border-color: var(--color-primary); background: var(--color-primary); color: var(--color-on-primary); }
+.board-drawer-chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.board-drawer-list { display: flex; flex: 1 1 auto; flex-direction: column; gap: 6px; min-height: 0; margin: 0; padding: 0 2px 2px 0; overflow: auto; list-style: none; }
+.board-drawer-row { display: flex; flex: none; align-items: center; gap: 6px; min-height: 40px; padding: 4px 4px 4px 8px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); color: var(--color-text); font-size: 13px; }
+.board-drawer-row[draggable='true'] { cursor: grab; }
+.board-drawer-row:hover { border-color: var(--color-line-strong); }
+.board-drawer-grip { flex: none; color: var(--color-muted); }
+.board-drawer-title { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.board-drawer-count { flex: none; color: var(--color-primary); font-size: 11px; white-space: nowrap; }
+/* 「加到白板」 and 「在白板上找」 show on a row's hover or focus; a finger always sees them. */
+.board-drawer-action { flex: none; opacity: 0; }
+.board-drawer-row:hover .board-drawer-action, .board-drawer-action:focus-visible { opacity: 1; }
+@media (pointer: coarse) { .board-drawer-action { opacity: 1; } .board-drawer-chip { min-height: 44px; } }
+.board-drawer-hint, .board-drawer-foot { margin: 0; color: var(--color-muted); font-size: 12px; line-height: 1.5; }
+.board-drawer-foot { flex: none; }
+/* A note dragged from the drawer over the board. */
+.board-viewport[data-dropping] { box-shadow: inset 0 0 0 2px var(--color-primary); }
+
+/* 「＋N 相連」 on the selected note card's corner, in screen pixels so it reads at any zoom, and its list. */
+.board-linked { position: absolute; z-index: 6; min-height: 24px; padding: 2px 10px; border: 1px solid var(--color-primary); border-radius: 999px; background: var(--color-primary); color: var(--color-on-primary); font-size: 12px; font-weight: 600; line-height: 1.4; white-space: nowrap; box-shadow: var(--shadow-sm); transform: translate(-100%, -50%) translateX(-12px); }
+.board-linked:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media (pointer: coarse) { .board-linked { min-height: 44px; } }
+.board-linked-menu { max-width: 320px; }
+.board-linked-title { padding: 6px 10px 4px; color: var(--color-muted); font-size: 12px; }
+.board-linked-check { display: inline-grid; flex: none; place-items: center; width: 16px; height: 16px; border: 1px solid var(--color-line-strong); border-radius: 4px; color: var(--color-primary); }
+.board-linked-separator { height: 1px; margin: 4px 0; background: var(--color-line); }
+.board-linked-add { justify-content: center; color: var(--color-primary); font-weight: 600; }
+.board-stage[data-tool='card'] .board-viewport { cursor: copy; }

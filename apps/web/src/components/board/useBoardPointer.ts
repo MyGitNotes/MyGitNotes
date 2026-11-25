@@ -31,7 +31,7 @@ interface Base {
   screen: Point;
   moved: boolean;
 }
-type Gesture = Base & { kind: 'move'; keys: BoardSelectionKey[]; collapse?: BoardSelectionKey; additive?: boolean; } | Base & { kind: 'box'; target?: BoardSelectionKey; additive: boolean; base: ReadonlySet<BoardSelectionKey>; } | Base & { kind: 'section'; } | Base & { kind: 'text'; target?: BoardSelectionKey; } | Base & { kind: 'arrow'; from: BoardElementKey; } | Base & { kind: 'resize'; key: string; frame: Rect; corner: Point; };
+type Gesture = Base & { kind: 'card'; } | Base & { kind: 'move'; keys: BoardSelectionKey[]; collapse?: BoardSelectionKey; additive?: boolean; } | Base & { kind: 'box'; target?: BoardSelectionKey; additive: boolean; base: ReadonlySet<BoardSelectionKey>; } | Base & { kind: 'section'; } | Base & { kind: 'text'; target?: BoardSelectionKey; } | Base & { kind: 'arrow'; from: BoardElementKey; } | Base & { kind: 'resize'; key: string; frame: Rect; corner: Point; };
 
 export interface PointerInput {
   row: CompilationRow;
@@ -47,6 +47,8 @@ export interface PointerInput {
   used: () => void;
   newSection: (rect: Rect) => void;
   newText: (x: number, y: number) => void;
+  /** The 卡片 tool's click: a note created and placed at the point. */
+  newCard: (at: Point) => void;
   newArrow: (from: BoardElementKey, to: BoardElementKey) => void;
   edit: (key: BoardSelectionKey) => void;
   /** Opens the context menu of an element at a viewport point. */
@@ -64,7 +66,7 @@ export interface PointerInput {
  * does on a board that cannot be edited.
  */
 export function useBoardPointer(input: PointerInput): BoardGestures {
-  const { row, placed, editable, camera, tool, selection, setSelection, setPreview, apply, used, newSection, newText, newArrow, edit, openMenu, flushNudge, busy } = input;
+  const { row, placed, editable, camera, tool, selection, setSelection, setPreview, apply, used, newSection, newText, newCard, newArrow, edit, openMenu, flushNudge, busy } = input;
   const [overlay, setOverlay] = useState<BoardOverlay>({});
   const gesture = useRef<Gesture | undefined>(undefined);
   const suppressClick = useRef(false);
@@ -119,6 +121,7 @@ export function useBoardPointer(input: PointerInput): BoardGestures {
     const section = element.closest('[data-board-section]')?.getAttribute('data-board-section');
     const hit = boardKeyOf(element) ?? (section ? `section:${section}` as const : undefined);
     if (tool === 'text') return void (gesture.current = { ...base, kind: 'text', ...(hit?.startsWith('text:') ? { target: hit } : {}) });
+    if (tool === 'card') return void (gesture.current = { ...base, kind: 'card' });
     if (tool === 'section') return void (gesture.current = { ...base, kind: 'section' });
     if (tool === 'arrow') {
       if (hit && !hit.startsWith('arrow:')) gesture.current = { ...base, kind: 'arrow', from: hit as BoardElementKey };
@@ -183,6 +186,7 @@ export function useBoardPointer(input: PointerInput): BoardGestures {
         setPreview(resizeSection(row, current.key, { ...current.frame, w: current.corner.x + dx - current.frame.x, h: current.corner.y + dy - current.frame.y }).row);
         break;
       case 'text':
+      case 'card':
         break;
     }
   };
@@ -211,6 +215,11 @@ export function useBoardPointer(input: PointerInput): BoardGestures {
         break;
       case 'section':
         newSection(current.moved ? spanRect(current.start, point) : { x: point.x, y: point.y, w: 0, h: 0 });
+        used();
+        break;
+      case 'card':
+        // The note's card is centred where the press started, as a drop centres a dragged note.
+        newCard(current.start);
         used();
         break;
       case 'text':

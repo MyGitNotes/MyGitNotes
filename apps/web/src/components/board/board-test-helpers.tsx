@@ -6,7 +6,7 @@ import { PopGuardSync } from '../../lib/pop-guard.js';
 import { vi } from 'vitest';
 import { BOARD_TEXT_COLORS } from '@mygitnotes/core/compilation';
 import type { NoteRef } from '@mygitnotes/core/note-query';
-import { CompilationActionsProvider } from '../../lib/compilation-actions.js';
+import { type CompilationActions, CompilationActionsProvider } from '../../lib/compilation-actions.js';
 import { PanelProvider } from '../../lib/panel-context.js';
 import { setNoteQueryScope } from '../../lib/use-note-queries.js';
 import { CompilationView, type CompilationViewProps } from '../CompilationView.js';
@@ -86,10 +86,12 @@ function RouterProbe() {
  * Opens a compilation file in a Focus pane's CompilationView (or `view.frame`, with `view.sidePanel`, at `view.url`), its notes, member paths and note links answered by a
  * stubbed fetch, and every write going to `save`. The file's stored copy stays as given, so writes stay pending.
  */
-export function openBoard({ path, notebookId, raw, notes, members = [], links = [], compilations = [], view = {} }: { path: string; notebookId: string; raw: string; notes: ReturnType<typeof note>[]; members?: NoteRef[]; links?: { source: string; target: string; }[]; /** What a listing of the notebook's compilations answers. */ compilations?: ReturnType<typeof note>[]; view?: Partial<Pick<CompilationViewProps, 'frame' | 'sidePanel'>> & { url?: string; /** The browser's own history (window.history) instead of a memory one, with the Back and Forward guard told of it; `/elsewhere` is another page. */ browser?: boolean; }; }) {
+export function openBoard({ path, notebookId, raw, notes, members = [], links = [], compilations = [], actions: more = {}, respond, view = {} }: { path: string; notebookId: string; raw: string; notes: ReturnType<typeof note>[]; members?: NoteRef[]; links?: { source: string; target: string; }[]; /** What a listing of the notebook's compilations answers. */ compilations?: ReturnType<typeof note>[]; /** Compilation actions beyond saving, such as the 卡片 tool's. */ actions?: Partial<CompilationActions>; /** Answers a request before the stubs do, when it gives a response. */ respond?: (url: URL, init?: RequestInit) => Response | undefined; view?: Partial<Pick<CompilationViewProps, 'frame' | 'sidePanel'>> & { url?: string; /** The browser's own history (window.history) instead of a memory one, with the Back and Forward guard told of it; `/elsewhere` is another page. */ browser?: boolean; }; }) {
   const stored = { id: path, path, notebookId, title: 'Board', content: raw, metadata: {}, tags: [] };
   fetches.requests = vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(input, 'http://localhost');
+    const answer = respond?.(url, init);
+    if (answer) return answer;
     if (url.pathname === '/api/notes/lookup') {
       const refs = JSON.parse(String(init?.body)).notes as NoteRef[];
       return Response.json({ notes: [stored, ...notes].filter(result => refs.some(ref => ref.path === result.path && ref.notebookId === result.notebookId)) });
@@ -100,7 +102,7 @@ export function openBoard({ path, notebookId, raw, notes, members = [], links = 
   });
   vi.stubGlobal('fetch', fetches.requests);
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
-  const actions = { save, canWrite: () => true, remove: vi.fn(), create, repository: () => undefined };
+  const actions = { save, canWrite: () => true, remove: vi.fn(), create, repository: () => undefined, ...more };
   const content = (children: ReactNode) => (
     <>
       <RouterProbe />

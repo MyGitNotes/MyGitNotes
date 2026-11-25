@@ -96,7 +96,7 @@ it.each(['repository', 'read-only'] as const)('does not create after a %s change
     }),
   );
   const hook = renderHook(useCreateNote, { initialProps: input });
-  let operation!: Promise<void>;
+  let operation!: Promise<unknown>;
   act(() => {
     operation = hook.result.current.createNote();
   });

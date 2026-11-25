@@ -7,7 +7,7 @@ import { type PlacedBoard, type PlacedCard, roomOf } from './placement.js';
 /** What a person selects on a board: a card, a section, a text or an arrow, by key. */
 export type BoardSelectionKey = BoardElementKey | `arrow:${string}`;
 /** Why an edit was refused, kept or partly kept; each has a message for the person. */
-export type BoardRefusal = 'dynamicSections' | 'folderSection' | 'sectionLimit' | 'textLimit' | 'arrowLimit' | 'arrowEnds';
+export type BoardRefusal = 'dynamicSections' | 'folderSection' | 'sectionLimit' | 'textLimit' | 'arrowLimit' | 'arrowEnds' | 'itemLimit' | 'dynamicItems';
 /** An edit's result: the row to write (the same row when nothing changed) and, when the board refused some or all of it, why. */
 export interface BoardEdit {
   row: CompilationRow;

@@ -2,7 +2,7 @@ import { type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboard
 import { BOARD_MAX_ARROWS, BOARD_MAX_SECTIONS, BOARD_MAX_TEXTS, type BoardText, type CompilationRow } from '@mygitnotes/core/compilation';
 import type { BoardElementKey } from '../../lib/board/connections.js';
 import { addArrow, addText, type BoardEdit, boardId, type BoardRefusal, type BoardSelectionKey, createSection, editText, endOf, labelArrow, moveSelection, removeSelection, renameSection, setTextColor, splitKey } from '../../lib/board/edit.js';
-import type { Rect } from '../../lib/board/geometry.js';
+import type { Point, Rect } from '../../lib/board/geometry.js';
 import { type BoardHistory, emptyHistory, recordStep, redoStep, undoStep } from '../../lib/board/history.js';
 import type { PlacedBoard } from '../../lib/board/placement.js';
 import { writableCompilationText } from '../../lib/compilation-rows.js';
@@ -10,7 +10,7 @@ import { useTranslation } from '../../lib/i18n/index.js';
 import type { BoardCamera } from './useBoardCamera.js';
 import { type BoardGestures, useBoardPointer } from './useBoardPointer.js';
 
-export type BoardTool = 'select' | 'text' | 'section' | 'arrow';
+export type BoardTool = 'select' | 'card' | 'text' | 'section' | 'arrow';
 /** An element being titled, written or labelled in place: the board writes it once, when the field is left. */
 export type BoardDraft = { kind: 'section'; id: string; rect: Rect; title: string; } | { kind: 'rename'; key: string; title: string; } | { kind: 'text'; id: string; x: number; y: number; text: string; existing: boolean; } | { kind: 'label'; id: string; label: string; existing: boolean; from?: BoardElementKey; to?: BoardElementKey; };
 
@@ -33,6 +33,8 @@ export interface BoardEditorInput {
   editable: boolean;
   onChange?: (row: CompilationRow) => void;
   camera: BoardCamera;
+  /** The 卡片 tool: what a click with it does (creates a note there), or why it is off; without it the board has no 卡片. */
+  card?: { create: (at: Point) => void; off?: string; };
 }
 
 /**
@@ -41,7 +43,7 @@ export interface BoardEditorInput {
  * for confirmation, and the undo stack. Each gesture becomes one `onChange`, so the compilation file is written
  * once per gesture. Without `editable` it only passes the camera's pointer handlers through.
  */
-export function useBoardEditor({ row, placed, place, editable, onChange, camera }: BoardEditorInput) {
+export function useBoardEditor({ row, placed, place, editable, onChange, camera, card }: BoardEditorInput) {
   const { t } = useTranslation();
   const [tool, setToolState] = useState<{ tool: BoardTool; sticky: boolean; }>({ tool: 'select', sticky: false });
   const [selection, setSelection] = useState<ReadonlySet<BoardSelectionKey>>(new Set());
@@ -91,6 +93,10 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
         return t('board.textLimit', { limit: String(BOARD_MAX_TEXTS) });
       case 'arrowLimit':
         return t('board.arrowLimit', { limit: String(BOARD_MAX_ARROWS) });
+      case 'itemLimit':
+        return t('screen.limit');
+      case 'dynamicItems':
+        return t('board.dynamicItems');
     }
   };
   /** Writes one gesture's edit and records it as one undo step; a refusal is said. Returns whether the row changed. */
@@ -123,6 +129,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   };
 
   const setTool = (next: BoardTool, sticky = false) => {
+    if (next === 'card' && card?.off) return setNotice(card.off);
     setToolState({ tool: next, sticky });
     setNotice('');
   };
@@ -222,7 +229,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
     if (selection.size === 1 && key.startsWith('text:')) apply(setTextColor(row, splitKey(key).id, value));
   };
 
-  const gestures: BoardGestures = useBoardPointer({ row, placed, editable, camera, tool: tool.tool, selection, setSelection, setPreview: setGesturePreview, apply, used, newSection, newText, newArrow, edit, openMenu: (key, at) => setMenu({ key, ...at }), flushNudge, busy: Boolean(draft || confirm || picker || menu) });
+  const gestures: BoardGestures = useBoardPointer({ row, placed, editable, camera, tool: tool.tool, selection, setSelection, setPreview: setGesturePreview, apply, used, newSection, newText, newArrow, newCard: point => card && !card.off && card.create(point), edit, openMenu: (key, at) => setMenu({ key, ...at }), flushNudge, busy: Boolean(draft || confirm || picker || menu) });
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (!editable || typing(event.target) || draft || confirm || picker || menu) return;
@@ -307,7 +314,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const preview = gesturePreview ?? nudgePreview ?? draftPreview;
   const previewBoard = useMemo(() => preview ? place(preview) : undefined, [preview, place]);
 
-  return { editable, tool: tool.tool, sticky: tool.sticky, setTool, selection, setSelection, preview, previewBoard, overlay: gestures.overlay, draft, setDraft, commitDraft, cancelDraft: () => setDraft(undefined), focusBoard: () => camera.viewport.current?.focus({ preventScroll: true }), picker, closePicker: () => setPicker(undefined), pick: (to: BoardElementKey) => picker && newArrow(picker, to), openPicker, linkable, menu, closeMenu: () => setMenu(undefined), canLink: selection.size === 1 && linkable([...selection][0]), confirm, confirmRemove, cancelRemove: () => setConfirm(undefined), requestRemove, recolor, notice, canUndo: steps.past.length > 0, canRedo: steps.future.length > 0, undo: () => travel('undo'), redo: () => travel('redo'), handlers: { ...gestures.handlers, onPointerDown, onKeyDown, onKeyUp, onBlur } };
+  return { editable, apply, setNotice, card, tool: tool.tool, sticky: tool.sticky, setTool, selection, setSelection, preview, previewBoard, overlay: gestures.overlay, draft, setDraft, commitDraft, cancelDraft: () => setDraft(undefined), focusBoard: () => camera.viewport.current?.focus({ preventScroll: true }), picker, closePicker: () => setPicker(undefined), pick: (to: BoardElementKey) => picker && newArrow(picker, to), openPicker, linkable, menu, closeMenu: () => setMenu(undefined), canLink: selection.size === 1 && linkable([...selection][0]), confirm, confirmRemove, cancelRemove: () => setConfirm(undefined), requestRemove, recolor, notice, canUndo: steps.past.length > 0, canRedo: steps.future.length > 0, undo: () => travel('undo'), redo: () => travel('redo'), handlers: { ...gestures.handlers, onPointerDown, onKeyDown, onKeyUp, onBlur } };
 }
 export type BoardEditor = ReturnType<typeof useBoardEditor>;
 

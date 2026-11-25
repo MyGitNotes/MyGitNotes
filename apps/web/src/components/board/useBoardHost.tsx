@@ -1,4 +1,5 @@
 import { type ReactNode, useMemo } from 'react';
+import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import { boardsQuery, boardsRoute, noteRoute } from '../../lib/routes.js';
@@ -64,10 +65,12 @@ export function useBoardHost({ frame, notebookId, path, row, notebooks, sidePane
     if (!panel.note) return open(item, note);
     void panel.saved().then(saved => saved && open(item, note));
   };
+  /** A note the 卡片 tool created opens in the side panel with its title selected, or, without a panel, through `open`. */
+  const openCreated = <T extends NoteRef>(open: (note: T) => void) => (note: T) => enabled ? void panel.open(note, { title: true }) : open(note);
   // The board keeps its place whether the panel is open, so opening a card keeps its selection, undo and camera.
   const withPanel = (board: ReactNode, current: CompilationRow) => {
     if (!sidePanel) return board;
-    return <div className='board-with-panel'>{board} {panel.note && <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} leaving={panel.leaving} onClose={() => void panel.close()} />}</div>;
+    return <div className='board-with-panel'>{board} {panel.note && <BoardSidePanel key={panel.note.notebookId} note={panel.note} row={current} notebooks={notebooks} actions={sidePanel} leaving={panel.leaving} selectTitle={panel.selectTitle} onTitleSelected={panel.titleSelected} onClose={() => void panel.close()} />}</div>;
   };
-  return { page, reveal, leave, openCard, withPanel, saved: panel.saved };
+  return { page, reveal, leave, openCard, openCreated, withPanel, saved: panel.saved, panelNote: panel.note ? noteRefKey(panel.note) : undefined };
 }

@@ -16,6 +16,13 @@ export interface CompilationActions {
   repository: (notebookId: string) => string | undefined;
   /** Starts a note in the folder or tag a dynamic compilation draws from. */
   createNote?: (context?: { notebookId?: string; folder?: string; tag?: string; }) => void;
+  /**
+   * Creates a blank note as the New note action does (at the notebook root, or in the folder or with the tag given)
+   * without opening it, and gives it back: a board's 卡片 tool places it and opens it in the side panel.
+   */
+  createBoardNote?: (context: { notebookId: string; folder?: string; tag?: string; }) => Promise<NoteItem | undefined>;
+  /** Whether a notebook's new notes start as pending live notes, with no Git path until their first check-in. */
+  newNotesLive?: (notebookId: string) => boolean;
 }
 
 const CompilationActionsContext = createContext<CompilationActions | null>(null);

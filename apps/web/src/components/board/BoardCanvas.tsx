@@ -1,9 +1,11 @@
-import { type CSSProperties, useId, useState } from 'react';
+import { type CSSProperties, type DragEvent, type ReactNode, useId, useState } from 'react';
 import type { CompilationItem } from '@mygitnotes/core/compilation';
-import type { NoteListItem } from '@mygitnotes/core/note-query';
+import type { NoteListItem, NoteRef } from '@mygitnotes/core/note-query';
 import type { BoardElementKey, DrawnArrow, NoteLinkLine } from '../../lib/board/connections.js';
+import { BOARD_NOTE_TYPE, droppedNote } from '../../lib/board/drawer.js';
+import type { Point } from '../../lib/board/geometry.js';
 import type { PlacedBoard, PlacedCard } from '../../lib/board/placement.js';
-import { arrowLabelsShown, cardDetail, cardTitleStyle, sectionTitleSize } from '../../lib/board/zoom.js';
+import { arrowLabelsShown, cardDetail, cardTitleStyle, screenToBoard, sectionTitleSize } from '../../lib/board/zoom.js';
 import { useTranslation } from '../../lib/i18n/index.js';
 import { BoardCard, type CardView } from './BoardCard.js';
 import { BoardControls } from './BoardControls.js';
@@ -32,6 +34,10 @@ export interface BoardCanvasProps {
   dynamic: boolean;
   labels: readonly string[];
   titleOf: (key: BoardElementKey) => string;
+  /** A note dragged from the 筆記庫 drawer and dropped on the board, at a board point; without it the board takes no drop. */
+  onDropNote?: (note: NoteRef, at: Point) => void;
+  /** What floats over the board beside its tools: the selected card's 「＋N 相連」. */
+  overlay?: ReactNode;
 }
 
 /**
@@ -41,7 +47,7 @@ export interface BoardCanvasProps {
  * the eye only. Zoomed out, the board's CSS shows each card's title only, never under 12 px. On an editable board the
  * tools float at its top left, section titles, texts and arrows take focus, and the selection is marked.
  */
-export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptions, arrowTexts, phone, showNoteLinks, onNoteLinks, onOpen, camera, editor, dynamic, labels, titleOf }: BoardCanvasProps) {
+export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptions, arrowTexts, phone, showNoteLinks, onNoteLinks, onOpen, camera, editor, dynamic, labels, titleOf, onDropNote, overlay }: BoardCanvasProps) {
   const { t } = useTranslation();
   const ids = useId();
   const [focusedArrow, setFocusedArrow] = useState<string>();
@@ -60,10 +66,32 @@ export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptio
   const cardsOf = new Map(board.sections.map(section => [section.key, board.cards.filter(entry => entry.section === section.key)]));
   // The element typed in place is hidden under its field.
   const renaming = draft?.kind === 'rename' ? draft.key : undefined, rewriting = draft?.kind === 'text' ? draft.id : undefined;
+  // A note from the drawer is taken where it is dropped, the board marked while it is over it.
+  const [dropping, setDropping] = useState(false);
+  const carriesNote = (event: DragEvent<HTMLDivElement>) => Boolean(onDropNote) && [...event.dataTransfer.types].includes(BOARD_NOTE_TYPE);
+  const drop = {
+    onDragOver: (event: DragEvent<HTMLDivElement>) => {
+      if (!carriesNote(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      setDropping(true);
+    },
+    onDragLeave: (event: DragEvent<HTMLDivElement>) => {
+      if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDropping(false);
+    },
+    onDrop: (event: DragEvent<HTMLDivElement>) => {
+      setDropping(false);
+      const note = carriesNote(event) ? droppedNote(event.dataTransfer.getData(BOARD_NOTE_TYPE)) : undefined;
+      if (!note || !onDropNote) return;
+      event.preventDefault();
+      const box = event.currentTarget.getBoundingClientRect();
+      onDropNote(note, screenToBoard(view, { x: event.clientX - box.left, y: event.clientY - box.top }));
+    },
+  };
   const resizable = editable && !dynamic && selection.size === 1 ? board.sections.find(section => selection.has(`section:${section.key}`)) : undefined;
   return (
     <div className='board-stage' data-phone={phone || undefined} data-editable={editable || undefined} data-tool={editable ? editor.tool : undefined} onKeyDown={editor.handlers.onKeyDown} onKeyUp={editor.handlers.onKeyUp} onBlur={editor.handlers.onBlur}>
-      <div ref={viewport} role='region' aria-label={title} tabIndex={editable ? -1 : undefined} className='board-viewport' style={{ backgroundSize: `${gridStep}px ${gridStep}px`, backgroundPosition: `${view.x}px ${view.y}px` }} data-ready={ready || undefined} onPointerDown={editor.handlers.onPointerDown} onPointerMove={editor.handlers.onPointerMove} onPointerUp={editor.handlers.onPointerUp} onPointerCancel={editor.handlers.onPointerCancel} onClickCapture={editor.handlers.onClickCapture} onDoubleClick={editor.handlers.onDoubleClick} onContextMenu={editor.handlers.onContextMenu} onFocus={editor.handlers.onFocus} onScroll={editor.handlers.onScroll}>
+      <div ref={viewport} role='region' aria-label={title} tabIndex={editable ? -1 : undefined} className='board-viewport' style={{ backgroundSize: `${gridStep}px ${gridStep}px`, backgroundPosition: `${view.x}px ${view.y}px` }} data-ready={ready || undefined} data-dropping={dropping || undefined} {...onDropNote ? drop : {}} onPointerDown={editor.handlers.onPointerDown} onPointerMove={editor.handlers.onPointerMove} onPointerUp={editor.handlers.onPointerUp} onPointerCancel={editor.handlers.onPointerCancel} onClickCapture={editor.handlers.onClickCapture} onDoubleClick={editor.handlers.onDoubleClick} onContextMenu={editor.handlers.onContextMenu} onFocus={editor.handlers.onFocus} onScroll={editor.handlers.onScroll}>
         <div className='board-layer' style={layerStyle} data-detail={cardDetail(zoom)} data-arrow-labels={arrowLabelsShown(zoom) || undefined} data-animated={animated || undefined}>
           {board.sections.map(section => <div key={section.key} className='board-section-frame' aria-hidden='true' data-selected={selected(`section:${section.key}`)} style={{ left: section.rect.x, top: section.rect.y, width: section.rect.w, height: section.rect.h }} />)}
           <BoardLines noteLinks={showNoteLinks ? noteLinks : []} arrows={arrows} editable={editable} selection={selection} focused={focusedArrow} />
@@ -104,6 +132,7 @@ export function BoardCanvas({ title, board, arrows, noteLinks, views, descriptio
         <div hidden>{[...descriptions].map(([key, text]) => <span key={key} id={`${ids}-d-${key}`}>{text}</span>)}</div>
       </div>
       {editable && <BoardTools editor={editor} dynamic={dynamic} />}
+      {overlay}
       {editable && <BoardFieldEditor editor={editor} board={board} arrows={arrows} camera={view} labels={labels} />}
       {editable && <BoardContextMenu editor={editor} />}
       {editable && <BoardDialogs editor={editor} board={board} titleOf={titleOf} dynamic={dynamic} />}

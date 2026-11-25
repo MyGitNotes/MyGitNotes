@@ -19,14 +19,17 @@ import type { BoardPanelActions } from './useBoardPanel.js';
 import './board-panel.css';
 
 const KEY_STEP = 16;
+/** How long the panel waits for a new note's editor to offer its title for renaming. */
+const TITLE_WAIT = 10_000;
 
 /**
  * The side panel of a board (白板筆記欄): the note of the card opened, in the hosted editor a Focus pane uses, so it is
  * edited in place with the same drafts, saving and live checkout. Its head has the note's path, 「開進 Focus」 (only for
  * a note of the notebook whose Focus it is), 「全螢幕」 and ✕; under it the boards of the notebook that hold the note,
  * each opening that board with the note's card centred and selected. Its divider resizes it; the width is kept on this device.
+ * With `selectTitle` (a note the 卡片 tool just created) it opens the editor's title for typing, its text selected, once the editor offers it.
  */
-export function BoardSidePanel({ note, row, notebooks, actions, leaving = false, onClose }: { note: NoteRef; row: CompilationRow; notebooks: readonly NotebookConfig[]; actions: BoardPanelActions; /** Back or Forward waits for its note to be saved: it takes no input meanwhile. */ leaving?: boolean; onClose: () => void; }) {
+export function BoardSidePanel({ note, row, notebooks, actions, leaving = false, selectTitle = false, onTitleSelected, onClose }: { note: NoteRef; row: CompilationRow; notebooks: readonly NotebookConfig[]; actions: BoardPanelActions; /** Back or Forward waits for its note to be saved: it takes no input meanwhile. */ leaving?: boolean; selectTitle?: boolean; onTitleSelected?: () => void; onClose: () => void; }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const editing = useNoteEditing();
@@ -39,6 +42,29 @@ export function BoardSidePanel({ note, row, notebooks, actions, leaving = false,
     if (leaving) aside.current?.setAttribute('inert', '');
     else aside.current?.removeAttribute('inert');
   }, [leaving]);
+  // The title's rename field selects its text as it opens (NoteTitleEdit).
+  useEffect(() => {
+    const root = aside.current;
+    if (!selectTitle || !root) return;
+    const open = () => {
+      const button = root.querySelector<HTMLButtonElement>('.board-panel-editor button.title-rename:not(:disabled)');
+      if (!button) return false;
+      button.click();
+      onTitleSelected?.();
+      return true;
+    };
+    if (open()) return;
+    const observer = new MutationObserver(() => open() && observer.disconnect());
+    observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] });
+    const timer = setTimeout(() => {
+      observer.disconnect();
+      onTitleSelected?.();
+    }, TITLE_WAIT);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, [selectTitle, onTitleSelected]);
   const lookup = useNoteLookup([note], false);
   const listed = lookup.notes[0];
   const repository = new Set(repositoryNotebooks(notebooks, row.notebookId).map(book => book.id));

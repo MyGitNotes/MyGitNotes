@@ -36,6 +36,8 @@ export function useBoardPanel({ enabled, row, notebooks }: { enabled: boolean; r
   const note = enabled && row && query.note ? boardPanelNote(query.note, row, notebooks) : undefined;
   const key = note ? noteRefKey(note) : undefined;
   const [leaving, setLeaving] = useState(false);
+  // The note whose title the panel selects once it shows it: a note the 卡片 tool just created.
+  const [titleFor, setTitleFor] = useState<string>();
   const { flushEditors } = editing;
   const flush = useCallback((keys: string | undefined) => keys ? flushEditors([keys]) : Promise.resolve(true), [flushEditors]);
   const guard = useCallback(async () => {
@@ -54,9 +56,10 @@ export function useBoardPanel({ enabled, row, notebooks }: { enabled: boolean; r
     const search = next.toString();
     return { pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash };
   };
-  const open = async (next: NoteRef) => {
+  const open = async (next: NoteRef, { title = false }: { title?: boolean; } = {}) => {
     if (note && sameNote(note, next)) return;
     if (!await flush(key)) return;
+    setTitleFor(title ? noteRefKey(next) : undefined);
     const to = searchWith(search => {
       search.set('note', next.path);
       search.delete('card');
@@ -77,6 +80,7 @@ export function useBoardPanel({ enabled, row, notebooks }: { enabled: boolean; r
   };
   /** Saves the shown note's editor before the board opens something elsewhere. */
   const saved = () => flush(key);
-  return { note, leaving, open, close, saved };
+  const titleSelected = useCallback(() => setTitleFor(undefined), []);
+  return { note, leaving, open, close, saved, selectTitle: key !== undefined && titleFor === key, titleSelected };
 }
 export type BoardPanel = ReturnType<typeof useBoardPanel>;
