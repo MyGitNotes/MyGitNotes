@@ -20,6 +20,11 @@ export interface WorkspaceDocumentClient<T> {
    * the repository's committed file is where it starts while the device keeps none. A local workspace still saves it.
    */
   deviceKey?: string;
+  /**
+   * This device's copy with the changes a draft of an earlier version made from its `base`, or undefined when the two
+   * changed the same thing differently: a device document's draft is adopted only so, never written over the copy.
+   */
+  mergeDevice?(device: T, draft: T, base: T): T | undefined;
 }
 interface Snapshot<T> {
   page: T;
@@ -89,21 +94,31 @@ function writeDeviceDocument<T>(client: WorkspaceDocumentClient<T>, repository: 
 }
 
 /**
- * Turns the drafts of device documents an earlier version left waiting in Changes into this device's copies: a draft
- * is the arrangement last made in this browser, so it replaces the copy and leaves Changes. A draft that cannot be read
+ * Turns the drafts of device documents an earlier version left waiting in Changes into this device's copies, so they
+ * leave Changes. While the device keeps no copy, the draft becomes it; a copy that differs takes the draft's changes
+ * only where `mergeDevice` finds none of its own in their way (a tab of the earlier version still open writes such
+ * drafts from what it read before). A draft that cannot be read or merged, or one beside a copy that cannot be read,
  * stays where it is, for Settings to discard with the repository's other drafts.
  */
 export function adoptDeviceDrafts(clients: WorkspaceDocumentClient<unknown>[], repositories: DocumentRepository[]): void {
   for (const client of clients) {
     if (!client.deviceKey) continue;
     for (const repository of repositories) {
-      let draft;
+      let draft, kept;
       try {
         draft = readDocumentDraft(client, repository, client.document.empty());
       } catch {
         continue;
       }
-      if (draft && writeDeviceDocument(client, repository, draft.page)) localStorage.removeItem(documentDraftKey(client, repository.id));
+      if (!draft) continue;
+      try {
+        kept = readDeviceDocument(client, repository);
+      } catch {
+        continue;
+      }
+      const next = kept === undefined ? draft.page : same(kept, draft.page) ? kept : client.mergeDevice?.(kept, draft.page, draft.base);
+      if (next === undefined) continue;
+      if (next === kept || writeDeviceDocument(client, repository, next)) localStorage.removeItem(documentDraftKey(client, repository.id));
     }
   }
 }
@@ -203,15 +218,16 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
       if (currentKey.current !== key || request !== loadRequest.current) return;
       if (device) {
         const owned = { id: repository, alias };
-        adoptDeviceDrafts([client as WorkspaceDocumentClient<unknown>], [owned]);
-        let kept: T | undefined;
-        try {
-          kept = readDeviceDocument(client, owned);
-        } catch (error) {
-          // Reloading drops a copy that cannot be read, and the device starts again from the committed file.
-          if (!discard) throw error;
-          localStorage.removeItem(device);
+        // Reloading drops a copy that cannot be read, and the device starts again from the committed file, or a draft.
+        if (discard) {
+          try {
+            readDeviceDocument(client, owned);
+          } catch {
+            localStorage.removeItem(device);
+          }
         }
+        adoptDeviceDrafts([client as WorkspaceDocumentClient<unknown>], [owned]);
+        const kept = readDeviceDocument(client, owned);
         base.current = record.page;
         current.current = kept ?? record.page;
         draftIdentity.current = undefined;

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyFocusPage, type FocusPage } from '@mygitnotes/core/focus-page';
 import { focusDocumentClient, useFocusPage } from './use-focus-page.js';
 import { adoptDeviceDrafts, deviceDocumentKey, documentDraftKey, pendingDocumentDrafts } from './use-workspace-document.js';
@@ -96,4 +96,56 @@ it('still saves a local workspace Focus change to the repository', async () => {
   expect(hook.result.current.dirty).toBe(false);
   expect(localStorage.getItem(draftKey)).toBeNull();
   expect(localStorage.getItem(deviceKey)).toBeNull();
+});
+
+describe('a Focus draft an old tab writes after this device keeps its own layout', () => {
+  const focus = (id: string, name: string, notebookId: string, tabs: string[] = []): FocusPage['focuses'][number] => ({ id, notebookId, name, root: { kind: 'pane', id: 'p1', tabs: tabs.map(path => ({ kind: 'note' as const, path })) } });
+  /** The page with its notebooks named by local id, as storage keeps it, or by key, as the browser does. */
+  const page = (notebookId: string, ...focuses: [string, string, string[]?][]): FocusPage => ({ version: 2, focuses: focuses.map(([id, name, tabs]) => focus(id, name, notebookId, tabs)) });
+  const committed = (n: string) => page(n, ['f1', 'Reading', ['notes/a.md']]);
+  /** The old tab still holds the committed page and writes a draft of it with one change, as it did before migration. */
+  const oldDraft = (draftPage: FocusPage) => localStorage.setItem(draftKey, JSON.stringify({ page: draftPage, base: committed('n'), revision: 'r1', id: 'd2', ancestors: [] }));
+
+  it('takes the change the old tab made to another Focus and keeps the Focus this device added', async () => {
+    serve(committed('kb~n'));
+    // This device added "Writing" after adopting the old tab's first draft; the old tab then renamed "Reading".
+    localStorage.setItem(deviceKey, JSON.stringify({ page: page('n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Writing', ['notes/b.md']]) }));
+    oldDraft(page('n', ['f1', 'Reading list', ['notes/a.md']]));
+    const hook = renderHook(() => useFocusPage(repo, () => {}, true));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    expect(hook.result.current.page).toEqual(page('kb~n', ['f1', 'Reading list', ['notes/a.md']], ['f2', 'Writing', ['notes/b.md']]));
+    expect(localStorage.getItem(draftKey)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(page('n', ['f1', 'Reading list', ['notes/a.md']], ['f2', 'Writing', ['notes/b.md']]));
+  });
+
+  it('keeps this device’s layout, and the old draft for recovery, when both changed the same Focus', async () => {
+    serve(committed('kb~n'));
+    const mine = page('n', ['f1', 'Reading', ['notes/a.md', 'notes/c.md']], ['f2', 'Writing']);
+    localStorage.setItem(deviceKey, JSON.stringify({ page: mine }));
+    const hook = renderHook(() => useFocusPage(repo, () => {}, true));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    // The old tab writes its draft while this one is open: the storage event reloads the layout.
+    oldDraft(page('n', ['f1', 'Reading', ['notes/d.md']]));
+    act(() => void window.dispatchEvent(new StorageEvent('storage', { key: draftKey })));
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    expect(hook.result.current.page).toEqual(page('kb~n', ['f1', 'Reading', ['notes/a.md', 'notes/c.md']], ['f2', 'Writing']));
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(mine);
+    expect(JSON.parse(localStorage.getItem(draftKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/d.md']]));
+  });
+
+  it('keeps a Focus this device removed, which the old draft still holds as it was', () => {
+    localStorage.setItem(deviceKey, JSON.stringify({ page: page('n', ['f2', 'Writing']) }));
+    oldDraft(page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'New in old tab']));
+    adoptDeviceDrafts(WORKSPACE_DOCUMENT_CLIENTS, [repo]);
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(page('n', ['f2', 'Writing'], ['f3', 'New in old tab']));
+    expect(localStorage.getItem(draftKey)).toBeNull();
+  });
+
+  it('keeps both when the merged page would name two Focuses alike', () => {
+    localStorage.setItem(deviceKey, JSON.stringify({ page: page('n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Same']) }));
+    oldDraft(page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Same']));
+    adoptDeviceDrafts(WORKSPACE_DOCUMENT_CLIENTS, [repo]);
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Same']));
+    expect(localStorage.getItem(draftKey)).not.toBeNull();
+  });
 });
