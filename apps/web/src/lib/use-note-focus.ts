@@ -333,10 +333,12 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
   const deviceMoves = useRef<{ notebookId: string; move: (path: string) => string; }[]>([]);
   const relocateDevice = () => {
     if (!page.device || !page.writable || deviceMoves.current.length === 0) return;
-    const next = structuredClone(page.page);
+    // On the layout last written, not this render's page: a second move in one render follows the first. A move stays
+    // queued until a write that holds it succeeds.
+    const next = structuredClone(page.latest());
     let moved = false;
-    for (const { notebookId: movedNotebookId, move } of deviceMoves.current.splice(0)) moved = relocateFocusPaths(next, movedNotebookId, move) || moved;
-    if (moved) page.change(next);
+    for (const { notebookId: movedNotebookId, move } of deviceMoves.current) moved = relocateFocusPaths(next, movedNotebookId, move) || moved;
+    if (!moved || page.change(next)) deviceMoves.current = [];
   };
   const pendingDevice = useRef(relocateDevice);
   useEffect(() => {

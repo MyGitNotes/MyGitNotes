@@ -15,7 +15,27 @@ const SCOPE = 'use-note-focus-test', REPOSITORY = 'github:owner/kb@main', NOTEBO
 const storageKey = `github-notes:focus-view:${REPOSITORY}:${NOTEBOOK}`;
 
 function fakeController(): FocusPageController {
-  return { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: 'local:/workspace', file: '.github-notes-focus.yaml', device: false, page: emptyFocusPage(), change: () => {}, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
+  return {
+    client: focusDocumentClient as WorkspaceDocumentClient<unknown>,
+    repository: 'local:/workspace',
+    file: '.github-notes-focus.yaml',
+    device: false,
+    page: emptyFocusPage(),
+    latest() {
+      return this.page;
+    },
+    change: () => true,
+    save: async () => {},
+    reload: async () => {},
+    refresh: async () => {},
+    loading: false,
+    saving: false,
+    dirty: false,
+    error: '',
+    writable: true,
+    setError: () => {},
+    diff: '',
+  };
 }
 /** The tabs of the `index`-th pane in pane order. */
 const tabsAt = (layout: FocusLayout | null | undefined, index: number) => layout ? focusPanes(layout)[index]?.tabs : undefined;
@@ -457,7 +477,7 @@ describe('useNoteFocus relocatePaths', () => {
     const move = (path: string) => path === 'notes/old.md' ? 'notes/new.md' : path;
     for (const device of [true, false]) {
       const changes: unknown[] = [];
-      const page: FocusPageController = { ...fakeController(), device, page: named, change: next => changes.push(next) };
+      const page: FocusPageController = { ...fakeController(), device, page: named, change: next => Boolean(changes.push(next)) };
       const { result, unmount } = renderHook(() => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
       await waitFor(() => expect(result.current.layout).not.toBeNull());
       act(() => result.current.relocatePaths(NOTEBOOK, move));
@@ -471,7 +491,7 @@ describe('useNoteFocus relocatePaths', () => {
   it("moves this device's named Focuses once their layout has loaded, when the move was heard while it loaded", async () => {
     const named = { version: 2 as const, focuses: [{ id: 'f1', notebookId: NOTEBOOK, name: 'Reading', root: { kind: 'pane' as const, id: 'p1', tabs: [{ kind: 'note' as const, path: 'notes/old.md' }] } }] };
     const changes: unknown[] = [];
-    const loaded = (writable: boolean): FocusPageController => ({ ...fakeController(), device: true, writable, loading: !writable, page: named, change: next => changes.push(next) });
+    const loaded = (writable: boolean): FocusPageController => ({ ...fakeController(), device: true, writable, loading: !writable, page: named, change: next => Boolean(changes.push(next)) });
     const { result, rerender } = renderHook(({ page }) => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper, initialProps: { page: loaded(false) } });
     await waitFor(() => expect(result.current.layout).not.toBeNull());
     act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/mid.md' : path));
@@ -483,6 +503,38 @@ describe('useNoteFocus relocatePaths', () => {
     rerender({ page: loaded(false) });
     rerender({ page: loaded(true) });
     expect(changes).toHaveLength(1);
+  });
+
+  it('follows two moves heard in one render on the layout last written, and keeps a move whose write failed queued', async () => {
+    const named = { version: 2 as const, focuses: [{ id: 'f1', notebookId: NOTEBOOK, name: 'Reading', root: { kind: 'pane' as const, id: 'p1', tabs: [{ kind: 'note' as const, path: 'notes/old.md' }] } }] };
+    const at = (path: string) => ({ ...named, focuses: [{ ...named.focuses[0], root: { ...named.focuses[0].root, tabs: [{ kind: 'note' as const, path }] } }] });
+    let written: typeof named = named, refuse = false;
+    const changes: unknown[] = [];
+    // The page this render shows stays `named`; `latest` is what the controller last wrote.
+    const page: FocusPageController = {
+      ...fakeController(),
+      device: true,
+      page: named,
+      latest: () => written,
+      change: next => {
+        if (refuse) return false;
+        changes.push(next);
+        written = next as typeof named;
+        return true;
+      },
+    };
+    const { result } = renderHook(() => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => {
+      result.current.relocatePaths(NOTEBOOK, path => path === 'notes/old.md' ? 'notes/mid.md' : path);
+      result.current.relocatePaths(NOTEBOOK, path => path === 'notes/mid.md' ? 'notes/new.md' : path);
+    });
+    expect(changes).toEqual([at('notes/mid.md'), at('notes/new.md')]);
+    refuse = true;
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path === 'notes/new.md' ? 'notes/last.md' : path));
+    refuse = false;
+    act(() => result.current.relocatePaths(NOTEBOOK, path => path));
+    expect(changes.at(-1)).toEqual(at('notes/last.md'));
   });
 
   it('keeps the moved note the shown tab of its pane, in the (current) Focus and a named one, instead of showing another tab', async () => {
