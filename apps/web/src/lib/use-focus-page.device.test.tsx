@@ -148,4 +148,33 @@ describe('a Focus draft an old tab writes after this device keeps its own layout
     expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Same']));
     expect(localStorage.getItem(draftKey)).not.toBeNull();
   });
+
+  it('merges an edit made from a layout another tab replaced before this one heard of it (old tab C, new tabs A and B)', async () => {
+    serve(committed('kb~n'));
+    const b = renderHook(() => useFocusPage(repo, () => {}, true));
+    await waitFor(() => expect(b.result.current.loading).toBe(false));
+    // In an earlier task, C added "Old tab" and A adopted it into the device layout; B has not heard of it yet.
+    localStorage.setItem(deviceKey, JSON.stringify({ page: page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab']) }));
+    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Mine'])));
+    const both = page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab'], ['f2', 'Mine']);
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(both);
+    expect(b.result.current.page).toEqual(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab'], ['f2', 'Mine']));
+    expect(b.result.current.error).toBe('');
+    // B's next edit starts from what it wrote, so it is no conflict.
+    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab'])));
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab']));
+  });
+
+  it('writes nothing over a layout another tab changed the same Focus in: the edit waits as a draft and the view shows the stored one', async () => {
+    serve(committed('kb~n'));
+    const b = renderHook(() => useFocusPage(repo, () => {}, true));
+    await waitFor(() => expect(b.result.current.loading).toBe(false));
+    const theirs = page('n', ['f1', 'Reading', ['notes/x.md']]);
+    localStorage.setItem(deviceKey, JSON.stringify({ page: theirs }));
+    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/y.md']])));
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(theirs);
+    expect(JSON.parse(localStorage.getItem(draftKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/y.md']]));
+    expect(b.result.current.page).toEqual(page('kb~n', ['f1', 'Reading', ['notes/x.md']]));
+    expect(b.result.current.error).toBe('focus.conflict');
+  });
 });

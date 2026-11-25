@@ -32,7 +32,7 @@ const stored = () => JSON.parse(localStorage.getItem(storageKey) ?? 'null') as {
 const movedTo = (path: string) => new ApiError('This live note was checked in and filed.', 404, undefined, undefined, false, { movedTo: path });
 
 function controller(): FocusPageController {
-  return { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: 'local:/workspace', file: '.github-notes-focus.yaml', device: false, page: emptyFocusPage(), change: () => {}, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
+  return { client: focusDocumentClient as WorkspaceDocumentClient<unknown>, repository: 'local:/workspace', file: '.github-notes-focus.yaml', device: false, page: emptyFocusPage(), latest: emptyFocusPage, change: () => true, save: async () => {}, reload: async () => {}, refresh: async () => {}, loading: false, saving: false, dirty: false, error: '', writable: true, setError: () => {}, diff: '' };
 }
 let client: QueryClient;
 const wrapper = ({ children }: { children: ReactNode; }) => createElement(QueryClientProvider, { client }, children);
