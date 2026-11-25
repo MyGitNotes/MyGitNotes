@@ -2,6 +2,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { applyTagEntries, PartialTagChangeError, skippedTagNotice, wasSkipped } from './tag-changes.js';
 import type { WorkspaceRepository } from './workspace-repositories.js';
 import { DEFAULT_WORKSPACE_PREFERENCES } from '@mygitnotes/core/workspace-preferences';
+import { en } from './i18n/en.js';
+import { zhTW } from './i18n/zh-TW.js';
 
 const home: WorkspaceRepository = { id: 'github:me/notes@main', alias: 'notes', type: 'github', branch: 'main', revision: 'a'.repeat(40), write: true, notebooks: ['notes~life'], title: 'notes', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
 const other: WorkspaceRepository = { id: 'github:me/campaign@main', alias: 'campaign', type: 'github', branch: 'main', revision: 'b'.repeat(40), write: true, notebooks: ['campaign~trpg'], title: 'campaign', defaultNotebook: null, preferences: DEFAULT_WORKSPACE_PREFERENCES, config: null, configRevision: '' };
@@ -73,4 +75,13 @@ it('answers the compilations each repository skipped, with their notebook, and k
   const error = await applyTagEntries([home, other], entries, 'rename', () => {}).catch(caught => caught);
   expect(error).toBeInstanceOf(PartialTagChangeError);
   expect(error.skipped).toEqual([{ ...skipped, path: 'notes/life/a.md', notebookId: 'notes~life' }]);
+});
+
+it('names only the skipped files and why, claiming nothing about the others, in every language', () => {
+  for (const dictionary of [en, zhTW]) {
+    const t = (key: keyof typeof en, params: Record<string, string | number> = {}) => dictionary[key].replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name]));
+    const notice = skippedTagNotice(t as never, [{ path: 'notes/life/c.compilation.yml', reason: 'Tags not written', notebookId: 'notes~life' }]);
+    expect(notice).toContain('notes/life/c.compilation.yml (Tags not written)');
+    expect(notice).not.toMatch(/Every other|其餘/);
+  }
 });

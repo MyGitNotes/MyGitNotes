@@ -56,6 +56,18 @@ it('answers a refused local compilation write as a tool error and leaves the fil
   const tagged = await tool('update_note_metadata', { path: file, tags: ['new'] });
   expect(tagged.isError).toBeFalsy();
   expect(fs.readFileSync(path.join(repo, file), 'utf8')).toBe(spaced.replace('status: &state', 'tags:\n  - new\nstatus: &state'));
+
+  // A folder source outside every notebook root does not open in this repository, so tags are not written into it.
+  const outside = 'version: 1\nid: c\ntitle: C\narrangement: lane\nsource: { kind: folder, path: elsewhere }\n';
+  fs.writeFileSync(path.join(repo, file), outside);
+  await stageAndCommit(repo, [file], 'folder outside the roots');
+  const outsideHead = await head();
+  for (const answer of [await tool('update_note_metadata', { path: file, tags: ['new'] }), await tool('save_note', { path: file, content: outside, tags: ['new'] })]) {
+    expect(answer.isError).toBe(true);
+    expect(JSON.parse(answer.content[0].text).error).toMatch(new RegExp(`^${file}: Tags and status not written: the compilation would not open`));
+  }
+  expect(fs.readFileSync(path.join(repo, file), 'utf8')).toBe(outside);
+  expect(await head()).toBe(outsideHead);
 });
 
 it('refuses a remote compilation write that would not open, writing nothing', async () => {

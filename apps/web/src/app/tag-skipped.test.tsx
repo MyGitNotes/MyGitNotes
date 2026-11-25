@@ -52,3 +52,56 @@ it('names the skipped compilation after a workspace tag rename', async () => {
   expect(params.setActionError).toHaveBeenLastCalledWith(notice);
   expect(hook.result.current.tagOperations.history[0].plan.affected.map(entry => entry.path)).toEqual([note.path]);
 });
+
+it('keeps an undo whose compilation was skipped for that compilation alone, so a retry can restore it', async () => {
+  let skip = false;
+  const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body));
+    const skipped = skip ? body.entries.filter((entry: { path: string; }) => entry.path === compilation.path).map((entry: { path: string; }) => ({ path: entry.path, reason })) : [];
+    const written = body.entries.filter((entry: { path: string; }) => !skipped.some((file: { path: string; }) => file.path === entry.path)).map((entry: { path: string; }) => entry.path);
+    return new Response(JSON.stringify({ success: true, changedPaths: written, revision: 'b'.repeat(40), ...(skipped.length ? { skipped } : {}) }), { headers: { 'Content-Type': 'application/json' } });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const queryClient = { fetchQuery: vi.fn(async () => ({ notes: [note, compilation] })) };
+  const params = { queryClient: queryClient as never, queryScope: { sourceId: 's', revisions: {}, repositories: { 'notes~life': repository.id } } as never, repositories: [repository], remote: true, canWrite: true, t: t as never, invalidateNotes: vi.fn(), setRepositoryRevision: vi.fn(), setActionError: vi.fn() };
+  const hook = renderHook(() => useTagWorkspaceOperations(params));
+  await act(() => hook.result.current.handleRenameTag('todo', 'doing'));
+  expect(hook.result.current.tagOperations.history[0].plan.affected.map(entry => entry.path)).toEqual([note.path, compilation.path]);
+
+  // The compilation became one that would not open: the undo restores the note and keeps the compilation for a retry.
+  skip = true;
+  const id = hook.result.current.tagOperations.history[0].id;
+  await act(() => hook.result.current.handleUndoTagOperation(id));
+  expect(params.setActionError).toHaveBeenLastCalledWith(notice);
+  expect(hook.result.current.tagOperations.history.map(record => [record.id, record.plan.affected.map(entry => entry.path)])).toEqual([[id, [compilation.path]]]);
+
+  // Fixed, the retry restores only the compilation and clears the record.
+  skip = false;
+  await act(() => hook.result.current.handleUndoTagOperation(id));
+  expect(JSON.parse(String(fetchMock.mock.calls.at(-1)![1].body)).entries.map((entry: { path: string; }) => entry.path)).toEqual([compilation.path]);
+  expect(hook.result.current.tagOperations.history).toEqual([]);
+});
+
+it('keeps the undo of a repository that failed after another skipped a file, and names both', async () => {
+  const other: WorkspaceRepository = { ...repository, id: 'github:me/campaign@main', alias: 'campaign', notebooks: ['campaign~trpg'], title: 'campaign' };
+  const far: NoteListItem = { ...note, id: 'b', path: 'trpg/b.md', notebookId: 'campaign~trpg' };
+  let fail = false;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (fail && body.repository === other.id) return new Response(JSON.stringify({ error: 'The repository changed.' }), { status: 409 });
+      const skipped = fail ? body.entries.filter((entry: { path: string; }) => entry.path === compilation.path).map((entry: { path: string; }) => ({ path: entry.path, reason })) : [];
+      return new Response(JSON.stringify({ success: true, changedPaths: body.entries.map((entry: { path: string; }) => entry.path).filter((path: string) => path !== compilation.path || !fail), revision: 'b'.repeat(40), ...(skipped.length ? { skipped } : {}) }), { headers: { 'Content-Type': 'application/json' } });
+    }),
+  );
+  const queryClient = { fetchQuery: vi.fn(async () => ({ notes: [note, compilation, far] })) };
+  const params = { queryClient: queryClient as never, queryScope: { sourceId: 's', revisions: {}, repositories: { 'notes~life': repository.id, 'campaign~trpg': other.id } } as never, repositories: [repository, other], remote: true, canWrite: true, t: t as never, invalidateNotes: vi.fn(), setRepositoryRevision: vi.fn(), setActionError: vi.fn() };
+  const hook = renderHook(() => useTagWorkspaceOperations(params));
+  await act(() => hook.result.current.handleRenameTag('todo', 'doing'));
+  fail = true;
+  const id = hook.result.current.tagOperations.history[0].id;
+  await act(() => hook.result.current.handleUndoTagOperation(id));
+  expect(params.setActionError).toHaveBeenLastCalledWith(`The repository changed. ${notice}`);
+  expect(hook.result.current.tagOperations.history[0].plan.affected.map(entry => entry.path)).toEqual([compilation.path, far.path]);
+});

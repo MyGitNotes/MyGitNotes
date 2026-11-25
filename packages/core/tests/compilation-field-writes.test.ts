@@ -104,6 +104,51 @@ describe('a tag or status write over a valid compilation', () => {
   });
 });
 
+describe('a tag or status write replacing a field in place', () => {
+  const simple = 'version: 1\nid: s\ntitle: S\narrangement: lane\nstatus: |-\n  draft\nsource: { kind: tag, tag: x }\n';
+
+  it('keeps the line break that ends a block value, with LF, CRLF, before the next key and before `...`', () => {
+    expect(applyCompilationMetadata(simple, { tags: [], status: 'done' })).toBe(simple.replace('status: |-\n  draft\n', 'status: done\n'));
+    const crlf = simple.replace(/\n/g, '\r\n');
+    expect(applyCompilationMetadata(crlf, { tags: [], status: 'done' })).toBe(crlf.replace('status: |-\r\n  draft\r\n', 'status: done\r\n'));
+    const last = 'version: 1\nid: s\ntitle: S\narrangement: lane\nsource: { kind: tag, tag: x }\nstatus: |-\n  draft\n...\n';
+    expect(applyCompilationMetadata(last, { tags: [], status: 'done' })).toBe(last.replace('status: |-\n  draft\n', 'status: done\n'));
+    const tagsBlock = simple.replace('status: |-\n  draft\n', 'tags:\n  - a\n');
+    expect(replaceCompilationTags(tagsBlock, ['b'])).toBe(tagsBlock.replace('  - a\n', '  - b\n'));
+    expect(replaceCompilationTags(tagsBlock.replace(/\n/g, '\r\n'), ['b'])).toBe(tagsBlock.replace('  - a\n', '  - b\n').replace(/\n/g, '\r\n'));
+  });
+
+  it('keeps a comment on the field line and after the value', () => {
+    const commented = simple.replace('status: |-\n  draft\n', 'status: # where it stands\n  draft\n');
+    const next = applyCompilationMetadata(commented, { tags: [], status: 'done' });
+    expect(next).toBe(simple.replace('status: |-\n  draft\n', 'status: # where it stands\n  done\n'));
+    expect(parseCompilation(next).status).toBe('done');
+    const after = simple.replace('status: |-\n  draft\n', 'status: draft # where it stands\n');
+    expect(applyCompilationMetadata(after, { tags: [], status: 'done' })).toBe(after.replace('draft #', 'done #'));
+    const quoted = simple.replace('status: |-\n  draft\n', 'status: "draft # not a comment"\n');
+    expect(applyCompilationMetadata(quoted, { tags: [], status: 'done' })).toBe(quoted.replace('"draft # not a comment"', '"done"'));
+    const tags = simple.replace('status: |-\n  draft\n', 'tags: # topics\n  - a\n');
+    const retagged = replaceCompilationTags(tags, ['a', 'b']);
+    expect(retagged).toBe(tags.replace('  - a\n', '  - a\n  - b\n'));
+    expect(parseCompilation(retagged).tags).toEqual(['a', 'b']);
+    const empty = simple.replace('status: |-\n  draft\n', 'status: # to decide\n');
+    expect(applyCompilationMetadata(empty, { tags: [], status: 'done' })).toBe(empty.replace('# to decide\n', '# to decide\n  done\n'));
+    expect(applyCompilationMetadata(empty.replace(' # to decide', ''), { tags: [], status: 'done' })).toBe(simple.replace('|-\n  draft', 'done'));
+    const flow = simple.replace('status: |-\n  draft\n', 'tags: # topics\n  [a]\n');
+    expect(replaceCompilationTags(flow, ['b'])).toBe(flow.replace('[a]', '[b]'));
+  });
+
+  it('keeps a byte order mark when the first field is written or removed', () => {
+    const bom = '\uFEFFtags: [old]\nversion: 1\nid: s\ntitle: S\narrangement: lane\nsource: { kind: tag, tag: x }\n';
+    expect(replaceCompilationTags(bom, [])).toBe(bom.replace('tags: [old]\n', ''));
+    expect(replaceCompilationTags(bom, ['new'])).toBe(bom.replace('[old]', '[new]'));
+    const later = '\uFEFFversion: 1\nid: s\ntitle: S\narrangement: lane\nsource: { kind: tag, tag: x }\n';
+    const added = replaceCompilationTags(later, ['a']);
+    expect(added.startsWith('\uFEFF')).toBe(true);
+    expect(parseCompilation(added).tags).toEqual(['a']);
+  });
+});
+
 describe('a tag or status write it refuses', () => {
   it.each([['a string', 'thesis'], ['a number', 3], ['a list with a number', ['thesis', 3]], ['a list with an object', [{ name: 'x' }]]])('refuses tags given as %s', (_name, tags) => {
     expect(() => applyCompilationMetadata(board, { tags, status: 'working' })).toThrow(CompilationError);
@@ -177,40 +222,52 @@ describe('the callers of a refused write', () => {
   });
 });
 
-// A full save sends the whole text: when it differs from the stored one it must open, whether or not its tags and status
-// changed; the stored text sent back unchanged passes byte for byte, whatever it holds.
+// A full save sends the whole text and stores it as it is: a compilation that does not open is saved and read back as
+// invalid, so raw YAML edited half-way and the undo of a deletion go through. Only a change of its tags or status is checked.
 describe('a full save of a compilation', () => {
   const broken = board.replace('arrangement: board\n', '');
   const same = { tags: ['thesis'], status: 'working' };
 
-  it('is refused locally when the new text would not open, with or without metadata', () => {
+  it('stores text that does not open locally and reports it as invalid', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mgn-compilation-save-'));
     try {
       const target = path.join(root, file);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, board, 'utf8');
-      expect(() => writeNoteFile(root, file, broken, same, 'thesis')).toThrow(`${file}: Compilation not saved: arrangement: Required`);
-      expect(() => writeNoteFile(root, file, broken, undefined, 'thesis')).toThrow(CompilationError);
-      expect(fs.readFileSync(target, 'utf8')).toBe(board);
-      fs.writeFileSync(target, broken, 'utf8');
       expect(writeNoteFile(root, file, broken, same, 'thesis').invalid).toContain('arrangement');
+      expect(fs.readFileSync(target, 'utf8')).toBe(broken);
+      expect(writeNoteFile(root, file, board, undefined, 'thesis').invalid).toBeUndefined();
+      expect(writeNoteFile(root, file, broken, undefined, 'thesis').invalid).toContain('arrangement');
       expect(fs.readFileSync(target, 'utf8')).toBe(broken);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it('is refused remotely by a save and a commit of working notes, writing nothing', async () => {
+  it('stores text that does not open remotely, by a save and a commit of working notes', async () => {
     const remote = 'notes/ex/c.compilation.yml';
     const f = gitlabFixture(undefined, { [remote]: board });
     const { reader } = openRemoteRepository({ type: 'gitlab', url: 'https://gitlab.example.test/gitlab', repository: 'group/subgroup/project', branch: 'main' }, 'fixture-token', f.request);
-    const writes = f.writes;
-    await expect(reader.save(remote, broken, same, f.head)).rejects.toThrow(`${remote}: Compilation not saved: arrangement: Required`);
-    await expect(reader.save(remote, broken, undefined, f.head)).rejects.toThrow(CompilationError);
-    await expect(reader.commitNotes([{ path: remote, content: broken, metadata: same }], f.head, 'edit')).rejects.toThrow(`${remote}: Compilation not saved: arrangement: Required`);
-    expect(f.writes).toBe(writes);
-    expect(f.files.get(remote)).toBe(board);
-    const saved = await reader.save(remote, board.replace('title: Chapter', 'title: Renamed'), same, f.head);
-    expect(saved.note.title).toBe('Renamed');
+    const saved = await reader.save(remote, broken, same, f.head);
+    expect(saved.note.invalid).toContain('arrangement');
+    expect(f.files.get(remote)).toBe(broken);
+  });
+});
+
+// A compilation opens only with a folder source inside one of the repository's notebooks; a tag or status write given
+// those roots is checked against them, as reading the file is.
+describe('a tag or status write checked against the notebook roots', () => {
+  const outside = 'version: 1\nid: shelf\ntitle: Shelf\narrangement: lane\ntags: [thesis]\nsource: { kind: folder, path: elsewhere }\n';
+
+  it('is refused when the compilation would not open for its roots, and written without them', () => {
+    expect(parseCompilation(outside).title).toBe('Shelf');
+    expect(() => parseCompilation(outside, ['notes/thesis'])).toThrow(CompilationError);
+    expect(() => replaceCompilationTags(outside, ['new'], ['notes/thesis'])).toThrow(/Tags not written: the compilation would not open/);
+    expect(() => replaceFileTags(outside, file, ['new'], ['notes/thesis'])).toThrow(`${file}: Tags not written`);
+    expect(() => applyCompilationMetadata(outside, { tags: ['thesis'], status: 'done' }, ['notes/thesis'])).toThrow(CompilationError);
+    expect(() => serializeNoteFile(file, { tags: ['new'] }, outside, false, new Date(), outside, ['notes/thesis'])).toThrow(CompilationError);
+    // A write that changes nothing stays as it is; with the folder inside a root it is written.
+    expect(replaceCompilationTags(outside, ['thesis'], ['notes/thesis'])).toBe(outside);
+    expect(parseCompilation(replaceCompilationTags(outside, ['new'], ['notes/thesis', 'elsewhere'])).tags).toEqual(['new']);
   });
 });

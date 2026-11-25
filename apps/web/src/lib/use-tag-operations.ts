@@ -26,8 +26,8 @@ export function pushTagOperationRecord(history: TagOperationRecord[], kind: TagO
 
 /**
  * Session-lifetime history of tag operations, each independently undoable until page reload.
- * A record is only dismissed once its undo has actually been applied (see App.tsx's
- * handleUndoTagOperation) — a failed undo attempt keeps the record so the user can retry.
+ * A record is only dismissed once its undo has actually been applied (see useTagWorkspaceOperations'
+ * handleUndoTagOperation) — a failed or partial undo keeps what it did not restore so the user can retry.
  */
 export function useTagOperations() {
   const [history, setHistory] = useState<TagOperationRecord[]>([]);
@@ -40,5 +40,10 @@ export function useTagOperations() {
     setHistory(previous => previous.filter(entry => entry.id !== id));
   }, []);
 
-  return { history, record, dismiss };
+  /** Narrows a record to the part of its plan an undo has yet to restore. */
+  const narrow = useCallback((id: string, plan: TagOperationPlan) => {
+    setHistory(previous => previous.map(entry => entry.id === id ? { ...entry, plan } : entry));
+  }, []);
+
+  return { history, record, dismiss, narrow };
 }

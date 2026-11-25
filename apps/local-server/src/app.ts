@@ -523,9 +523,10 @@ export function createApp(base: string, overrides: Partial<AppServices> = {}): e
         if (!snapshot.info.permissions?.push || reader.branch !== 'main') throw new SourceError('Write access on the main workspace branch is required.', 403);
         const changes: { path: string; content: string; }[] = [];
         const skipped: { path: string; reason: string; }[] = [];
+        const roots = (await reader.config()).notebooks.map(item => item.root);
         for (const entry of entries) {
           const raw = (await reader.readFile(String(entry.path))).toString('utf8');
-          const patched = skipRefusedCompilation(skipped, String(entry.path), () => replaceFileTags(raw, String(entry.path), entry.tags as string[]));
+          const patched = skipRefusedCompilation(skipped, String(entry.path), () => replaceFileTags(raw, String(entry.path), entry.tags as string[], roots));
           if (patched === undefined || patched === raw) continue;
           changes.push({ path: String(entry.path), content: patched });
         }

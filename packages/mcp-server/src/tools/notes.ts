@@ -120,7 +120,8 @@ export async function handleSaveNote(ctx: ToolContext, input: SaveNoteArgs) {
   const edited = args.status !== undefined || args.tags !== undefined || args.title !== undefined;
   const finalMetadata = edited ? withNoteEdits(kept ?? {}, args) : kept;
 
-  const saved = writeNoteFile(ctx.repoRoot, args.path, args.content, finalMetadata);
+  const config = ctx.config ?? loadWorkspaceConfig(ctx.repoRoot);
+  const saved = writeNoteFile(ctx.repoRoot, args.path, args.content, finalMetadata, undefined, config?.notebooks.map((nb) => nb.root));
 
   // An agent's edit of one note is marked as such, whatever message it supplied.
   const message = agentEditMessage(args.commitMessage || await generateCommitMessage({ filePath: args.path, diff: args.content }));
@@ -202,7 +203,7 @@ export async function handleUpdateNoteMetadata(ctx: ToolContext, args: { path: s
 
   const existingNote = readNoteFile(ctx.repoRoot, args.path, notebookId);
   const updatedMetadata = withNoteEdits({ ...existingNote.metadata, ...args.metadata }, args);
-  const updatedNote = writeNoteFile(ctx.repoRoot, args.path, existingNote.content, updatedMetadata, notebookId);
+  const updatedNote = writeNoteFile(ctx.repoRoot, args.path, existingNote.content, updatedMetadata, notebookId, config.notebooks.map((nb) => nb.root));
 
   let message = args.commitMessage;
   if (!message) {

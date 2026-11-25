@@ -286,18 +286,19 @@ export function compilationFields(raw: string, path: string, scope?: readonly st
 /**
  * Carries the caller's `tags` and `status` into the stored file; a blank or missing status removes it. A file already
  * holding them is returned as it is. Refused with a `CompilationError` as `editCompilationFields` refuses, and when tags
- * are not a list of strings or the status is not a string.
+ * are not a list of strings or the status is not a string. `scope`, the repository's notebook roots, is what the result
+ * must open for.
  */
-export function applyCompilationMetadata(raw: string, metadata: { tags?: unknown; status?: unknown; }): string {
+export function applyCompilationMetadata(raw: string, metadata: { tags?: unknown; status?: unknown; }, scope?: readonly string[]): string {
   const what = 'Tags and status';
   const { status } = metadata;
   if (status !== undefined && status !== null && typeof status !== 'string') throw new CompilationError(`${what} not written: status must be a string`);
-  return editCompilationFields(raw, { tags: givenTags(metadata.tags, what), status: status || undefined }, what);
+  return editCompilationFields(raw, { tags: givenTags(metadata.tags, what), status: status || undefined }, what, scope);
 }
 
 /** Replaces only the `tags` value of a compilation file, refused as `applyCompilationMetadata` refuses. */
-export function replaceCompilationTags(raw: string, tags: readonly string[]): string {
-  return editCompilationFields(raw, { tags: givenTags(tags, 'Tags') }, 'Tags');
+export function replaceCompilationTags(raw: string, tags: readonly string[], scope?: readonly string[]): string {
+  return editCompilationFields(raw, { tags: givenTags(tags, 'Tags') }, 'Tags', scope);
 }
 
 function givenTags(tags: unknown, what: string): readonly string[] {
@@ -358,7 +359,7 @@ function rewriteCompilationFields(raw: string, tags: readonly string[] | false, 
  * tags or a status for text that is no YAML mapping are refused with a `CompilationError`, and nothing is written. A
  * field that already holds its value is not written; a write that changes nothing returns `raw` itself.
  */
-function editCompilationFields(raw: string, edit: { tags: readonly string[]; status?: string; }, what: string): string {
+function editCompilationFields(raw: string, edit: { tags: readonly string[]; status?: string; }, what: string, scope?: readonly string[]): string {
   const refuse = (reason: string) => new CompilationError(`${what} not written: ${reason}`);
   const document = YAML.parseDocument(raw);
   const stored = plainMapping(document);
@@ -397,7 +398,7 @@ function editCompilationFields(raw: string, edit: { tags: readonly string[]; sta
   }
   let file: CompilationFile;
   try {
-    file = parseCompilation(next);
+    file = parseCompilation(next, scope);
   } catch (error) {
     throw refuse(`the compilation would not open (${(error as Error).message})`);
   }
