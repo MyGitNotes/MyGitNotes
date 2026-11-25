@@ -319,4 +319,32 @@ describe("Back and Forward with the side panel open, in the browser's history", 
     expect(panel()).toBeNull();
     expect(window.location.pathname).toBe('/elsewhere');
   });
+
+  it('drops the Forward it held once the app went elsewhere while the note was saved, and guards the next Back', async () => {
+    browse();
+    fireEvent.click(await card('n1'));
+    await findPanel();
+    act(() => void router.navigate!('/elsewhere'));
+    await screen.findByText('Elsewhere');
+    act(() => window.history.back());
+    await findPanel();
+    const finish = deferred();
+    act(() => window.history.forward());
+    await waitFor(() => expect(panel()).toHaveAttribute('inert'));
+    await waitFor(() => expect(window.location.pathname).toBe('/boards'));
+    // The app opens another note on its own while the first is saved, which cuts the history's forward entries.
+    act(() => void router.navigate!(boardsRoute('thesis', BOARD, { note: CAUSAL })));
+    await waitFor(() => expect(hosted).toHaveBeenLastCalledWith(expect.objectContaining({ path: CAUSAL })));
+    finish(true);
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(address().note).toBe(CAUSAL);
+    // The next Back is the person's, held for the note shown now.
+    const again = deferred();
+    act(() => window.history.back());
+    await waitFor(() => expect(flush).toHaveBeenLastCalledWith([`thesis:${CAUSAL}`]));
+    await waitFor(() => expect(panel()).toHaveAttribute('inert'));
+    expect(hosted).toHaveBeenLastCalledWith(expect.objectContaining({ path: CAUSAL }));
+    again(true);
+    await waitFor(() => expect(address().note).toBe(INTRO));
+  });
 });

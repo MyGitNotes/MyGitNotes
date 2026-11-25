@@ -618,30 +618,35 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const registerEditor = useEditorRegistry();
   useEffect(() => {
     const persist = async () => {
-      const draft = current.current;
-      if (!hasUnsaved()) {
-        // Nothing newer than what was saved is left to recover; an autosave that finished while the editor was going away leaves its draft behind.
-        // The session writes only what it changed itself, so it cannot put older text over a note that was staged or retitled elsewhere.
-        clearLocalDraft(draftScope || branch, note.path);
-        return true;
-      }
-      saveLocalDraft(draftScope || branch, note.path, draft.content, draft.metadata);
-      try {
-        const saved = await onSave({ path: note.path, content: draft.content, metadata: draft.metadata, baseNote: draft.baseNote });
-        // What was just written is what is persisted: without this, the draft effect compares the next `note` refresh against an older save and writes the draft back.
-        markSaved({ content: draft.content, metadata: draft.metadata });
-        clearLocalDraft(draftScope || branch, note.path);
-        // The written note is the new base, so the next remote check does not take the app's own write for an external change; a draft is not a committed base.
-        if (mounted.current && !draftMode) {
-          current.current = { ...current.current, baseNote: saved };
-          setBaseNote(saved);
+      // An autosave under way writes first: two writes of one note must not race.
+      while (autosaving.current) await new Promise(resolve => setTimeout(resolve, 50));
+      // Text typed while a save is under way is newer than what that save writes, so it is saved too before the editor may go,
+      // and its recovery draft stays until it is.
+      while (hasUnsaved()) {
+        const draft = current.current;
+        saveLocalDraft(draftScope || branch, note.path, draft.content, draft.metadata);
+        autosaving.current = true;
+        try {
+          const saved = await onSave({ path: note.path, content: draft.content, metadata: draft.metadata, baseNote: draft.baseNote });
+          // What was just written is what is persisted: without this, the draft effect compares the next `note` refresh against an older save and writes the draft back.
+          markSaved({ content: draft.content, metadata: draft.metadata });
+          // The written note is the new base, so the next remote check does not take the app's own write for an external change; a draft is not a committed base.
+          if (mounted.current && !draftMode) {
+            current.current = { ...current.current, baseNote: saved };
+            setBaseNote(saved);
+          }
+          clearWriteFailure();
+        } catch (error) {
+          showWriteFailure(error);
+          return false;
+        } finally {
+          autosaving.current = false;
         }
-        clearWriteFailure();
-        return true;
-      } catch (error) {
-        showWriteFailure(error);
-        return false;
       }
+      // Nothing newer than what was saved is left to recover; an autosave that finished while the editor was going away leaves its draft behind.
+      // The session writes only what it changed itself, so it cannot put older text over a note that was staged or retitled elsewhere.
+      clearLocalDraft(draftScope || branch, note.path);
+      return true;
     };
     // A concurrent operation (e.g. a just-mounted checkRemote) is read-only in effect by the time it
     // finishes, so navigation/hiding waits it out instead of racing it or dropping the flush entirely.

@@ -323,3 +323,29 @@ describe('useNoteEditorSession and a save refused because the frontmatter cannot
     await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(3), { timeout: 3000 });
   });
 });
+
+describe('useNoteEditorSession saved before it goes away, while the person still types', () => {
+  it('saves text typed during the save under way before it lets the editor go, keeping its recovery draft until then', async () => {
+    const { hook, onSave } = setup(false);
+    const pending: ((value: NoteItem) => void)[] = [];
+    onSave.mockImplementation(params => new Promise(resolve => pending.push(() => resolve({ ...note('saved'), content: params.content, metadata: params.metadata ?? {} }))));
+    act(() => hook.result.current.setContent('# Old name\n\nA.\n'));
+    let left: boolean | undefined;
+    const leaving = registry.flushes.at(-1)!().then(result => void (left = result));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ content: '# Old name\n\nA.\n' }));
+    // Typed while A is being written.
+    act(() => hook.result.current.setContent('# Old name\n\nA. B.\n'));
+    await act(async () => pending.shift()!(note('saved')));
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ content: '# Old name\n\nA. B.\n' }));
+    // A is saved, B is not yet: the editor may not go, and B can still be recovered.
+    expect(left).toBeUndefined();
+    expect(JSON.stringify({ ...localStorage })).toContain('A. B.');
+    await act(async () => pending.shift()!(note('saved')));
+    await act(() => leaving);
+    expect(left).toBe(true);
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.hasUnsavedChanges).toBe(false);
+  });
+});
