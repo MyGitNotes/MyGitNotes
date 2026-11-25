@@ -4,18 +4,18 @@ import { browsePath, phoneBrowseLayout } from './browse-layout.js';
 describe('phoneBrowseLayout', () => {
   it('lays out nothing wider than a phone, beside a Focus or not: the notebooks column holds the folders and the list column the filters', () => {
     for (const viewMode of ['list', 'flat', 'kanban'] as const) {
-      for (const focusShown of [false, true]) expect(phoneBrowseLayout({ phone: false, focusShown, viewMode })).toEqual({ split: null, chips: null });
+      for (const focusShown of [false, true]) expect(phoneBrowseLayout({ phone: false, focusShown, viewMode })).toEqual({ path: false, chips: null });
     }
   });
 
-  it("keeps a phone's list screen with no Focus as it was: no split, chips in the bar", () => {
-    for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(phoneBrowseLayout({ phone: true, focusShown: false, viewMode })).toEqual({ split: null, chips: 'bar' });
+  it("keeps a phone's list screen with no Focus as it was: no path line, chips in the bar", () => {
+    for (const viewMode of ['list', 'flat', 'kanban'] as const) expect(phoneBrowseLayout({ phone: true, focusShown: false, viewMode })).toEqual({ path: false, chips: 'bar' });
   });
 
-  it("on a phone's list screen beside a Focus, puts the folders under the list and the chips over it; the board keeps them in the bar", () => {
-    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'flat' })).toEqual({ split: 'folders', chips: 'list' });
-    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'list' })).toEqual({ split: 'folders', chips: 'list' });
-    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'kanban' })).toEqual({ split: null, chips: 'bar' });
+  it("on a phone's list screen beside a Focus, puts the path line and the chips over the list and nothing under it; the board keeps the chips in the bar", () => {
+    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'flat' })).toEqual({ path: true, chips: 'list' });
+    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'list' })).toEqual({ path: true, chips: 'list' });
+    expect(phoneBrowseLayout({ phone: true, focusShown: true, viewMode: 'kanban' })).toEqual({ path: false, chips: 'bar' });
   });
 });
 

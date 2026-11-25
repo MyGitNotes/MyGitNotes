@@ -94,8 +94,8 @@ it('shows the live editing group in the status panel when the repository is live
   expect(screen.queryByRole('group', { name: 'Live editing' })).toBeNull();
 });
 
-it("holds only the folder tree on a phone's list screen", () => {
-  render(createElement(I18nProvider, null, createElement(Sidebar, { filters: controls(), facets, folders, selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: () => {}, workspaceTagNames: Object.keys(manyTags), dock: 'folders' })));
+it("holds only the folder tree on a phone drawer's 目錄 tab, the status and tags on its hidden 篩選 tab", () => {
+  render(createElement(I18nProvider, null, createElement(Sidebar, { filters: controls(), facets, folders, selectedNotebookId: 'life', onManageFiles: () => {}, onSelectFolder: () => {}, workspaceTagNames: Object.keys(manyTags), tabbed: true })));
   expect(within(tree()).getByText('Projects')).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: 'Status' })).toBeNull();
   expect(screen.queryByRole('group', { name: 'Tags' })).toBeNull();

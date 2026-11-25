@@ -18,6 +18,7 @@ import { SidebarLinks } from './SidebarLinks.js';
 import { useSidebarLinks } from '../lib/web-features.js';
 import { NotebookTree } from './NotebookTree.js';
 import { StatusFilterBody, TagFilterBody } from './ListFilters.js';
+import { SidebarTabs } from './SidebarTabs.js';
 
 interface SidebarProps {
   onManageFiles: (notebookId: string, path: string, action?: FolderAction) => void;
@@ -43,13 +44,13 @@ interface SidebarProps {
   onRenameTag?: (from: string, to: string) => Promise<void>;
   onMergeTag?: (from: string, into: string) => Promise<void>;
   onDeleteTag?: (tag: string) => Promise<void>;
-  /** The folder tree alone, under a phone's list beside a Focus (BrowseSplit), whose filter sheet holds the rest. */
-  dock?: 'folders';
+  /** A phone's drawer: the notebook tree (目錄) and the filters (篩選) on two tabs, both kept mounted so each keeps its state. */
+  tabbed?: boolean;
   /** Only the filters that narrow the list (status and tags): a phone's filter sheet, where the drawer already holds the notebook tree. */
   filtersOnly?: boolean;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, filtersOnly = false, dock }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading = false, onManageFiles, foldersWritable = false, beforeFolderChange, onFoldersChanged, selectedFolder = null, onSelectFolder, onDropNote, selectedNotebookId, facets, facetsLoading = false, facetsError = '', workspaceTagNames, filters, canManageTags = false, onPreviewTagUsage, onRenameTag, onMergeTag, onDeleteTag, filtersOnly = false, tabbed = false }) => {
   const { t } = useTranslation();
   const { value, onChange } = filters;
   const sections = useSidebarSections();
@@ -129,46 +130,58 @@ export const Sidebar: React.FC<SidebarProps> = ({ folders = [], foldersLoading =
       ))}
     </NavTree>
   );
-  if (dock) {
-    // A phone's list screen beside a Focus shows the notebook's folders under the list; its filter sheet holds the rest.
-    return <div className='notes-sidebar phone-folders' data-dock={dock}>{facetsError && <p role='alert' className='sidebar-facets-status'>{t('notes.countsFailed', { message: facetsError })}</p>}{onSelectFolder && notebooksBody}</div>;
+  const missingFolderFilters = !foldersLoading && value.folders.filter(path =>
+    !filters.notebooks.some(nb => path === nb.root.replace(/\/$/, '')) && !folders.some(folder => {
+      const root = filters.notebooks.find(nb => nb.id === folder.notebookId)?.root.replace(/\/$/, '');
+      return path === `${root}/${folder.path}`;
+    })
+  ).map(path => (
+    <button type='button' className='sidebar-missing-filter' key={path} aria-label={t('filters.remove', { value: path })} onClick={() => onChange({ folders: value.folders.filter(item => item !== path) })}>
+      {path}
+      <X size={12} />
+    </button>
+  ));
+  const statusSection = (
+    <details open={sections.isOpen('status')} onToggle={event => sections.setOpen('status', event.currentTarget.open)} className='sidebar-filter-section'>
+      <summary>{t('sidebar.status')}</summary>
+      <StatusFilterBody filters={filters} counts={counts} />
+    </details>
+  );
+  const tagsSection = Object.keys(counts.tags).length > 0 && (
+    <details open={sections.isOpen('tags')} onToggle={event => sections.setOpen('tags', event.currentTarget.open)} className='sidebar-filter-section' aria-label={t('sidebar.tags')}>
+      <summary>{t('sidebar.tags')}</summary>
+      <TagFilterBody filters={filters} counts={counts} notebookId={selectedNotebookId} management={tagManagement} />
+    </details>
+  );
+
+  if (tabbed) {
+    return (
+      <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar' footer={links.length > 0 ? <SidebarLinks links={links} variant='sidebar' /> : undefined}>
+        <SidebarTabs
+          directory={<>{expandControls && <div className='sidebar-search-row'>{expandControls}</div>}{missingFolderFilters}{onSelectFolder && notebooksBody}</>}
+          filters={
+            <>
+              <section className='sidebar-search' aria-label={t('filters.title')}>{filterSummary}</section>
+              {statusSection}
+              {tagsSection}
+            </>
+          }
+        />
+      </WorkspaceSidebar>
+    );
   }
 
   return (
     <WorkspaceSidebar label={t('sidebar.statusFilter')} className='notes-sidebar' footer={!filtersOnly && links.length > 0 ? <SidebarLinks links={links} variant='sidebar' /> : undefined}>
-      <section className='sidebar-search' aria-label={t('filters.title')}>
-        {!filtersOnly && <div className='sidebar-search-row'>{expandControls}</div>}
-        {filterSummary}
-        {!foldersLoading && value.folders.filter(path =>
-          !filters.notebooks.some(nb => path === nb.root.replace(/\/$/, '')) && !folders.some(folder => {
-            const root = filters.notebooks.find(nb => nb.id === folder.notebookId)?.root.replace(/\/$/, '');
-            return path === `${root}/${folder.path}`;
-          })
-        ).map(path => (
-          <button type='button' className='sidebar-missing-filter' key={path} aria-label={t('filters.remove', { value: path })} onClick={() => onChange({ folders: value.folders.filter(item => item !== path) })}>
-            {path}
-            <X size={12} />
-          </button>
-        ))}
-      </section>
+      <section className='sidebar-search' aria-label={t('filters.title')}>{!filtersOnly && <div className='sidebar-search-row'>{expandControls}</div>}{filterSummary}{missingFolderFilters}</section>
       {onSelectFolder && !filtersOnly && (
         <details className='sidebar-filter-section sidebar-notebooks' open={sections.isOpen('notebooks')} onToggle={event => sections.setOpen('notebooks', event.currentTarget.open)}>
           <summary>{t('sidebar.notebooks')}</summary>
           {notebooksBody}
         </details>
       )}
-      {/* Status Filters */}
-      <details open={sections.isOpen('status')} onToggle={event => sections.setOpen('status', event.currentTarget.open)} className='sidebar-filter-section'>
-        <summary>{t('sidebar.status')}</summary>
-        <StatusFilterBody filters={filters} counts={counts} />
-      </details>
-      {/* Tags Cloud */}
-      {Object.keys(counts.tags).length > 0 && (
-        <details open={sections.isOpen('tags')} onToggle={event => sections.setOpen('tags', event.currentTarget.open)} className='sidebar-filter-section' aria-label={t('sidebar.tags')}>
-          <summary>{t('sidebar.tags')}</summary>
-          <TagFilterBody filters={filters} counts={counts} notebookId={selectedNotebookId} management={tagManagement} />
-        </details>
-      )}
+      {statusSection}
+      {tagsSection}
     </WorkspaceSidebar>
   );
 };

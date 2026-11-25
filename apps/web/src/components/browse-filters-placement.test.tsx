@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import type { NoteFilters } from '@mygitnotes/core/note-filters';
 import type { NotebookFacets } from '@mygitnotes/core/note-query';
@@ -9,7 +9,7 @@ import type { FolderItem } from '../lib/types.js';
 import { I18nProvider } from '../lib/i18n/index.js';
 import { listFacets } from '../lib/list-facets.js';
 import { BrowseColumns, LIST_COLUMN_ID, NOTEBOOK_COLUMN_ID } from './BrowseColumns.js';
-import { BrowseSplit } from './BrowseSplit.js';
+import { PhoneBrowseList } from './PhoneBrowseList.js';
 import { FilterChips } from './FilterChips.js';
 import { ListFilterButtons } from './ListFilterButtons.js';
 import { NotebookColumn } from './NotebookColumn.js';
@@ -64,35 +64,75 @@ it('beside a note, the notebooks column holds the folders and the list column th
   expect(screen.queryByRole('separator', { name: 'Resize folders and list' })).toBeNull();
 });
 
-function phone({ collapsed = false, onCollapsedChange = vi.fn(), value }: { collapsed?: boolean; onCollapsedChange?: (collapsed: boolean) => void; value?: Partial<NoteFilters>; }) {
+function drawer(value?: Partial<NoteFilters>) {
   const controls = filters(value);
   return render(
     <I18nProvider>
-      <BrowseSplit label='Directory' filters={<Sidebar filters={controls} facets={facets} folders={folders} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock='folders' />} path={<span>Life / Projects</span>} size={55} onSizeChange={() => {}} collapsed={collapsed} onCollapsedChange={onCollapsedChange}>
-        <FilterChips filters={controls} onAdd={() => {}} />
-        <ul aria-label='Notes'>
-          <li>First note</li>
-        </ul>
-      </BrowseSplit>
+      <Sidebar filters={controls} facets={facets} folders={folders} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} tabbed />
     </I18nProvider>,
   );
 }
 
-it("on a phone's list screen shows the chips and the list over the folders, and ▾ folds them to their heading", () => {
-  const onCollapsedChange = vi.fn();
-  const { unmount } = phone({ onCollapsedChange, value: { tags: ['work'] } });
-  const directory = screen.getByRole('region', { name: 'Directory' });
+it("splits a phone's drawer into 目錄 and 篩選 tabs: the notebook's folders on one, its status and tags on the other", () => {
+  drawer();
+  const tabs = screen.getAllByRole('tab');
+  expect(tabs.map(tab => tab.textContent)).toEqual(['Directory', 'Filters']);
+  expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+  const directory = screen.getByRole('tabpanel', { name: 'Directory' });
   expect(within(directory).getByRole('navigation', { name: 'Notebooks' })).toHaveTextContent('Projects');
   expect(within(directory).queryByRole('group', { name: 'Status' })).toBeNull();
-  expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('#work');
-  expect(directory).not.toContainElement(screen.getByRole('group', { name: 'Active filters' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Collapse folders' }));
-  expect(onCollapsedChange).toHaveBeenCalledWith(true);
-  unmount();
+  expect(document.querySelector('[role="tabpanel"][data-tab="filters"]')).not.toBeVisible();
 
-  phone({ collapsed: true });
-  expect(screen.getByRole('navigation', { name: 'Notebooks', hidden: true })).not.toBeVisible();
+  fireEvent.click(tabs[1]);
+  expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
+  const filterPanel = screen.getByRole('tabpanel', { name: 'Filters' });
+  expect(within(filterPanel).getByText('Status')).toBeVisible();
+  expect(within(filterPanel).getByText('Tags')).toBeVisible();
+  expect(within(filterPanel).queryByRole('navigation', { name: 'Notebooks' })).toBeNull();
+  expect(directory).not.toBeVisible();
+});
+
+it("keeps each drawer tab's state while the other shows: the folders stay folded or open, and the panels stay mounted", () => {
+  drawer();
+  const directory = screen.getByRole('tabpanel', { name: 'Directory' });
+  // Fold the notebook in the 目錄 tab, look at 篩選, and come back: it is still folded.
+  const notebookToggle = within(directory).getAllByRole('button', { expanded: true })[0];
+  fireEvent.click(notebookToggle);
+  expect(notebookToggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(screen.getByRole('tab', { name: 'Filters' }));
+  expect(directory).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: 'Directory' }));
+  expect(notebookToggle).toBeVisible();
+  expect(notebookToggle).toHaveAttribute('aria-expanded', 'false');
+});
+
+it('moves between the drawer tabs with the arrow keys', () => {
+  drawer();
+  const [directory, filtersTab] = screen.getAllByRole('tab');
+  directory.focus();
+  fireEvent.keyDown(directory, { key: 'ArrowRight' });
+  expect(filtersTab).toHaveAttribute('aria-selected', 'true');
+  expect(filtersTab).toHaveFocus();
+  fireEvent.keyDown(filtersTab, { key: 'Home' });
+  expect(directory).toHaveAttribute('aria-selected', 'true');
+});
+
+it("on a phone's list screen shows the path line and the list with nothing under it: no folders, no divider", () => {
+  const controls = filters({ tags: ['work'] });
+  render(
+    <I18nProvider>
+      <PhoneBrowseList path={<span>Life / Projects</span>}>
+        <FilterChips filters={controls} onAdd={() => {}} />
+        <ul aria-label='Notes'>
+          <li>First note</li>
+        </ul>
+      </PhoneBrowseList>
+    </I18nProvider>,
+  );
   expect(screen.getByText('Life / Projects')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Expand folders' })).toBeVisible();
+  expect(screen.getByRole('group', { name: 'Active filters' })).toHaveTextContent('#work');
   expect(screen.getByRole('list', { name: 'Notes' })).toBeVisible();
+  expect(screen.queryByRole('region', { name: 'Directory' })).toBeNull();
+  expect(screen.queryByRole('separator')).toBeNull();
+  expect(screen.queryByRole('navigation', { name: 'Notebooks' })).toBeNull();
 });

@@ -45,7 +45,7 @@ function app(features: WebFeature[], children: ReactNode) {
   );
 }
 
-const sidebar = (dock?: 'folders') => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} dock={dock} />;
+const sidebar = (tabbed = false) => <Sidebar filters={filters} facets={facets} folders={[]} selectedNotebookId='life' onManageFiles={() => {}} onSelectFolder={() => {}} workspaceTagNames={['work']} tabbed={tabbed} />;
 const notebookColumn = (mode: 'open' | 'rail') => <NotebookColumn mode={mode} columnId='browse-notebooks' notebooks={filters.notebooks} selectedNotebookId='life' onSelectNotebook={() => {}} current={<p>Life</p>} query='' onQueryChange={() => {}} onOpenSearch={() => {}} kind='note' onSelectKind={() => {}} />;
 const sheet = (onClose = vi.fn()) => (
   <PhoneFilterSheet onClose={onClose} sortField='updated' sortOrder='desc' onSortChange={vi.fn()} viewMode='flat' setViewMode={vi.fn()} showHidden={false} hiddenNoteCount={0} onShowHiddenChange={vi.fn()}>
@@ -89,9 +89,12 @@ it('shows the links at the foot of the notebooks column, open or folded to its r
   expect(screen.getByRole('heading', { name: 'Help page' })).toBeInTheDocument();
 });
 
-it("leaves the links out of the phone list screen's folders, since its filter sheet shows them", () => {
-  app([archive], sidebar('folders'));
-  expect(screen.queryByRole('navigation', { name: 'Links' })).toBeNull();
+it("shows the links at the foot of a phone's drawer, below both of its tabs", () => {
+  app([archive], sidebar(true));
+  const group = screen.getByRole('navigation', { name: 'Links' });
+  expect(group.closest('.workspace-sidebar-footer')).not.toBeNull();
+  expect(group.closest('[role="tabpanel"]')).toBeNull();
+  expectLinks(group);
 });
 
 it("shows the links in a phone's filter sheet, which a path in the app closes", () => {

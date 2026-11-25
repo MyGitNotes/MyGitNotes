@@ -1,0 +1,10 @@
+/* PhoneBrowseList: a phone's list screen, the path line over the list. */
+
+.phone-browse-list { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; }
+
+.phone-browse-path { display: flex; align-items: center; gap: 4px; flex: none; min-height: 30px; padding: 2px 12px 4px 14px; border-bottom: 1px solid var(--workspace-divider); color: var(--color-muted); font-size: 12px; }
+.phone-browse-path-content { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.phone-browse-path-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone-browse-count { flex: none; font-variant-numeric: tabular-nums; }
+
+.phone-browse-scroll { flex: 1 1 0; min-height: 0; }

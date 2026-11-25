@@ -4,7 +4,6 @@ import { Maximize2, PanelLeft } from 'lucide-react';
 import { AccountControls } from '../components/AuthControls.js';
 import { BrowseColumns, LIST_COLUMN_ID, NOTEBOOK_COLUMN_ID } from '../components/BrowseColumns.js';
 import { Breadcrumbs } from '../components/Breadcrumbs.js';
-import { BrowseSplit } from '../components/BrowseSplit.js';
 import { FilterChips } from '../components/FilterChips.js';
 import { FocusNoteList } from '../components/FocusNoteList.js';
 import { FoldedNoteDots } from '../components/FoldedNoteDots.js';
@@ -21,6 +20,7 @@ import { NotebookColumn } from '../components/NotebookColumn.js';
 import { NotebookTree } from '../components/NotebookTree.js';
 import { type FolderChoice, NoteListColumn } from '../components/NoteListColumn.js';
 import { NoteListSentinel } from '../components/NoteListSentinel.js';
+import { PhoneBrowseList } from '../components/PhoneBrowseList.js';
 import { PhoneFilterSheet, PhoneListBar } from '../components/PhoneListBar.js';
 import { Sidebar } from '../components/Sidebar.js';
 import { Tooltip } from '../components/Tooltip.js';
@@ -136,10 +136,10 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
   // Beside a Focus of several panes, or by the person's choice, the board folds into the list column as a status list.
   const boardFolded = board.placement === 'folded';
   const browseFocusMode = noteFocus.layout || phone || presentation === 'list' ? { onZoomNote: (note: NoteListItem) => void handleOpenNote(note), canDrag: (note: NoteListItem) => !phone && noteFocus.editable && note.notebookId === selectedNotebookId, rowMeta: !phone && presentation === 'list', openPath: activeNotePath, readNote: readNoteForChange } : undefined;
-  // A phone's list screen beside a Focus shows the folders under the list, and the chips of the filters in force where the filters are out of sight.
+  // A phone's list screen beside a Focus shows the path line over the list, and the chips of the filters in force where the filters are out of sight.
   const layout = phoneBrowseLayout({ phone, focusShown: activeTab === 'notes' && !route.study && Boolean(noteFocus.layout) && !focusEmpty, viewMode });
-  /** Whether the folders show beside the list (the notebooks column, or a phone's folders under its list), so the list keeps only the folder's index. */
-  const folderTree = !phone || Boolean(layout.split);
+  /** Whether the folders show beside the list (the notebooks column, or a phone's drawer while the path line names the folder), so the list keeps only the folder's index. */
+  const folderTree = !phone || layout.path;
   const openFilters = () => setPhoneFilterOpen(true);
   // An outline or compilation list offers its own kind; every kind starts at the notebook root, moved from its editor.
   const newKind = route.kind === 'outline' || route.kind === 'compilation' ? route.kind : 'note';
@@ -221,29 +221,23 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
       )}
     </>
   );
-  /** A phone's list screen beside a Focus: the path line and the list, and below the divider the notebook's folders. */
-  const browseSplit = () => {
+  /** A phone's list screen: beside a Focus the path line over the list, and the list. */
+  const phoneList = (withPath: boolean) => {
     const path = browsePath({ kind: route.kind, notebookTitle: selectedNotebook?.title ?? '', breadcrumbs, labels: { outline: t('outline.list'), compilations: t('sidebar.compilations') } });
     const count = filterProps.count;
     return (
-      <BrowseSplit
-        label={t('browseSplit.folders')}
-        filters={renderSidebar(false, 'folders')}
-        path={
+      <PhoneBrowseList
+        path={withPath && (
           <>
             <Tooltip label={path}>
-              <span className='browse-split-path-text'>{path}</span>
+              <span className='phone-browse-path-text'>{path}</span>
             </Tooltip>
-            {count === null ? <LoadingStatus as='span' className='browse-split-count'>{t('notes.countsLoading')}</LoadingStatus> : <span className='browse-split-count'>{t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>}
+            {count === null ? <LoadingStatus as='span' className='phone-browse-count'>{t('notes.countsLoading')}</LoadingStatus> : <span className='phone-browse-count'>{t(count === 1 ? 'folder.noteCount' : 'folder.notesCount', { count })}</span>}
           </>
-        }
-        size={noteFocus.view.dock.filtersShare}
-        onSizeChange={filtersShare => noteFocus.setDock({ filtersShare })}
-        collapsed={noteFocus.view.dock.splitCollapsed}
-        onCollapsedChange={splitCollapsed => noteFocus.setDock({ splitCollapsed })}
+        )}
       >
         {browseRegion()}
-      </BrowseSplit>
+      </PhoneBrowseList>
     );
   };
   const beforeFolderChange = (command: FolderCommand) => beforeFileChange(folderCommandScope(command, config?.notebooks.find(nb => nb.id === command.notebookId)?.root ?? ''));
@@ -252,8 +246,8 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
     await refreshDocuments();
   };
   const dropNoteOnFolder = (note: DraggedNote, folder: string | null) => void noteMove.moveTo({ ...note, title: '' }, folder);
-  /** A phone's drawer of notebooks and filters; its filter sheet shows only the status and tags, and its list screen beside a Focus the folders. */
-  const renderSidebar = (filtersOnly = false, dock?: 'folders') => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} dock={dock} />;
+  /** A phone's drawer of notebooks and filters on two tabs; its filter sheet shows only the status and tags. */
+  const renderSidebar = (filtersOnly = false) => <Sidebar selectedNotebookId={selectedNotebookId} folders={folders} foldersLoading={foldersLoading} onManageFiles={openFileManager} foldersWritable={canWriteFiles} filters={filterProps} facets={facetsQuery.facets} facetsLoading={facetsQuery.loading} facetsError={facetsQuery.error} workspaceTagNames={workspaceTagNames} beforeFolderChange={beforeFolderChange} onFoldersChanged={onFoldersChanged} selectedFolder={selectedFolder} onSelectFolder={setSelectedFolder} onDropNote={dropNoteOnFolder} canManageTags={canWriteFiles} onPreviewTagUsage={previewTagUsage} onRenameTag={handleRenameTag} onMergeTag={handleMergeTag} onDeleteTag={handleDeleteTag} filtersOnly={filtersOnly} tabbed={!filtersOnly} />;
   /** The Notes page below the header: a phone's list or note screen with its drawer, or the three columns. */
   const renderNotesPage = (focusArea: React.ReactNode) => {
     // Column 1: every notebook, the open one unfolded into its folders, outlines and compilations, or the rail of their initials.
@@ -350,7 +344,7 @@ export function useNotesPage({ phone, phoneNotes, phoneNoteScreen, t, config, re
                 {layout.chips === 'bar' && <FilterChips filters={filterProps} onAdd={openFilters} />}
               </>
             )}
-            {noteFocus.layout && !focusEmpty ? <div className='phone-notes-screen'>{phoneNoteScreen ? <div className='phone-notes-focus'>{focusArea}</div> : <div className='workspace-scroll phone-notes-scroll'>{layout.split ? browseSplit() : browseRegion()}</div>}</div> : <div className='workspace-scroll'>{browseRegion()}</div>}
+            {noteFocus.layout && !focusEmpty ? <div className='phone-notes-screen'>{phoneNoteScreen ? <div className='phone-notes-focus'>{focusArea}</div> : phoneList(layout.path)}</div> : phoneList(false)}
           </main>
         </>
       )

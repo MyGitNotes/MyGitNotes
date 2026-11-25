@@ -73,5 +73,11 @@
 .note-tags:has(.sidebar-tag-action-form) { width: 100%; }
 @media (hover: none), (pointer: coarse) { .note-tags .sidebar-tag-row .sidebar-tag-chip > span { padding-right: 0.5rem; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; } }
 
-/* A phone's folders under its list beside a Focus (Sidebar `dock`). */
-.phone-folders { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+/* A phone drawer's two pages (Sidebar `tabbed`): 目錄 and 篩選, switched by a tap. */
+.sidebar-tabs { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sidebar-tab-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.sidebar-tab { min-height: 44px; padding: 0 8px; border-radius: 8px; background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-muted); font-size: 14px; font-weight: 600; }
+.sidebar-tab[aria-selected='true'] { background: color-mix(in srgb, var(--color-primary) 16%, transparent); color: var(--color-primary); }
+.sidebar-tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.sidebar-tab-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sidebar-tab-panel[hidden] { display: none; }
