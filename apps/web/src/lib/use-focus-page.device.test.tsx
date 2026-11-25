@@ -38,7 +38,7 @@ it('keeps an online Focus change on this device: no draft, nothing pending, noth
   const hook = renderHook(() => useFocusPage(repo, () => {}, true));
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   expect(hook.result.current.page).toEqual(keyed('Repo'));
-  act(() => hook.result.current.change(keyed('Mine')));
+  act(() => hook.result.current.change(keyed('Mine'), hook.result.current.page));
   expect(hook.result.current.page).toEqual(keyed('Mine'));
   expect(hook.result.current.dirty).toBe(false);
   expect(hook.result.current.diff).toBe('');
@@ -89,7 +89,7 @@ it('still saves a local workspace Focus change to the repository', async () => {
   const saved = vi.fn();
   const hook = renderHook(() => useFocusPage(repo, saved, false));
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
-  act(() => hook.result.current.change(keyed('Mine')));
+  act(() => hook.result.current.change(keyed('Mine'), hook.result.current.page));
   expect(hook.result.current.dirty).toBe(true);
   await waitFor(() => expect(saved).toHaveBeenCalled());
   expect(requests).toEqual(['GET', 'PUT']);
@@ -155,13 +155,13 @@ describe('a Focus draft an old tab writes after this device keeps its own layout
     await waitFor(() => expect(b.result.current.loading).toBe(false));
     // In an earlier task, C added "Old tab" and A adopted it into the device layout; B has not heard of it yet.
     localStorage.setItem(deviceKey, JSON.stringify({ page: page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab']) }));
-    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Mine'])));
+    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f2', 'Mine']), b.result.current.page));
     const both = page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab'], ['f2', 'Mine']);
     expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(both);
     expect(b.result.current.page).toEqual(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab'], ['f2', 'Mine']));
     expect(b.result.current.error).toBe('');
     // B's next edit starts from what it wrote, so it is no conflict.
-    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab'])));
+    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab']), b.result.current.page));
     expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/a.md']], ['f3', 'Old tab']));
   });
 
@@ -171,7 +171,7 @@ describe('a Focus draft an old tab writes after this device keeps its own layout
     await waitFor(() => expect(b.result.current.loading).toBe(false));
     const theirs = page('n', ['f1', 'Reading', ['notes/x.md']]);
     localStorage.setItem(deviceKey, JSON.stringify({ page: theirs }));
-    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/y.md']])));
+    act(() => b.result.current.change(page('kb~n', ['f1', 'Reading', ['notes/y.md']]), b.result.current.page));
     expect(JSON.parse(localStorage.getItem(deviceKey)!).page).toEqual(theirs);
     expect(JSON.parse(localStorage.getItem(draftKey)!).page).toEqual(page('n', ['f1', 'Reading', ['notes/y.md']]));
     expect(b.result.current.page).toEqual(page('kb~n', ['f1', 'Reading', ['notes/x.md']]));

@@ -99,8 +99,8 @@ export function useNoteMove({ config, remote, canWriteNotebook, readDraft, updat
       forgetDrafts?.(note.notebookId, note.path, destination);
       // A named Focus's tab of the draft follows it, as a file move relocates the tabs of a committed note; this browser's
       // (current) Focus follows with the files changed, by the path map.
-      const page = structuredClone(focus.page);
-      if (relocateFocusPaths(page, note.notebookId, path => path === note.path ? destination : path)) focus.change(page);
+      const from = focus.page, page = structuredClone(from);
+      if (relocateFocusPaths(page, note.notebookId, path => path === note.path ? destination : path)) focus.change(page, from);
       await onFilesChanged({ revision: '', selectedPath: destination, pathMap: { [note.path]: destination }, deletedPaths: [] }, { background: true });
       return;
     }

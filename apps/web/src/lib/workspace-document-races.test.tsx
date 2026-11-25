@@ -69,7 +69,7 @@ it('loads a document draft saved before notebook keys under keys, stores edits w
   expect(hook.result.current.error).toBe('');
   expect(hook.result.current.page).toEqual(keyed);
   const renamed = { ...keyed, focuses: keyed.focuses.map(focus => ({ ...focus, name: 'B' })) };
-  act(() => hook.result.current.change(renamed));
+  act(() => hook.result.current.change(renamed, hook.result.current.page));
   const stored = JSON.parse(localStorage.getItem(key)!);
   expect(stored.page.focuses[0]).toMatchObject({ notebookId: 'n', name: 'B' });
   const sent = readDocumentDraft(focusDocumentClient, repo, empty)!;

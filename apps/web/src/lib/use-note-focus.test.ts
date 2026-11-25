@@ -2,14 +2,18 @@
 import { createElement, type ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyFocusPage, FOCUS_MAX_TABS, FocusError, type FocusLayout, focusPanes, type FocusTab, nameFocus } from '@mygitnotes/core/focus-page';
 import { useNoteFocus } from './use-note-focus.js';
 import { CURRENT_FOCUS } from './focus-view.js';
-import { focusDocumentClient, type FocusPageController } from './use-focus-page.js';
-import type { WorkspaceDocumentClient } from './use-workspace-document.js';
+import { focusDocumentClient, type FocusPageController, useFocusPage } from './use-focus-page.js';
+import { deviceDocumentKey, type WorkspaceDocumentClient } from './use-workspace-document.js';
 import { DEMO_TTL_MS, expireDemoData, readDemoRecord, registerDemoRepositories } from './demo-storage.js';
 import { draftScope } from './workspace-repositories.js';
+vi.mock('./i18n/index.js', () => {
+  const t = (key: string) => key;
+  return { useTranslation: () => ({ t }) };
+});
 
 const SCOPE = 'use-note-focus-test', REPOSITORY = 'github:owner/kb@main', NOTEBOOK = 'kb~life';
 const storageKey = `github-notes:focus-view:${REPOSITORY}:${NOTEBOOK}`;
@@ -611,5 +615,53 @@ describe('useNoteFocus in a demo repository', () => {
     });
     expect(focusKeys()).toEqual([]);
     expect(Object.keys(localStorage).filter(key => key.includes('focus-view'))).toEqual([]);
+  });
+});
+
+describe("useNoteFocus on this device's layout", () => {
+  const owner = { id: REPOSITORY, alias: 'kb' };
+  const deviceKey = deviceDocumentKey(focusDocumentClient, REPOSITORY);
+  const focus = (id: string, name: string, notebookId: string, tabs: FocusTab[] = []) => ({ id, notebookId, name, root: { kind: 'pane' as const, id: 'p1', tabs } });
+  afterEach(() => vi.unstubAllGlobals());
+  const serve = () => vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ page: { version: 2, focuses: [focus('f1', 'Reading', NOTEBOOK)] }, revision: 'r1', writable: true, path: '.github-notes-focus.yaml' }))));
+
+  it('merges an edit derived before an await into a layout another tab stored while this tab reloaded', async () => {
+    serve();
+    let release!: () => void;
+    const held = new Promise<boolean>(resolve => release = () => resolve(true));
+    const { result } = renderHook(() => {
+      const page = useFocusPage(owner, () => {}, true);
+      return { page, focus: useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: 'f1', writable: true, flushEditors: () => held }) };
+    }, { wrapper });
+    await waitFor(() => expect(result.current.focus.shown).toBe('f1'));
+    let placed!: Promise<boolean>;
+    act(() => {
+      placed = result.current.focus.place('f1', tab('a'), 'p1');
+    });
+    // While this tab saves its editors, another tab adds a Focus to the device layout and this tab reloads from it.
+    localStorage.setItem(deviceKey, JSON.stringify({ page: { version: 2, focuses: [focus('f1', 'Reading', 'life'), focus('f3', 'Other tab', 'life')] } }));
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: deviceKey })));
+    await waitFor(() => expect(result.current.page.page.focuses).toHaveLength(2));
+    await waitFor(() => expect(result.current.page.loading).toBe(false));
+    release();
+    await act(async () => expect(await placed).toBe(true));
+    expect(JSON.parse(localStorage.getItem(deviceKey)!).page.focuses).toEqual([focus('f1', 'Reading', 'life', [tab('a')]), focus('f3', 'Other tab', 'life')]);
+  });
+
+  it('names nothing and keeps (current) when the write is refused', async () => {
+    const page: FocusPageController = { ...fakeController(), change: () => false };
+    const { result } = renderHook(() => useNoteFocus({ page, notebookId: NOTEBOOK, repository: REPOSITORY, scope: SCOPE, focusKey: CURRENT_FOCUS, writable: true, flushEditors: async () => true }), { wrapper });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    await act(async () => {
+      await result.current.place(CURRENT_FOCUS, tab('a'), 'p1');
+    });
+    let id: string | undefined = 'unset';
+    act(() => {
+      id = result.current.name('Reading');
+    });
+    expect(id).toBeUndefined();
+    expect(tabsAt(result.current.view.current, 0)).toEqual([tab('a')]);
+    expect(result.current.view.last).toBe(CURRENT_FOCUS);
+    await act(async () => expect(await result.current.remove('f1')).toBe(false));
   });
 });

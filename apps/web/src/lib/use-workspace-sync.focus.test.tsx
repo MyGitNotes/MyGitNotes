@@ -49,7 +49,7 @@ it('lists no online Focus layout in Changes: a change and the old drafts of ever
   expect(localStorage.getItem(documentDraftKey(focusDocumentClient, journal.id))).toBeNull();
   expect(JSON.parse(localStorage.getItem(deviceDocumentKey(focusDocumentClient, journal.id))!).page).toEqual(page('days', 'Old journal'));
 
-  act(() => result.current.focus.change(page('kb~life', 'Arranged')));
+  act(() => result.current.focus.change(page('kb~life', 'Arranged'), result.current.focus.page));
   expect(result.current.focus.page).toEqual(page('kb~life', 'Arranged'));
   expect(result.current.pendingDocuments).toEqual([]);
   expect(result.current.gitStatus?.isClean).toBe(true);

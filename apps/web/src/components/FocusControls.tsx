@@ -107,7 +107,18 @@ export const FocusControls: React.FC<{
           <button type='button' className='ui-icon-button' aria-pressed={browseToggle.showing} onClick={browseToggle.onToggle} aria-label={t(browseToggle.showing ? 'focus.showFocus' : 'focus.showBrowse')}>{browseToggle.showing ? <PanelsTopLeft aria-hidden='true' /> : <ListTree aria-hidden='true' />}</button>
         </Tooltip>
       )}
-      {dialog?.kind === 'name' && <FocusNameDialog title={t('focus.nameTitle')} initial='' taken={taken} onClose={() => setDialog(null)} onSubmit={name => onShow(focus.name(name))} />}
+      {dialog?.kind === 'name' && (
+        <FocusNameDialog
+          title={t('focus.nameTitle')}
+          initial=''
+          taken={taken}
+          onClose={() => setDialog(null)}
+          onSubmit={name => {
+            const id = focus.name(name);
+            if (id) onShow(id);
+          }}
+        />
+      )}
       {dialog?.kind === 'rename' && <FocusNameDialog title={t('focus.renameTitle')} initial={dialog.name} taken={taken.filter(name => name !== dialog.name)} onClose={() => setDialog(null)} onSubmit={name => focus.rename(dialog.id, name)} />}
       {confirmingClear && (
         <WorkspaceDialog title={t('focus.clearTitle')} onClose={() => onConfirmingClearChange(false)}>

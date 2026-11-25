@@ -179,8 +179,6 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
   const [dirty, setDirty] = useState(false);
   const revision = useRef(''), base = useRef<T>(document.empty()), current = useRef(page);
   const loadRequest = useRef(0), draftIdentity = useRef<string>();
-  /** The device copy as stored when this view last rendered from it: undefined while the device kept none. */
-  const deviceSeen = useRef<string | null>(null);
   const [snapshotKey, setSnapshotKey] = useState('');
   const saved = useRef(onSaved);
   /* eslint-disable react/refs -- Document callbacks and the saved comparison baseline remain current without restarting loads. */
@@ -229,7 +227,6 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
           }
         }
         adoptDeviceDrafts([client as WorkspaceDocumentClient<unknown>], [owned]);
-        deviceSeen.current = localStorage.getItem(device);
         const kept = readDeviceDocument(client, owned);
         base.current = record.page;
         current.current = kept ?? record.page;
@@ -275,8 +272,11 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
     window.addEventListener('storage', refresh);
     return () => window.removeEventListener('storage', refresh);
   }, [key, device, load]);
-  /** Writes `next`; true when it was stored (merged with another tab's copy, for a device document). */
-  const change = (next: T): boolean => {
+  /**
+   * Writes `next`, derived from `base`, the exact page the caller read and changed; true when it was stored (merged with
+   * another tab's copy, for a device document).
+   */
+  const change = (next: T, from: T): boolean => {
     if (!snapshot?.writable || loading || error || snapshotKey !== key || !repository) return false;
     const result = document.schema.safeParse(next);
     if (!result.success) {
@@ -286,24 +286,22 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
     if (device) {
       const owned = { id: repository, alias };
       // Browsers apply another tab's localStorage writes between tasks, so this read, compare and write, done in one task
-      // with no await or callback between them, is a compare-and-swap no other tab can interleave. A copy another tab
-      // stored since this view rendered takes this edit as a three-way merge (base: what this view rendered); one the
-      // edit cannot merge into is not written over: the edit waits as a draft for adoption or Settings, and the view
-      // shows the stored copy.
+      // with no await or callback between them, is a compare-and-swap no other tab can interleave. The edit is a change
+      // from `from`, the page the caller derived it from (it may have been read before an await, and the view reloaded
+      // since): a stored copy that differs from it takes the edit as a three-way merge on that base; one the edit cannot
+      // merge into is not written over: the edit waits as a draft for adoption or Settings, and the view shows the copy.
       try {
-        const stored = localStorage.getItem(device);
+        const theirs = readDeviceDocument(client, owned);
         let next = result.data;
-        if (stored !== deviceSeen.current) {
-          const theirs = readDeviceDocument(client, owned);
-          const merged = theirs === undefined ? next : client.mergeDevice?.(theirs, next, current.current);
+        if (theirs !== undefined && !same(theirs, from)) {
+          const merged = client.mergeDevice?.(theirs, next, from);
           if (merged === undefined) {
-            if (localStorage.getItem(key) === null) writeDocumentDraft(client, owned, { page: next, base: current.current, revision: revision.current, id: crypto.randomUUID(), ancestors: [] });
+            if (localStorage.getItem(key) === null) writeDocumentDraft(client, owned, { page: next, base: from, revision: revision.current, id: crypto.randomUUID(), ancestors: [] });
             else {
               setError(t(messages.conflict));
               return false;
             }
-            deviceSeen.current = stored;
-            current.current = theirs ?? snapshot.page;
+            current.current = theirs;
             setPage(current.current);
             setError(t(messages.conflict));
             return false;
@@ -311,7 +309,6 @@ export function useWorkspaceDocument<T>(client: WorkspaceDocumentClient<T>, owne
           next = merged;
         }
         if (!writeDeviceDocument(client, owned, next)) return false;
-        deviceSeen.current = localStorage.getItem(device);
         current.current = next;
         setPage(next);
         return true;
