@@ -24,6 +24,9 @@
 .board-drawer-action { flex: none; opacity: 0; }
 .board-drawer-row:hover .board-drawer-action, .board-drawer-action:focus-visible { opacity: 1; }
 @media (pointer: coarse) { .board-drawer-action { opacity: 1; } .board-drawer-chip { min-height: 44px; } }
+.board-drawer-action[aria-disabled='true'] { opacity: 0.45; cursor: not-allowed; }
+.board-drawer-row[data-pending] .board-drawer-action { opacity: 0.45; }
+.board-drawer-more { flex: none; align-self: center; }
 .board-drawer-hint, .board-drawer-foot { margin: 0; color: var(--color-muted); font-size: 12px; line-height: 1.5; }
 .board-drawer-foot { flex: none; }
 /* A note dragged from the drawer over the board. */

@@ -2,6 +2,7 @@ import { boardsContaining, type CompilationRow } from '@mygitnotes/core/compilat
 import type { NoteGraphLink } from '@mygitnotes/core/note-graph';
 import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { isNoteHidden } from '@mygitnotes/core/note-status';
+import { pendingNote } from './add.js';
 
 /** What a board reads of a note to know whether it is a member: its tags, status and metadata. */
 export interface MemberNote extends NoteRef {
@@ -42,14 +43,15 @@ export function drawerRows<T extends NoteRef>(notes: readonly T[], { offBoard, l
 
 /**
  * The notes 「＋N 相連」 offers for a note card: those linked to or from its note, in either direction, that the board
- * does not show and that are not hidden. Links join notes of one repository only, so every one is of the card's
- * repository. `notes` holds what is known of each candidate (its status and metadata); one not known yet is not offered.
+ * does not show and that are not hidden, nor pending live notes (no Git path yet). Links join notes of one repository
+ * only, so every one is of the card's repository. `notes` holds what is known of each candidate (its status and
+ * metadata); one not known yet is not offered.
  */
-export function linkedOffBoard<T extends NoteRef & Pick<MemberNote, 'status' | 'metadata'>>(links: readonly NoteGraphLink[], note: NoteRef, shown: ReadonlySet<string>, notes: readonly T[]): T[] {
+export function linkedOffBoard<T extends NoteRef & Pick<MemberNote, 'status' | 'metadata'> & { live?: { pending?: boolean; }; }>(links: readonly NoteGraphLink[], note: NoteRef, shown: ReadonlySet<string>, notes: readonly T[]): T[] {
   const linked = linkedNotes(links, new Set([noteRefKey(note)]));
   return notes.filter(candidate => {
     const key = noteRefKey(candidate);
-    return linked.has(key) && !shown.has(key) && !isNoteHidden({ ...candidate.metadata, status: candidate.status });
+    return linked.has(key) && !shown.has(key) && !pendingNote(candidate) && !isNoteHidden({ ...candidate.metadata, status: candidate.status });
   });
 }
 

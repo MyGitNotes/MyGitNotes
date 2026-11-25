@@ -26,14 +26,18 @@ const links = [{ source: key(CAUSAL), target: key(GRECO) }, { source: key(TERMS)
 const sidePanel = { focusNotebook: 'thesis', openInFocus: vi.fn(), fullscreen: vi.fn() };
 const SLOW = { timeout: 5000 };
 
-/** The Notes page's search over the notebook: a page of notes, or every match's path. */
+/** Notes a test adds to the notebook's search beyond the library. */
+let extra: (ReturnType<typeof note> & { live?: { pending: boolean; since: string; activeEditors: number; }; })[] = [];
+/** The Notes page's search over the notebook: a page of notes (as many as asked, from the cursor), or every match's path. */
 function search(url: URL) {
   if (url.pathname !== '/api/notes/query' || ['kind', 'folder', 'tag'].some(name => url.searchParams.has(name))) return undefined;
   const q = url.searchParams.get('q') ?? '';
-  const found = library.filter(entry => entry.notebookId === url.searchParams.get('notebookId') && (entry.title.includes(q) || entry.content.includes(q)));
+  const found = [...library, ...extra].filter(entry => entry.notebookId === url.searchParams.get('notebookId') && (entry.title.includes(q) || entry.content.includes(q)));
   if (url.searchParams.get('select') === 'paths') return Response.json({ notes: found.map(({ notebookId, path }) => ({ notebookId, path })), total: found.length });
-  return Response.json({ notes: found, total: found.length, nextCursor: null });
+  const limit = Number(url.searchParams.get('limit') ?? 50), start = Number(url.searchParams.get('cursor') ?? 0);
+  return Response.json({ notes: found.slice(start, start + limit), total: found.length, nextCursor: start + limit < found.length ? String(start + limit) : null });
 }
+const fullBoard = `version: 1\nid: full\ntitle: 第三章：德性與依據\narrangement: board\nitems:\n${Array.from({ length: 100 }, (_, index) => `  - id: i${index}\n    kind: note\n    path: notes/thesis/i${index}.md`).join('\n')}\n`;
 const open = ({ raw = example, actions = {} }: { raw?: string; actions?: Parameters<typeof openBoard>[0]['actions']; } = {}) => openBoard({ path: BOARD, notebookId: 'thesis', raw, notes: [...thesisNotes, ...library.slice(0, 2)], links, actions, respond: search, view: { frame: 'page', sidePanel, url: boardsRoute('thesis', BOARD) } });
 const drawer = () => screen.getByRole('complementary', { name: 'Note library' });
 const rows = () => within(drawer()).queryAllByRole('listitem').map(row => row.querySelector('.board-drawer-title')!.textContent);
@@ -57,6 +61,7 @@ async function ready(options?: Parameters<typeof open>[0]) {
 beforeEach(() => {
   resetBoardTest();
   renaming.mockReset();
+  extra = [];
   // jsdom has no drag events: a mouse event carries the drop's point.
   vi.stubGlobal('DragEvent', class DragEvent extends MouseEvent {});
 });
@@ -100,18 +105,47 @@ describe('the 筆記庫 drawer', () => {
     press(screen.getByRole('button', { name: 'Section: 一、問題' }), 20, 20);
     fireEvent.click(within(drawer()).getByRole('button', { name: 'Add to the whiteboard: 待讀：Greco 2010' }));
     await waitFor(() => expect(save).toHaveBeenCalled(), SLOW);
-    expect(chapters(written())).toEqual(['一、問題: 第三章導論.md 依據關係的因果條件.md greco-2010.md', '二、德性知識論: 德性與能力的區分.md sosa-2007.md gone.md']);
+    const file = written();
+    expect(chapters(file)).toEqual(['一、問題: 第三章導論.md 依據關係的因果條件.md greco-2010.md', '二、德性知識論: 德性與能力的區分.md sosa-2007.md gone.md']);
+    // At the viewport's centre (the origin here), moved down clear of the cards there.
+    expect(file.board!.cards).toContainEqual({ item: idOf(file, GRECO), x: -120, y: 392 });
     expect(save).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a note past the item limit of 100 with the limit’s message', async () => {
-    const items = Array.from({ length: 100 }, (_, index) => `  - id: i${index}\n    kind: note\n    path: notes/thesis/i${index}.md`).join('\n');
-    openBoard({ path: BOARD, notebookId: 'thesis', raw: `version: 1\nid: full\ntitle: 第三章：德性與依據\narrangement: board\nitems:\n${items}\n`, notes: library, respond: search, view: { frame: 'page', sidePanel, url: boardsRoute('thesis', BOARD) } });
+    open({ raw: fullBoard });
     await waitFor(() => expect(rows()).toContain('名詞對照表'), SLOW);
     fireEvent.click(within(drawer()).getByRole('button', { name: 'Add to the whiteboard: 名詞對照表' }));
     expect(await screen.findByText('A compilation holds at most 100 pinned items.')).toBeInTheDocument();
     await new Promise(resolve => setTimeout(resolve, 600));
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('keeps a pending live note off the board: no drag, and 「加到白板」 says to check it in first', async () => {
+    extra = [{ ...note('thesis', 'notes/thesis/.live/abc123.md', '未歸檔草稿', '剛寫的'), live: { pending: true, since: '2026-11-25T00:00:00.000Z', activeEditors: 1 } }];
+    await ready();
+    await waitFor(() => expect(rows()).toContain('未歸檔草稿'), SLOW);
+    const row = within(drawer()).getAllByRole('listitem').find(item => item.textContent?.includes('未歸檔草稿'))!;
+    expect(row).toHaveAttribute('draggable', 'false');
+    const add = within(row).getByRole('button', { name: 'Add to the whiteboard: 未歸檔草稿' });
+    expect(add).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(add);
+    expect(await screen.findByText(/no lasting path until it is checked in/)).toBeInTheDocument();
+    // Dropped anyway (its path names it), the board refuses it the same way.
+    const dataTransfer = { types: [BOARD_NOTE_TYPE], getData: () => draggedNote({ notebookId: 'thesis', path: 'notes/thesis/.live/abc123.md' }), dropEffect: 'none' };
+    fireEvent.drop(region(), { dataTransfer, clientX: 800, clientY: 300 });
+    await new Promise(resolve => setTimeout(resolve, 600));
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('reads the next page of the search on 「載入更多」', async () => {
+    extra = Array.from({ length: 60 }, (_, index) => note('thesis', `notes/thesis/more-${index}.md`, `More ${index}`, 'more'));
+    await ready();
+    // The first page holds 50 notes, three of them on the board.
+    await waitFor(() => expect(rows()).toHaveLength(47), SLOW);
+    fireEvent.click(within(drawer()).getByRole('button', { name: 'Load more notes' }));
+    await waitFor(() => expect(rows()).toHaveLength(62), SLOW);
+    expect(within(drawer()).queryByRole('button', { name: 'Load more notes' })).toBeNull();
   });
 
   it('on a dynamic board only finds: no drag, no 「加到白板」, and its foot says where the cards come from', async () => {
@@ -199,6 +233,43 @@ describe('the 卡片 tool', () => {
     expect(renaming).toHaveBeenCalledTimes(1);
     // The tool returns to 選取 after one use.
     expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('creates nothing on a board at its item limit, and says why', async () => {
+    const createBoardNote = vi.fn();
+    open({ raw: fullBoard, actions: { createBoardNote, newNotesLive: () => false } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Card' }, SLOW));
+    press(region(), 800, 300);
+    expect(await screen.findByText('A compilation holds at most 100 pinned items.')).toBeInTheDocument();
+    expect(createBoardNote).not.toHaveBeenCalled();
+  });
+
+  it('deletes the new note again and opens nothing when the board cannot be written', async () => {
+    const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
+    const discard = vi.fn(async () => {});
+    await ready({ actions: { createBoardNote: vi.fn(async () => created), newNotesLive: () => false, remove: discard } });
+    save.mockRejectedValue(new Error('The disk is full.'));
+    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
+    press(region(), 800, 300);
+    await waitFor(() => expect(discard).toHaveBeenCalledWith(created), SLOW);
+    expect(screen.queryByRole('complementary', { name: 'Note beside the whiteboard' })).toBeNull();
+    expect(renaming).not.toHaveBeenCalled();
+  });
+
+  it('deletes the new note again when the board went away while it was created', async () => {
+    const created = note('thesis', 'notes/thesis/untitled.md', 'Untitled', '# Untitled');
+    let finish!: (value: typeof created) => void;
+    const createBoardNote = vi.fn(() => new Promise<typeof created>(resolve => finish = resolve));
+    const discard = vi.fn(async () => {});
+    const view = open({ actions: { createBoardNote, newNotesLive: () => false, remove: discard } });
+    await screen.findByRole('group', { name: '二、德性知識論' }, SLOW);
+    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
+    press(region(), 800, 300);
+    await waitFor(() => expect(createBoardNote).toHaveBeenCalled());
+    view.unmount();
+    finish(created);
+    await waitFor(() => expect(discard).toHaveBeenCalledWith(created));
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('is off in a repository whose new notes start live, and says why', async () => {

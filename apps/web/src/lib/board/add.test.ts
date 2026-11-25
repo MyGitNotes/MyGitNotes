@@ -45,14 +45,17 @@ describe('addNote', () => {
     expect(book(addNote(row, place(row), ref('new'), { at: { x: 0, y: 0 }, makeId: ids('n1') }).row)).toEqual(['·: a', '·: n1']);
   });
 
-  it('puts a note into a named section without a position, where the section auto-places it', () => {
+  it('puts a note in a named section’s chapter at the point, whichever section the point lands in', () => {
     const row = two();
-    const result = addNote(row, place(row), ref('new'), { section: 'h1', makeId: ids('n1') });
+    const result = addNote(row, place(row), ref('new'), { at: { x: 800, y: 300 }, section: 'h1', clear: true, makeId: ids('n1') });
     expect(book(result.row)).toEqual(['·: d', 'One: a b n1', 'Two: c']);
-    expect(card(result.row, 'n1')).toBeUndefined();
-    const drawn = place(result.row).cards.find(entry => entry.key === 'n1')!;
-    expect(drawn.section).toBe('h1');
-    expect(place(result.row).cards.filter(entry => entry.key !== 'n1').some(other => rectsOverlap(other.rect, drawn.rect))).toBe(false);
+    expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 680, y: 236 });
+  });
+
+  it('refuses a pending live note, by its virtual path or its live state', () => {
+    const row = two();
+    expect(addNote(row, place(row), { notebookId: nb, path: 'notes/.live/abc123.md' }, { at: { x: 0, y: 900 } })).toEqual({ row, added: [], refused: 'pendingNote' });
+    expect(addNote(row, place(row), { ...ref('new'), live: { pending: true } }).refused).toBe('pendingNote');
   });
 
   it('moves a card added at a spot down until it covers no other card', () => {
@@ -114,6 +117,13 @@ describe('addBeside', () => {
     expect(book(result.row)).toEqual(['·: d', 'One: a b n1', 'Two: c']);
     // Below a, past b.
     expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 24, y: 360 });
+  });
+
+  it('skips pending live notes', () => {
+    const row = two();
+    const result = addBeside(row, place(row), 'a', [{ notebookId: nb, path: 'notes/.live/abc123.md' }, ref('p')], ids('n1'));
+    expect(result.added).toEqual(['n1']);
+    expect(book(result.row)).toEqual(['·: d', 'One: a b n1', 'Two: c']);
   });
 
   it('keeps the column clear of free text', () => {

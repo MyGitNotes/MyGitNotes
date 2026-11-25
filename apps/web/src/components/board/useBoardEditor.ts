@@ -97,6 +97,8 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera,
         return t('screen.limit');
       case 'dynamicItems':
         return t('board.dynamicItems');
+      case 'pendingNote':
+        return t('board.pendingNote');
     }
   };
   /** Writes one gesture's edit and records it as one undo step; a refusal is said. Returns whether the row changed. */

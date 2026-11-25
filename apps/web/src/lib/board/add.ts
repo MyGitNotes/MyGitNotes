@@ -1,5 +1,6 @@
 import { addToChapter, BOARD_CARD_HEIGHT as CARD_H, BOARD_CARD_WIDTH as CARD_W, BOARD_COORDINATE_LIMIT, COMPILATION_MAX_ITEMS, type CompilationItem, type CompilationRow, contentItems } from '@mygitnotes/core/compilation';
 import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
+import { isLivePendingPath } from '../live-api.js';
 import { type BoardEdit, boardId } from './edit.js';
 import { type Point, type Rect, rectsOverlap, unionRects } from './geometry.js';
 import { BOARD_GAP, type PlacedBoard, roomOf } from './placement.js';
@@ -42,8 +43,16 @@ function insert(items: readonly CompilationItem[], item: CompilationItem, sectio
   return [...items.slice(0, at), item, ...items.slice(at)];
 }
 
-/** Why a board cannot take these notes: a dynamic board's cards come from its query; a custom one holds at most 100 items. */
-function refusal(row: CompilationRow, count: number): BoardEdit['refused'] {
+/**
+ * A pending live note has a virtual path (`<root>/.live/<id>.md`) until its first check-in files it at a Git path,
+ * which an item naming the virtual path would not follow: no board takes one.
+ */
+/** A note as an addition reads it: where it is, and whether it is a pending live note. */
+export type AddableNote = NoteRef & { live?: { pending?: boolean; }; };
+export const pendingNote = (note: AddableNote) => Boolean(note.live?.pending) || isLivePendingPath(note.path);
+
+/** Why a board cannot take `count` more notes: a dynamic board's cards come from its query; a custom one holds at most 100 items. */
+export function addRefusal(row: CompilationRow, count: number): BoardEdit['refused'] {
   if (row.kind !== 'custom') return 'dynamicItems';
   return contentItems(row.items).length + count > COMPILATION_MAX_ITEMS ? 'itemLimit' : undefined;
 }
@@ -75,12 +84,14 @@ export interface AddNoteOptions {
 /**
  * Adds a note to a custom board (spec, The 筆記庫 drawer): an item in the chapter of the section it lands in (or the
  * section named), its card centred on the point, or auto-placed in its section without one. A note the board already
- * shows is found, not added; a dynamic board refuses (its cards come from its query), and so does a board at its item limit.
+ * shows is found, not added; a dynamic board refuses (its cards come from its query), and so does a board at its item
+ * limit, and any board a pending live note (`pendingNote`).
  */
-export function addNote(row: CompilationRow, placed: PlacedBoard, note: NoteRef, { at, section, clear = false, makeId = boardId }: AddNoteOptions = {}): BoardAddition {
+export function addNote(row: CompilationRow, placed: PlacedBoard, note: AddableNote, { at, section, clear = false, makeId = boardId }: AddNoteOptions = {}): BoardAddition {
   const found = boardNotes(placed).get(noteRefKey(note));
   if (found) return { row, added: [], found };
-  const refused = refusal(row, 1);
+  if (pendingNote(note)) return { row, added: [], refused: 'pendingNote' };
+  const refused = addRefusal(row, 1);
   if (refused || row.kind !== 'custom') return { row, added: [], refused: refused ?? 'dynamicItems' };
   let rect = at && cardAt(Math.round(at.x - CARD_W / 2), Math.round(at.y - CARD_H / 2));
   if (rect && clear) {
@@ -99,14 +110,15 @@ const BESIDE_COLUMNS = 4, BESIDE_ROWS = 20;
  * every other card, of free text and of every other section, where the card's own section, drawn grown to hold the
  * column, overlaps no other section; when the right side is taken (a section beside it), the column goes below the
  * card instead. With no such place nearby it falls back to the first column to the right clear of other cards. Notes
- * the board already shows are skipped; a dynamic board refuses, and so does a custom one the notes would take past its item limit.
+ * the board already shows and pending live notes are skipped; a dynamic board refuses, and so does a custom one the
+ * notes would take past its item limit.
  */
-export function addBeside(row: CompilationRow, placed: PlacedBoard, cardKey: string, notes: readonly NoteRef[], makeId: (row: CompilationRow) => string = boardId): BoardAddition {
+export function addBeside(row: CompilationRow, placed: PlacedBoard, cardKey: string, notes: readonly AddableNote[], makeId: (row: CompilationRow) => string = boardId): BoardAddition {
   const card = placed.cards.find(candidate => candidate.key === cardKey);
   const shown = boardNotes(placed);
-  const fresh = [...new Map(notes.filter(note => !shown.has(noteRefKey(note))).map(note => [noteRefKey(note), note])).values()];
+  const fresh = [...new Map(notes.filter(note => !shown.has(noteRefKey(note)) && !pendingNote(note)).map(note => [noteRefKey(note), note])).values()];
   if (!card || !fresh.length) return { row, added: [] };
-  const refused = refusal(row, fresh.length);
+  const refused = addRefusal(row, fresh.length);
   if (refused || row.kind !== 'custom') return { row, added: [], refused: refused ?? 'dynamicItems' };
   const cards = placed.cards.filter(candidate => candidate.key !== card.key).map(candidate => candidate.rect);
   const sections = placed.sections.filter(section => section.key !== card.section).map(section => section.rect);

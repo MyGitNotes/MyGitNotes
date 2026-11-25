@@ -34,6 +34,7 @@ import { CompilationOrderDialog } from './CompilationOrderDialog.js';
 import { CompilationBook } from './CompilationBook.js';
 import { CompilationBoard } from './board/CompilationBoard.js';
 import type { BoardPanelActions } from './board/useBoardPanel.js';
+import type { BoardCardNote } from './board/useBoardAdding.js';
 import { useBoardHost } from './board/useBoardHost.js';
 import { LoadingStatus } from './LoadingStatus.js';
 import { useCompilationAssets, useCompilationItemOpen } from './useCompilationItemOpen.js';
@@ -298,7 +299,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
       const drawn = page && shownView(current.view) !== 'board' ? { ...current, view: 'board' as const } : current;
       // The 卡片 tool: a blank note at the notebook root, or in a dynamic board's folder or with its tag.
       const context = current.kind === 'custom' ? { notebookId: current.notebookId, folder: '' } : createLaneNoteContext(current, notebooks);
-      const cardNote = actions.createBoardNote && context ? { create: () => actions.createBoardNote!({ ...context, notebookId: context.notebookId ?? current.notebookId }), live: actions.newNotesLive?.(context.notebookId ?? current.notebookId) ?? false, open: host.openCreated((note: NoteListItem) => onOpenNote(note)) } : undefined;
+      const cardNote: BoardCardNote | undefined = actions.createBoardNote && context ? { create: () => actions.createBoardNote!({ ...context, notebookId: context.notebookId ?? current.notebookId }), live: actions.newNotesLive?.(context.notebookId ?? current.notebookId) ?? false, open: host.openCreated((note: NoteListItem) => onOpenNote(note)), save: compilation.save, discard: note => actions.remove(note) } : undefined;
       const edit = drawn === current ? change : (next: CompilationRow) => change({ ...next, view: current.view });
       const board = <CompilationBoard row={drawn} notebooks={notebooks} assets={assets} assetsLoading={assetsLoading} folders={folders} onOpen={host.openCard(open)} disabled={disabled} readOnly={common.readOnly} facets={common.facets} extra={common.extra} onStudy={common.onStudy} onView={common.onView} onAdd={common.onAdd} onEditOrder={common.onEditOrder} onArrange={common.onArrange} onRename={common.onRename} onCreateInSource={createInSource} onChange={writable ? edit : undefined} hideQuery lead={lead} reveal={host.reveal} drawer={page ? host.panelNote ? { panel: host.panelNote } : {} : undefined} cardNote={cardNote} />;
       return host.withPanel(board, current);

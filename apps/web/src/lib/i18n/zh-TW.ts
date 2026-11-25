@@ -860,6 +860,8 @@ export const zhTW: Record<TranslationKey, string> = {
   'board.linkedLabel': '有 {count} 則相連的筆記不在這塊白板上',
   'board.linkedTitle': '勾選要加到白板的相連筆記',
   'board.linkedAdd': '加入（{count}）',
+  'board.pendingNote': '這則筆記還沒簽回，沒有固定路徑；簽回後再加到白板。',
+  'board.drawerMore': '載入更多筆記',
   'boards.list': '這本筆記本的白板',
   'boards.new': '新增白板',
   'boards.untitled': '未命名白板',

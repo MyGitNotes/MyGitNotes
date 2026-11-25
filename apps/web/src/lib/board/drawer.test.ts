@@ -40,6 +40,8 @@ describe('linkedOffBoard', () => {
     const known = [member('b'), member('c', { metadata: { hiden: true } }), member('d')];
     expect(linkedOffBoard(links, member('a'), new Set(), known).map(note => note.path)).toEqual(['notes/b.md']);
     expect(linkedOffBoard(links, member('b'), new Set([key('a')]), [member('a'), member('d')]).map(note => note.path)).toEqual(['notes/d.md']);
+    // A pending live note has no Git path to pin yet.
+    expect(linkedOffBoard(links, member('a'), new Set(), [{ ...member('b'), live: { pending: true } }, member('c')]).map(note => note.path)).toEqual(['notes/c.md']);
   });
   it('names the candidates to look up', () => {
     expect(linkedCandidates(links, member('a'), new Set([key('b')]))).toEqual([{ notebookId: nb, path: 'notes/c.md' }]);

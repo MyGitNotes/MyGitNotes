@@ -2,7 +2,7 @@ import { type DragEvent, useEffect, useMemo, useState } from 'react';
 import { ChevronsLeft, ChevronsRight, GripVertical, LocateFixed, Plus, Search } from 'lucide-react';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
 import { type NoteListItem, noteRefKey } from '@mygitnotes/core/note-query';
-import { boardNotes } from '../../lib/board/add.js';
+import { boardNotes, pendingNote } from '../../lib/board/add.js';
 import { readBoardDrawerFolded, saveBoardDrawerFolded } from '../../lib/board/storage.js';
 import { BOARD_NOTE_TYPE, draggedNote, drawerRows, dynamicSource, linkedNotes, otherBoardCounts } from '../../lib/board/drawer.js';
 import type { BoardSelectionKey } from '../../lib/board/edit.js';
@@ -106,10 +106,12 @@ export function BoardDrawer({ row, placed, selection, notebooks, adding, folded,
       <ul className='board-drawer-list' aria-label={t('board.drawerNotes')} aria-busy={found.loading || undefined}>
         {rows.map(note => {
           const key = noteRefKey(note), card = shown.get(key), count = counts.get(key);
+          // A pending live note has no Git path yet: it cannot join a board until it is checked in, and says so.
+          const pending = !card && pendingNote(note), movable = canAdd && !card && !pending;
           const action = card ? t('board.findOnBoard') : t('board.addToBoard');
           return (
-            <li key={key} className='board-drawer-row' draggable={canAdd && !card} data-drawer-note={note.path} onDragStart={canAdd && !card ? drag(note) : undefined}>
-              {canAdd && !card && <GripVertical className='board-drawer-grip' size={14} aria-hidden='true' />}
+            <li key={key} className='board-drawer-row' draggable={movable} data-drawer-note={note.path} data-pending={pending || undefined} onDragStart={movable ? drag(note) : undefined}>
+              {movable && <GripVertical className='board-drawer-grip' size={14} aria-hidden='true' />}
               <span className='board-drawer-title'>{note.title || note.path}</span>
               {count !== undefined && (
                 <Tooltip label={t('board.onOtherBoards', { count: String(count) })}>
@@ -117,14 +119,15 @@ export function BoardDrawer({ row, placed, selection, notebooks, adding, folded,
                 </Tooltip>
               )}
               {(card || canAdd) && (
-                <Tooltip label={action}>
-                  <button type='button' className='ui-icon-button board-drawer-action' aria-label={`${action}: ${note.title || note.path}`} onClick={() => card ? adding.find(card) : adding.addToBoard(note)}>{card ? <LocateFixed size={14} aria-hidden='true' /> : <Plus size={14} aria-hidden='true' />}</button>
+                <Tooltip label={pending ? t('board.pendingNote') : action}>
+                  <button type='button' className='ui-icon-button board-drawer-action' aria-label={`${action}: ${note.title || note.path}`} aria-disabled={pending || undefined} onClick={() => card ? adding.find(card) : adding.addToBoard(note)}>{card ? <LocateFixed size={14} aria-hidden='true' /> : <Plus size={14} aria-hidden='true' />}</button>
                 </Tooltip>
               )}
             </li>
           );
         })}
       </ul>
+      {hasMore && !loadingMore && !found.loading && <button type='button' className='ui-button ui-button-small board-drawer-more' onClick={loadMore}>{t('board.drawerMore')}</button>}
       {found.loading || loadingMore ? <LoadingStatus className='board-drawer-hint'>{t('notes.loading')}</LoadingStatus> : !rows.length && <p className='board-drawer-hint'>{t('board.drawerEmpty')}</p>}
       <p className='board-drawer-foot'>{source ? t(source.kind === 'tag' ? 'board.drawerTag' : 'board.drawerFolder', { name: source.name }) : t('board.drawerHint')}</p>
     </aside>

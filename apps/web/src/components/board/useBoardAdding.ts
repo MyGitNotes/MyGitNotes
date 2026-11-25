@@ -1,7 +1,6 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { CompilationRow } from '@mygitnotes/core/compilation';
-import type { NoteRef } from '@mygitnotes/core/note-query';
-import { addBeside, addNote, type BoardAddition } from '../../lib/board/add.js';
+import { type AddableNote, addBeside, addNote, addRefusal, type BoardAddition } from '../../lib/board/add.js';
 import type { BoardSelectionKey } from '../../lib/board/edit.js';
 import type { Point } from '../../lib/board/geometry.js';
 import type { PlacedBoard } from '../../lib/board/placement.js';
@@ -19,6 +18,10 @@ export interface BoardCardNote {
   live: boolean;
   /** Opens the new note: in the side panel with its title selected, or where the host opens notes. */
   open: (note: NoteItem) => void;
+  /** Writes the board's pending edits now; false when the write failed. */
+  save: () => Promise<boolean>;
+  /** Deletes a note the board could not take, so no blank note is left behind. */
+  discard: (note: NoteItem) => Promise<void>;
 }
 
 /**
@@ -26,6 +29,10 @@ export interface BoardCardNote {
  * selected section, if one is), 「＋N 相連」 beside a card, and the 卡片 tool's new note where it was clicked. A note
  * the board already shows is found instead (centred and selected); a refusal is said by the editor. Each addition
  * is one edit, one undo step. `bind` hands it the editor once it exists, since the editor takes its 卡片 tool from here.
+ *
+ * The 卡片 tool asks first whether the board can take one more item, then creates the note, places it and writes the
+ * board at once; only once the board holds it does the note open. A note the board could not take (refused, its
+ * write failed, or the board went away meanwhile) is deleted again.
  */
 export function useBoardAdding({ row, placed, camera, cardNote }: { row: CompilationRow; placed: PlacedBoard; camera: BoardCamera; cardNote?: BoardCardNote; }) {
   const { t } = useTranslation();
@@ -35,6 +42,13 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
     latest.current = { row, placed };
   });
   const creating = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   /** Centres a card and selects it, the keyboard landing on it once the camera has drawn it there. */
   const find = (key: string) => {
@@ -50,28 +64,42 @@ export function useBoardAdding({ row, placed, camera, cardNote }: { row: Compila
     if (editor.current?.apply(result) && result.added.length) editor.current.setSelection(new Set(result.added.map(id => `card:${id}` as BoardSelectionKey)));
   };
 
-  const dropAt = (note: NoteRef, at: Point) => commit(addNote(latest.current.row, latest.current.placed, note, { at }));
-  /** 「加到白板」: into the selected section, where it auto-places the card, else at the viewport's centre, clear of other cards. */
-  const addToBoard = (note: NoteRef) => {
+  const dropAt = (note: AddableNote, at: Point) => commit(addNote(latest.current.row, latest.current.placed, note, { at }));
+  /** 「加到白板」: at the viewport's centre, clear of other cards, in the selected section's chapter, else in the one the centre lands in. */
+  const addToBoard = (note: AddableNote) => {
     const section = [...editor.current?.selection ?? []].find(key => key.startsWith('section:'))?.slice('section:'.length);
     const centre = screenToBoard(camera.camera, { x: camera.size.width / 2, y: camera.size.height / 2 });
-    commit(addNote(latest.current.row, latest.current.placed, note, section !== undefined ? { section } : { at: centre, clear: true }));
+    commit(addNote(latest.current.row, latest.current.placed, note, { at: centre, clear: true, ...(section !== undefined ? { section } : {}) }));
   };
-  const addLinked = (cardKey: string, notes: readonly NoteRef[]) => commit(addBeside(latest.current.row, latest.current.placed, cardKey, notes));
+  const addLinked = (cardKey: string, notes: readonly AddableNote[]) => commit(addBeside(latest.current.row, latest.current.placed, cardKey, notes));
   const createCard = async (at: Point) => {
     if (!cardNote || cardNote.live || creating.current) return;
+    const custom = latest.current.row.kind === 'custom';
+    const refused = custom ? addRefusal(latest.current.row, 1) : undefined;
+    if (refused) return void editor.current?.apply({ row: latest.current.row, refused });
     creating.current = true;
     try {
       const note = await cardNote.create();
       if (!note) return;
       // A dynamic board's new member is auto-placed once its query takes it.
-      if (latest.current.row.kind === 'custom') commit(addNote(latest.current.row, latest.current.placed, note, { at }));
-      cardNote.open(note);
+      const held = !custom || (mounted.current && placeNew(note, at) && await cardNote.save());
+      if (!held) {
+        await cardNote.discard(note);
+        return;
+      }
+      if (mounted.current) cardNote.open(note);
     } catch (caught) {
-      editor.current?.setNotice(caught instanceof Error ? caught.message : String(caught));
+      if (mounted.current) editor.current?.setNotice(caught instanceof Error ? caught.message : String(caught));
     } finally {
       creating.current = false;
     }
+  };
+  /** Places the 卡片 tool's note where it was clicked; false when the board did not take it. */
+  const placeNew = (note: NoteItem, at: Point) => {
+    const result = addNote(latest.current.row, latest.current.placed, note, { at });
+    if (!editor.current?.apply(result) || !result.added.length) return false;
+    editor.current.setSelection(new Set(result.added.map(id => `card:${id}` as BoardSelectionKey)));
+    return true;
   };
   const card = cardNote ? { create: (at: Point) => void createCard(at), ...(cardNote.live ? { off: t('board.cardLive') } : {}) } : undefined;
   return { card, find, dropAt, addToBoard, addLinked, bind: (value: BoardEditor) => editor.current = value };
