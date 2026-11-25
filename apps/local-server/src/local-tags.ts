@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import fs from 'node:fs';
-import { classifyResource, replaceFileTags, resolveSafePath } from '@mygitnotes/core';
+import { classifyResource, CompilationError, replaceFileTags, resolveSafePath } from '@mygitnotes/core';
 import { stageAndCommit } from '@mygitnotes/git';
 import { serializeWorkspaceMutation } from './workspace-mutation.js';
 import { namedLocal } from './request-workspace.js';
@@ -50,7 +50,8 @@ export function createLocalTagsRouter(): Router {
       });
       res.json(result);
     } catch (err: unknown) {
-      const status = (err as { status?: number; })?.status || 500;
+      // A compilation that would not open with its new tags refuses the whole batch, naming the file; nothing is written.
+      const status = err instanceof CompilationError ? 400 : (err as { status?: number; })?.status || 500;
       res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });

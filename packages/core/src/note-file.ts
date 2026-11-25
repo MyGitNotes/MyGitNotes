@@ -1,4 +1,4 @@
-import { applyCompilationMetadata, compilationFields, isCompilationPath, replaceCompilationTags } from './compilation.js';
+import { applyCompilationMetadata, CompilationError, compilationFields, isCompilationPath, replaceCompilationTags } from './compilation.js';
 import { noteFrontmatterSpan, parseNoteContent, replaceNoteTags, serializeNoteContent } from './frontmatter.js';
 import { isOutlinePath, OUTLINE_SUFFIX } from './outline.js';
 import type { NoteMetadata } from './types.js';
@@ -41,9 +41,21 @@ export function parseNoteFile(raw: string, filePath: string, scope?: readonly st
   return { metadata: fields.metadata, content: raw, title: fields.title, lineNumberOffset: 0, extra: { kind: 'compilation', ...(fields.invalid ? { invalid: fields.invalid } : {}) } };
 }
 
-/** The stored form of a save: a note's frontmatter and body, or a compilation's YAML carrying the caller's tags and status. */
+/** A compilation write, its refusal naming the file. */
+function compilationWrite(filePath: string, write: () => string): string {
+  try {
+    return write();
+  } catch (error) {
+    throw error instanceof CompilationError ? new CompilationError(`${filePath}: ${error.message}`) : error;
+  }
+}
+
+/**
+ * The stored form of a save: a note's frontmatter and body, or a compilation's YAML carrying the caller's tags and
+ * status, refused with a `CompilationError` naming the file when that YAML would not open (`applyCompilationMetadata`).
+ */
 export function serializeNoteFile(filePath: string, metadata: NoteMetadata, content: string, isNew: boolean, now: Date, existingRaw?: string): string {
-  if (isCompilationPath(filePath)) return applyCompilationMetadata(content, metadata);
+  if (isCompilationPath(filePath)) return compilationWrite(filePath, () => applyCompilationMetadata(content, metadata));
   return serializeNoteContent(metadata, content, isNew, now, existingRaw, isOutlinePath(filePath));
 }
 
@@ -58,8 +70,11 @@ export function keptNoteMetadata(filePath: string, existingRaw: string | undefin
   return Object.keys(metadata).length ? { ...metadata, ...given } : given;
 }
 
-/** Replaces only the tags of a stored file: a compilation's `tags` key, or a note's frontmatter `tags`; every other field stays as it is. */
+/**
+ * Replaces only the tags of a stored file: a compilation's `tags` key, or a note's frontmatter `tags`; every other field
+ * stays as it is. A compilation whose YAML would not open is refused with a `CompilationError` naming the file.
+ */
 export function replaceFileTags(raw: string, filePath: string, tags: string[]): string {
   if (!isCompilationPath(filePath)) return replaceNoteTags(raw, tags);
-  return replaceCompilationTags(raw, tags);
+  return compilationWrite(filePath, () => replaceCompilationTags(raw, tags));
 }

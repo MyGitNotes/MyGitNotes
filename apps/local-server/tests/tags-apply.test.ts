@@ -66,6 +66,22 @@ describe('local /api/tags/apply', () => {
     expect(git('log', '-1', '--format=%s').toString().trim()).toBe('docs(tags): rename todo');
   });
 
+  it('refuses the batch, naming the compilation, when its new tags would leave it unable to open, and writes nothing', async () => {
+    const file = 'notes/blog/broken.compilation.yml';
+    const raw = 'version: 1\nid: broken\ntitle: Broken\ntags: [todo]\nsource:\n  kind: tag\n  tag: todo\n';
+    fs.writeFileSync(path.join(root, file), raw);
+    git('add', '.');
+    git('commit', '-m', 'add a compilation without an arrangement');
+    const note = fs.readFileSync(path.join(root, 'notes/blog/a.md'), 'utf8');
+    const commits = git('rev-list', '--count', 'HEAD').toString().trim();
+    const res = await post({ entries: [{ path: 'notes/blog/a.md', notebookId: 'blog', tags: ['doing', 'x'] }, { path: file, notebookId: 'blog', tags: ['doing'] }] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe(`${file}: Tags not written: the compilation would not open (arrangement: Required)`);
+    expect(fs.readFileSync(path.join(root, file), 'utf8')).toBe(raw);
+    expect(fs.readFileSync(path.join(root, 'notes/blog/a.md'), 'utf8')).toBe(note);
+    expect(git('rev-list', '--count', 'HEAD').toString().trim()).toBe(commits);
+  });
+
   it('renames a tag across notebooks in one commit, preserving every other byte', async () => {
     const before = fs.readFileSync(path.join(root, 'notes/blog/a.md'), 'utf8');
     const commitsBefore = git('rev-list', '--count', 'HEAD').toString().trim();
