@@ -860,6 +860,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'board.linkedLabel': '有 {count} 則相連的筆記不在這塊白板上',
   'board.linkedTitle': '勾選要加到白板的相連筆記',
   'board.linkedAdd': '加入（{count}）',
+  'board.noRoomRight': '右側空間不足。請移動卡片或騰出空間，再加入相連筆記。',
   'board.pendingNote': '這則筆記還沒簽回，沒有固定路徑；簽回後再加到白板。',
   'board.cardSaving': '新卡片正在寫進白板，稍候再編輯。',
   'board.drawerMore': '載入更多筆記',

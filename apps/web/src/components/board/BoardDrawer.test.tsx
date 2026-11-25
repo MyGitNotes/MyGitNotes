@@ -173,7 +173,7 @@ describe('the 筆記庫 drawer', () => {
 
 describe('「＋N 相連」', () => {
   it('counts the linked notes off the board and adds the checked ones beside the card, in its chapter', async () => {
-    await ready();
+    await ready({ raw: example.replace('x: 336', 'x: 1336').replace('x: 360', 'x: 1360') });
     press(at('n2'), 30, 220);
     const badge = await screen.findByRole('button', { name: '2 linked notes are not on this whiteboard' }, SLOW);
     expect(badge).toHaveTextContent('+2 linked');
@@ -184,12 +184,11 @@ describe('「＋N 相連」', () => {
     await waitFor(() => expect(save).toHaveBeenCalled(), SLOW);
     const file = written();
     expect(chapters(file)[0]).toBe('一、問題: 第三章導論.md 依據關係的因果條件.md greco-2010.md');
-    // Right of the card at (24, 216): past the section 二 beside its own (to 896) and the free text (to 1160), top aligned with it.
-    expect(file.board!.cards).toContainEqual({ item: idOf(file, GRECO), x: 1184, y: 216 });
+    expect(file.board!.cards).toContainEqual({ item: idOf(file, GRECO), x: 288, y: 216 });
   });
 
   it('offers the notes again once the addition is undone', async () => {
-    await ready();
+    await ready({ raw: example.replace('x: 336', 'x: 1336').replace('x: 360', 'x: 1360') });
     press(at('n2'), 30, 220);
     fireEvent.pointerDown(await screen.findByRole('button', { name: '2 linked notes are not on this whiteboard' }, SLOW), { button: 0, pointerType: 'mouse' });
     fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Add (2)' }));

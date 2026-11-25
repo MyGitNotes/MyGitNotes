@@ -2,8 +2,8 @@ import { addToChapter, BOARD_CARD_HEIGHT as CARD_H, BOARD_CARD_WIDTH as CARD_W, 
 import { type NoteRef, noteRefKey } from '@mygitnotes/core/note-query';
 import { isLivePendingPath } from '../live-api.js';
 import { type BoardEdit, boardId } from './edit.js';
-import { type Point, type Rect, rectsOverlap } from './geometry.js';
-import { BOARD_GAP, type PlacedBoard } from './placement.js';
+import { type Point, type Rect, rectsOverlap, unionRects } from './geometry.js';
+import { BOARD_GAP, type PlacedBoard, roomOf } from './placement.js';
 
 /** What adding notes to a board did: the row to write, why it refused, the items it added, or the card of a note already there. */
 export interface BoardAddition extends BoardEdit {
@@ -120,11 +120,16 @@ export function addBeside(row: CompilationRow, placed: PlacedBoard, cardKey: str
   const obstacles = [...cards, ...placed.texts.map(text => text.rect), ...sections];
   const column = (x: number) => fresh.map((_, index) => cardAt(x, card.rect.y + index * (CARD_H + BOARD_GAP)));
   let x = card.rect.x + card.rect.w + BOARD_GAP;
-  for (let step = 0; step < SEARCH_STEPS; step++) {
+  for (;;) {
     const covered = obstacles.filter(other => column(x).some(slot => rectsOverlap(other, slot)));
     if (!covered.length) break;
     x = Math.max(...covered.map(other => other.x + other.w)) + BOARD_GAP;
   }
   const slots = column(x);
+  const section = placed.sections.find(candidate => candidate.key === card.section);
+  const grown = section && unionRects([section.rect, ...slots.map(roomOf)]);
+  const outside = [...sections, ...placed.texts.map(text => text.rect), ...placed.cards.filter(other => other.section !== card.section).map(other => other.rect)];
+  // Moving farther right can only enlarge this section, never clear an obstacle it covers.
+  if (slots.some(slot => coordinate(slot.x) !== slot.x || coordinate(slot.y) !== slot.y) || (grown && outside.some(other => rectsOverlap(grown, other)))) return { row, added: [], refused: 'noRoomRight' };
   return withNotes(row, fresh.map((note, index) => ({ note, ...(card.section !== undefined ? { section: card.section } : {}), rect: slots[index] })), makeId);
 }

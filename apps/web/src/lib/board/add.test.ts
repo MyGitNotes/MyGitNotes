@@ -111,22 +111,19 @@ describe('addBeside', () => {
     expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 984, y: 0 });
   });
 
-  it('keeps the column right of the card when another section stands beside its own, past that section and its cards', () => {
+  it('refuses when growing the section right would cover its neighbour', () => {
     const row = two();
     const result = addBeside(row, place(row), 'a', [ref('p')], ids('n1'));
-    expect(book(result.row)).toEqual(['·: d', 'One: a b n1', 'Two: c']);
-    // Past Two (to 960), top aligned with a.
-    expect(card(result.row, 'n1')).toEqual({ item: 'n1', x: 984, y: 56 });
-    const drawn = place(result.row), added = drawn.cards.find(entry => entry.key === 'n1')!.rect;
-    expect(drawn.cards.filter(other => other.key !== 'n1').some(other => rectsOverlap(other.rect, added))).toBe(false);
-    expect(rectsOverlap(drawn.sections.find(section => section.key === 'h2')!.rect, added)).toBe(false);
+    const [one, twoSections] = place(result.row).sections;
+    expect(rectsOverlap(one.rect, twoSections.rect)).toBe(false);
+    expect(result).toEqual({ row, added: [], refused: 'noRoomRight' });
   });
 
   it('skips pending live notes', () => {
     const row = two();
-    const result = addBeside(row, place(row), 'a', [{ notebookId: nb, path: 'notes/.live/abc123.md' }, ref('p')], ids('n1'));
+    const result = addBeside(row, place(row), 'd', [{ notebookId: nb, path: 'notes/.live/abc123.md' }, ref('p')], ids('n1'));
     expect(result.added).toEqual(['n1']);
-    expect(book(result.row)).toEqual(['·: d', 'One: a b n1', 'Two: c']);
+    expect(book(result.row)).toEqual(['·: d', '·: n1', 'One: a b', 'Two: c']);
   });
 
   it('keeps the column clear of free text', () => {

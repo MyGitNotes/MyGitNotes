@@ -99,6 +99,8 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera,
         return t('screen.limit');
       case 'dynamicItems':
         return t('board.dynamicItems');
+      case 'noRoomRight':
+        return t('board.noRoomRight');
       case 'pendingNote':
         return t('board.pendingNote');
     }
