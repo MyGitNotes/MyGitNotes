@@ -145,6 +145,15 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   useLayoutEffect(() => {
     flushRef.current = flushNudge;
   });
+  // A nudge that carries the focused card into another section draws it in that section's group, a new element; the
+  // keyboard stays on it, until a press or Tab moves the focus on.
+  const refocus = useRef<BoardSelectionKey>(undefined);
+  useLayoutEffect(() => {
+    const key = refocus.current, root = camera.viewport.current;
+    const active = document.activeElement;
+    if (!key || !root || (active && active !== document.body && root.contains(active))) return;
+    root.querySelector<HTMLElement>(`[data-board-key="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+  });
   const nudging = nudge !== undefined;
   useEffect(() => {
     if (!nudging) return;
@@ -229,6 +238,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
       const keys = selection.size ? [...selection] : target && !target.startsWith('arrow:') ? [target] : [];
       if (!keys.length) return;
       consume();
+      if (target) refocus.current = target;
       const step = event.shiftKey ? NUDGE_FAR : NUDGE;
       const current = nudgeRef.current;
       setNudge({ keys: current?.keys ?? keys, dx: (current?.dx ?? 0) + direction[0] * step, dy: (current?.dy ?? 0) + direction[1] * step });
@@ -277,7 +287,13 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   };
   // Focus leaving the board (Tab to the header) writes the nudge run under way.
   const onBlur = (event: ReactFocusEvent<HTMLElement>) => {
-    if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) flushNudge();
+    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+    refocus.current = undefined;
+    flushNudge();
+  };
+  const onPointerDown: typeof gestures.handlers.onPointerDown = event => {
+    refocus.current = undefined;
+    gestures.handlers.onPointerDown(event);
   };
 
   // What the board draws: the gesture or nudge under way, or the element being created, over the stored row.
@@ -291,7 +307,7 @@ export function useBoardEditor({ row, placed, place, editable, onChange, camera 
   const preview = gesturePreview ?? nudgePreview ?? draftPreview;
   const previewBoard = useMemo(() => preview ? place(preview) : undefined, [preview, place]);
 
-  return { editable, tool: tool.tool, sticky: tool.sticky, setTool, selection, setSelection, preview, previewBoard, overlay: gestures.overlay, draft, setDraft, commitDraft, cancelDraft: () => setDraft(undefined), focusBoard: () => camera.viewport.current?.focus({ preventScroll: true }), picker, closePicker: () => setPicker(undefined), pick: (to: BoardElementKey) => picker && newArrow(picker, to), openPicker, linkable, menu, closeMenu: () => setMenu(undefined), canLink: selection.size === 1 && linkable([...selection][0]), confirm, confirmRemove, cancelRemove: () => setConfirm(undefined), requestRemove, recolor, notice, canUndo: steps.past.length > 0, canRedo: steps.future.length > 0, undo: () => travel('undo'), redo: () => travel('redo'), handlers: { ...gestures.handlers, onKeyDown, onKeyUp, onBlur } };
+  return { editable, tool: tool.tool, sticky: tool.sticky, setTool, selection, setSelection, preview, previewBoard, overlay: gestures.overlay, draft, setDraft, commitDraft, cancelDraft: () => setDraft(undefined), focusBoard: () => camera.viewport.current?.focus({ preventScroll: true }), picker, closePicker: () => setPicker(undefined), pick: (to: BoardElementKey) => picker && newArrow(picker, to), openPicker, linkable, menu, closeMenu: () => setMenu(undefined), canLink: selection.size === 1 && linkable([...selection][0]), confirm, confirmRemove, cancelRemove: () => setConfirm(undefined), requestRemove, recolor, notice, canUndo: steps.past.length > 0, canRedo: steps.future.length > 0, undo: () => travel('undo'), redo: () => travel('redo'), handlers: { ...gestures.handlers, onPointerDown, onKeyDown, onKeyUp, onBlur } };
 }
 export type BoardEditor = ReturnType<typeof useBoardEditor>;
 

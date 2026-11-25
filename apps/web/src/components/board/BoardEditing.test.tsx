@@ -216,6 +216,21 @@ describe('editing the board', () => {
     expect(written().board?.cards).toContainEqual({ item: 'n1', x: 48, y: 96 });
   });
 
+  it('keeps the keyboard on a focused card the arrow keys carry into another section, and writes once', async () => {
+    await ready();
+    const card = screen.getByRole('button', { name: /^第三章導論/ });
+    card.focus();
+    for (let press = 0; press < 5; press++) {
+      fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight', shiftKey: true });
+      fireEvent.keyUp(document.activeElement!, { key: 'ArrowRight', shiftKey: true });
+      expect(document.activeElement).toHaveAttribute('data-board-key', 'card:n1');
+    }
+    expect(within(screen.getByRole('group', { name: '二、德性知識論' })).getByRole('button', { name: /^第三章導論/ })).toHaveFocus();
+    await settle();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(chapters(written())).toEqual(['一、問題: n2', '二、德性知識論: n3 n4 n5 n1']);
+  });
+
   it('selects with Space on a focused card without opening it, and renames a section with F2', async () => {
     await ready();
     const card = screen.getByRole('button', { name: /^依據關係的因果條件/ });

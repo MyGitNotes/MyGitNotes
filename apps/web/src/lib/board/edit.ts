@@ -145,15 +145,16 @@ export function moveSelection(row: CompilationRow, placed: PlacedBoard, selectio
 }
 
 /**
- * Creates a section from a dragged rectangle (grown to the minimum size): a heading item at the end of the items,
- * titled `title`, whose chapter takes the items of the cards centred inside it, in their order (`addToChapter`
+ * Creates a section from a dragged rectangle (stored grown to the minimum size): a heading item at the end of the
+ * items, titled `title`, whose chapter takes the items of the cards centred inside the drawn rectangle, in their order (`addToChapter`
  * per item). Those cards are written where they are drawn, so they do not move. Only a custom board has headings.
  */
 export function createSection(row: CompilationRow, placed: PlacedBoard, rect: Rect, { id, title }: { id: string; title: string; }): BoardEdit {
   if (row.kind !== 'custom') return { row, refused: 'dynamicSections' };
   if (row.items.filter(item => item.kind === 'heading').length >= BOARD_MAX_SECTIONS) return { row, refused: 'sectionLimit' };
   const frame = sectionFrame(rect);
-  const inside = placed.cards.filter(card => contains(frame, rectCentre(card.rect)));
+  // The cards join by the rectangle drawn; only the stored frame grows to the minimum size.
+  const inside = placed.cards.filter(card => contains(rect, rectCentre(card.rect)));
   const joining = new Set(inside.map(card => card.key));
   let items: CompilationItem[] = [...row.items.filter(item => !joining.has(item.id)), { id, kind: 'heading', title: title.trim().slice(0, SECTION_TITLE_MAX) }];
   for (const item of row.items) if (joining.has(item.id)) items = addToChapter(items, item, id);

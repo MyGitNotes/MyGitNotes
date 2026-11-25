@@ -103,7 +103,9 @@ describe('sections', () => {
     const row = custom([note('a')]);
     const placed = place(row);
     const at = placed.cards[0].rect;
-    const { row: next } = createSection(row, placed, { x: at.x + 100, y: at.y + 40, w: 20, h: 20 }, { id: 's', title: 'S' });
+    // A rectangle short of the card's centre takes nothing, though the section is stored at the minimum size.
+    expect(book(createSection(row, placed, { x: at.x + 100, y: at.y + 40, w: 10, h: 10 }, { id: 's', title: 'S' }).row)).toEqual(['·: a', 'S: ']);
+    const { row: next } = createSection(row, placed, { x: at.x + 100, y: at.y + 40, w: 40, h: 40 }, { id: 's', title: 'S' });
     expect(next.board?.sections).toEqual([{ item: 's', x: at.x + 100, y: at.y + 40, w: 288, h: 176 }]);
     expect(book(next)).toEqual(['S: a']);
     expect(card(next, 'a')).toEqual({ item: 'a', x: at.x, y: at.y });
