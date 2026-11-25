@@ -15,6 +15,6 @@ tags: [example, graph-demo, media]
 
 ![A cozy desk on a rainy evening](assets/evening-desk.png)
 
-The media swimlane also contains standalone images, a video, and a folder shortcut. Switch it to graph mode to show just its notes.
+The media swimlane also contains standalone images, a video, and a folder shortcut. Switch it to Whiteboard to lay them out as cards you can arrange.
 
 Return to the [Whiteboard Playground](graph-playground.md).

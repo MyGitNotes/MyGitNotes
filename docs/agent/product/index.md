@@ -80,7 +80,7 @@ Browser QA scripts (`node scripts/qa-*.mjs`) drive the built `apps/local-server/
 白板（`arrangement: board`，[規格](../../specs/2026-11-25-whiteboard/spec.md)）的位置、區塊、文字與箭頭存在檔案的 `board` 區段（欄位與驗證見 [MCP 說明](../mcp/index.md#whiteboards)）；區塊就是章名項目，排白板不改筆記。
 `board` 在任何排列下都合法，切換排列時保留；目錄摘要在檔案有 `board` 時另給 `board: { cards, sections, texts, arrows }` 的數量。
 舊的 `arrangement: graph` 讀成 `board`，沒有 `board` 時把 `graph.nodes` 的中心座標轉成卡片位置並以 `arrangeGraphLayout`（`packages/core/src/board-placement.ts`）排開；下次寫入改存 `board` 並移除 `graph`，App 不再寫出 `graph`。
-力導向的關聯圖頁與 `react-force-graph-2d`、`graphology` 已移除；筆記連結圖（`buildNoteGraph`、`/api/notes/graph`）留給白板的虛線、「＋N 相連」、筆記庫的「連到選取的卡片」，以及 MCP 與 API。
+力導向的關聯圖頁與 `react-force-graph-2d`、`graphology` 已移除；筆記連結圖（`buildNoteGraph`、`/api/notes/graph`）留給白板的虛線、「＋N 相連」、筆記庫的「連到選取的卡片」，以及 HTTP API；MCP 只以 YAML 與 `list_notes` 的摘要讀寫白板，沒有筆記連結圖的工具。
 舊版用戶端讀到 `book` 會把該合輯標為無效並附上原因，不會丟棄或改寫；Pro 與社群版要一起升級。
 書本的閱讀方式（連續捲動或分頁）是每台裝置的檢視偏好，存在瀏覽器 `localStorage`（`github-notes:book-reading-mode`，預設連續），切換不寫合輯檔案、不產生 commit。
 分頁以章節 `id` 追蹤，一次只繪製一章；← → 在 KEYMAP 的 `book` 範圍，觸控滑動由書本內文處理，兩者都不在編輯器、輸入框與正在編輯的區段內作用；離開正在編輯的頁面前走合輯編輯狀態的 `finish()`，儲存失敗就留在原頁。
