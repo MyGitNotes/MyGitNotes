@@ -458,3 +458,36 @@ describe('the 編輯中 badge', () => {
     expect(screen.getByText('Editing · 2')).toBeInTheDocument();
   });
 });
+
+describe('a note open in the collab editor while this browser still holds an older draft of it', () => {
+  // The draft was staged before the note went live, and a read of the note once failed: the stored draft says so.
+  const stale: NoteItem = { ...note, title: 'Weekly', metadata: { title: 'Weekly', status: 'inbox' }, content: '# Weekly\n\nOld agenda.\n' };
+  const older = (staleDraft: NonNullable<LiveNoteEditing['staleDraft']>) => ({ note: stale, remoteBase: note, isDirty: true, draftMode: true, conflictReason: 'editor.remoteNoteMovedOrDeleted', onReadRemote: async () => note, onMarkConflict: vi.fn(), live: live({ staleDraft }) });
+
+  it('shows none of the direct editor’s notices, and one notice that offers the draft to download or discard', async () => {
+    const discard = vi.fn();
+    await mount(older({ text: '---\ntitle: Weekly\n---\n# Weekly\n\nOld agenda.\n', savedAt: new Date(2026, 10, 24, 17).getTime(), differs: true, discard }));
+    expect(collabShown()).toBeInTheDocument();
+    expect(screen.queryByText(/moved or deleted|deleted remotely|local changes are preserved|conflict/i)).toBeNull();
+    const notices = document.querySelectorAll('.editor-notice');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toHaveTextContent('This note has an older draft from 11/24 in this browser.');
+    expect(within(notices[0] as HTMLElement).getAllByRole('button').map(button => button.textContent)).toEqual(['Download', 'Discard']);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(discard).not.toHaveBeenCalled();
+    confirm.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(discard).toHaveBeenCalledOnce();
+  });
+
+  it('drops, without asking, a draft that holds nothing but the note it was made from', async () => {
+    const discard = vi.fn();
+    const confirm = vi.spyOn(window, 'confirm');
+    await mount(older({ text: '# Alpha\n', differs: false, discard }));
+    expect(discard).toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.queryByText(/older draft/)).toBeNull();
+  });
+});

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { type ChangeEvent, createElement, forwardRef } from 'react';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NoteEditingProvider } from '../lib/note-editing.js';
 import { PanelProvider } from '../lib/panel-context.js';
@@ -8,6 +8,7 @@ import { getLocalDraft } from '../lib/storage.js';
 import { announceWorkspaceFilesChanged } from '../lib/workspace-changes.js';
 import type { NoteItem } from '../lib/types.js';
 import { NoteEditor, type NoteEditorProps } from './NoteEditor.js';
+import { ApiError } from '../lib/api.js';
 
 vi.mock('./MarkdownEditor.js', () => ({ MarkdownEditor: forwardRef<unknown, { content: string; onChange: (content: string) => void; }>(({ content, onChange }, _ref) => createElement('textarea', { 'aria-label': 'Note content', value: content, onChange: (event: ChangeEvent<HTMLTextAreaElement>) => onChange(event.target.value) })) }));
 
@@ -455,8 +456,9 @@ it('shows the merged notice again on a later, different merge, even though it wa
   });
   expect(screen.queryByText(/Remote changes merged/i)).toBeNull();
 
-  // A fresh local edit merged with a new external change is a new, different event.
-  fireEvent.change(screen.getByLabelText('Note content'), { target: { value: 'LOCAL1\nLOCAL2\nREMOTE3\n' } });
+  // A fresh local edit merged with a new external change is a new, different event. The edit keeps a line between it and
+  // the remote one, so the two merge rather than conflict.
+  fireEvent.change(screen.getByLabelText('Note content'), { target: { value: 'LOCAL1B\nline2\nREMOTE3\n' } });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(61000);
   });
@@ -493,6 +495,10 @@ it('does not offer a dismiss control while blocked on a conflict', async () => {
 
   expect(screen.getByText(/conflict/i)).toBeTruthy();
   expect(screen.queryByLabelText('Dismiss notice')).toBeNull();
+  // One notice says it, with what to do: no error banner beside it for the same conflict.
+  expect(document.querySelectorAll('.editor-notice')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Refresh remote version' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Download my draft' })).toBeTruthy();
 });
 
 it("reads its note again as soon as the workspace says files changed, adopting an agent's edit without waiting for the interval", async () => {
@@ -641,4 +647,34 @@ it('waits for an in-flight autosave before the next, so a remote check never see
   expect(screen.queryByText(/Remote changes/i)).toBeNull();
   expect(diskNote.content).toBe('# Alpha\nOne. Two. Three.');
   expect((screen.getByLabelText('Note content') as HTMLTextAreaElement).value).toBe('# Alpha\nOne. Two. Three.');
+});
+
+it('says a note deleted remotely in one calm notice, which offers the draft it kept', async () => {
+  const onReadRemote = vi.fn(async (): Promise<NoteItem> => Promise.reject(new ApiError('Not found', 404)));
+  render(editor({ draftMode: true, onReadRemote, onMarkConflict: vi.fn() }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  const notices = document.querySelectorAll('.editor-notice');
+  expect(notices).toHaveLength(1);
+  expect(notices[0]!.textContent).toContain('This note was deleted remotely.');
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Download my draft' })).toBeTruthy();
+});
+
+it('says where a note holding typing moved, in one notice whose first action opens it there', async () => {
+  const onMoved = vi.fn();
+  const onReadRemote = vi.fn(async (): Promise<NoteItem> => Promise.reject(new ApiError('Moved', 404, undefined, undefined, false, { movedTo: 'notes/archive/a.md' })));
+  render(editor({ draftMode: true, onReadRemote, onMarkConflict: vi.fn(), onMoved, note: { ...note, content: '# Alpha\nTyped.\n' }, remoteBase: note }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  const notices = document.querySelectorAll('.editor-notice');
+  expect(notices).toHaveLength(1);
+  expect(notices[0]!.textContent).toContain('This note was moved to notes/archive/a.md.');
+  const actions = within(notices[0] as HTMLElement).getAllByRole('button').map(button => button.textContent);
+  expect(actions).toEqual(['Open new location', 'Download my draft']);
+  expect(onMoved).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Open new location' }));
+  expect(onMoved).toHaveBeenCalledWith('notes/archive/a.md');
 });

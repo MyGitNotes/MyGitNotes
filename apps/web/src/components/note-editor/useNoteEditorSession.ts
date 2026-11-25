@@ -16,7 +16,23 @@ import type { NoteEditorSession, NoteEditorSharedProps } from './types.js';
 import type { NewVersionRequest } from '../../lib/history-api.js';
 import { externalEditCount, subscribeExternalEdits } from '../../lib/external-note-edits.js';
 import { isNoteMoving } from '../../lib/moving-notes.js';
-import { readStoredWorkingNotes } from '../../lib/working-notes.js';
+import { COMMIT_CONFLICT, COMMIT_MOVED_OR_DELETED, readStoredWorkingNotes } from '../../lib/working-notes.js';
+
+/**
+ * Why a session is blocked, which its one notice says: the note lies at `to` now, it was deleted, it is gone and a read
+ * has yet to say which (a stored draft records only that), the remote conflicts with the draft, or a reason stored as text.
+ */
+export type BlockReason = { kind: 'moved'; to: string; } | { kind: 'deleted'; } | { kind: 'gone'; } | { kind: 'conflict'; } | { kind: 'other'; reason: string; };
+
+const MOVED_OR_DELETED: TranslationKey = 'editor.remoteNoteMovedOrDeleted';
+const REMOTE_CONFLICT: TranslationKey = 'editor.remoteConflict';
+/** The block a stored draft's reason opens the session with. */
+function storedBlock(reason: string | undefined): BlockReason | null {
+  if (!reason) return null;
+  if (reason === MOVED_OR_DELETED || reason === COMMIT_MOVED_OR_DELETED) return { kind: 'gone' };
+  if (reason === REMOTE_CONFLICT || reason === COMMIT_CONFLICT) return { kind: 'conflict' };
+  return { kind: 'other', reason };
+}
 
 /** Server-managed on every save; excluded when deciding whether there is a new edit to save. */
 function sameIgnoringTimestamps(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
@@ -49,7 +65,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const [isSaving, setIsSaving] = useState(false);
   // Set while `commitNote` runs, so the status names the commit rather than a save.
   const [committing, setCommitting] = useState(false);
-  const [saveError, setSaveError] = useState(conflictReason || '');
+  // A message beside the note's text: a failed write or read. Why the session is blocked is `blockReason`'s, said once.
+  const [saveError, setSaveError] = useState('');
   // Translated at render time alongside saveError, so a raw error message doesn't get frozen
   // in whatever language was active when it was caught.
   const [saveErrorParams, setSaveErrorParams] = useState<Record<string, string> | undefined>(undefined);
@@ -58,6 +75,9 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [baseNote, setBaseNote] = useState(remoteBase || note);
   const [blocked, setBlocked] = useState(Boolean(conflictReason));
+  const [blockReason, setBlockReason] = useState<BlockReason | null>(() => storedBlock(conflictReason));
+  /** Whether the session is blocked by the stored draft it opened on, rather than by what it met itself. */
+  const storedBlockOpen = useRef(Boolean(conflictReason));
   const [remoteNotice, setRemoteNoticeState] = useState('');
   // A new remote-notice event always starts undismissed; only dismiss() should set this true.
   const [remoteNoticeDismissed, setRemoteNoticeDismissed] = useState(false);
@@ -115,6 +135,13 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   /* eslint-disable react/refs -- The editor keeps current draft and event callbacks in refs for async saves and imperative keyboard handlers. */
   const locked = readOnly || blocked || closing.current || (!autoSave && isSaving);
   /* eslint-enable react/refs */
+  /** Blocks the session for `reason`: nothing is saved over the preserved draft until the person picks what to keep. */
+  const block = (reason: BlockReason) => {
+    storedBlockOpen.current = false;
+    current.current.blocked = true;
+    setBlocked(true);
+    setBlockReason(reason);
+  };
   const preserveConflict = () => {
     const key = `${draftScope || branch}:conflict`;
     const draft = { content: current.current.content, metadata: current.current.metadata };
@@ -137,11 +164,8 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     const result = mergeNote(state.baseNote, state, latest);
     if (result.conflict) {
       preserveConflict();
-      current.current.blocked = true;
-      setBlocked(true);
-      const reason: TranslationKey = 'editor.remoteConflict';
-      setSaveError(reason);
-      onMarkConflict?.(reason, { ...note, content: state.content, metadata: state.metadata }, state.baseNote);
+      block({ kind: 'conflict' });
+      onMarkConflict?.(REMOTE_CONFLICT, { ...note, content: state.content, metadata: state.metadata }, state.baseNote);
       return null;
     }
     if (hasLocalEdits && (latest.content !== state.baseNote.content || !sameValue(latest.metadata, state.baseNote.metadata))) {
@@ -175,13 +199,11 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       return;
     }
     if (error instanceof ApiError && error.status === 404 && (error.movedTo !== undefined || isLivePendingPath(note.path)) && readOnly && untouched) return;
+    // Kept where it is, the notice still says where the note lies now when the server tells, and offers to open it there.
     if (error instanceof ApiError && error.status === 404) {
       preserveConflict();
-      current.current.blocked = true;
-      setBlocked(true);
-      const reason: TranslationKey = 'editor.remoteNoteMovedOrDeleted';
-      setSaveError(reason);
-      onMarkConflict?.(reason, { ...note, content: current.current.content, metadata: current.current.metadata }, current.current.baseNote);
+      block(error.movedTo ? { kind: 'moved', to: error.movedTo } : { kind: 'deleted' });
+      onMarkConflict?.(MOVED_OR_DELETED, { ...note, content: current.current.content, metadata: current.current.metadata }, current.current.baseNote);
     } else {
       // The browser's own words for a fetch that reached no server ("Failed to fetch") are said in the app's. A read's
       // clears with the next read; a save's stays until a save succeeds, since a read does not save the note.
@@ -227,6 +249,36 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       operation.current = false;
     }
   };
+  // A stored draft says only that its note was moved or deleted, perhaps long ago: one read says which, or that the note
+  // is back where it was, which leaves the draft and the remote to compare.
+  /* eslint-disable react-hooks/exhaustive-deps -- Read once per note the session opens on, as its stored block is. */
+  useEffect(() => {
+    if (!onReadRemote || storedBlock(conflictReason)?.kind !== 'gone') return;
+    let open = true;
+    const learnt = (reason: BlockReason) => {
+      if (open) setBlockReason(shown => (shown?.kind === 'gone' ? reason : shown));
+    };
+    onReadRemote(note.path).then(() => learnt({ kind: 'conflict' }), error => {
+      if (error instanceof ApiError && error.status === 404) learnt(error.movedTo ? { kind: 'moved', to: error.movedTo } : { kind: 'deleted' });
+    });
+    return () => {
+      open = false;
+    };
+  }, [note.notebookId, note.path]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+  // Opened where the note lies now (開啟新位置), the session is that note's: the block of its old path stays with the draft kept there.
+  const movedTo = blockReason?.kind === 'moved' ? blockReason.to : null;
+  const openMoved = movedTo && onMoved ? () => onMovedRef.current?.(movedTo) : undefined;
+  useEffect(() => {
+    if (!movedTo || note.path !== movedTo) return;
+    current.current.blocked = false;
+    /* eslint-disable react/set-state-in-effect -- Following the note to its new path ends the block its old path had. */
+    setBlocked(false);
+    setBlockReason(null);
+    setConflictDraft(null);
+    setConflictDraftSavedAt(null);
+    /* eslint-enable react/set-state-in-effect */
+  }, [note.path, movedTo]);
   const checkRemoteRef = useRef(checkRemote);
   /* eslint-disable react/refs -- The editor keeps current draft and event callbacks in refs for async saves and imperative keyboard handlers. */
   checkRemoteRef.current = checkRemote;
@@ -268,6 +320,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       clearLocalDraft(draftScope || branch, note.path);
       setRecoveredDraft(null);
       setBlocked(false);
+      setBlockReason(null);
       writeFailed.current = false;
       setSaveError('');
       setHasUnsavedChanges(false);
@@ -347,6 +400,23 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
     markSaved({ content: entry.note.content, metadata: entry.note.metadata || {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Only an outside edit reloads; the note's identity is the session's own reset.
   }, [externalEdits]);
+
+  // The stored draft the session opened blocked on is gone (discarded, here or in Changes): nothing is held for it any
+  // more, so the session takes the note as it is now. Before the adoption below, which a block would skip.
+  /* eslint-disable react-hooks/exhaustive-deps -- Only the stored reason going away matters; the session reads its own state through refs. */
+  useEffect(() => {
+    if (conflictReason || !storedBlockOpen.current) return;
+    storedBlockOpen.current = false;
+    current.current.blocked = false;
+    const key = `${draftScope || branch}:conflict`;
+    /* eslint-disable react/set-state-in-effect -- The block ends with the draft that set it. */
+    setBlocked(false);
+    setBlockReason(null);
+    setConflictDraft(getLocalDraft(key, note.path));
+    setConflictDraftSavedAt(getLocalDraft(key, note.path)?.savedAt ?? null);
+    /* eslint-enable react/set-state-in-effect */
+  }, [conflictReason]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   // A note that changed under a session with nothing unsaved (a rename that retitled it, a change staged elsewhere) is the
   // session's note now: the editor shows it, and no later save writes the older text back over it.
@@ -604,6 +674,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
       setMetadata(restored.metadata);
       setRecoveredDraft(null);
       setBlocked(false);
+      setBlockReason(null);
       setHasUnsavedChanges(false);
       writeFailed.current = false;
     } catch (error) {
@@ -730,7 +801,7 @@ export function useNoteEditorSession({ note, readOnly, autoSave, draftMode, remo
   const showRemoteNotice = Boolean(remoteNotice) && (blocked || !remoteNoticeDismissed);
   const showConflictDraftNotice = Boolean(conflictDraft) && (blocked || !conflictDraftDismissed);
 
-  return { ready: readyKey === sessionKey, content, setContent, metadata, setMetadata, copyState, copyNote, isSaving, saveError, saveErrorParams, hasUnsavedChanges, baseNote, blocked, locked, isDirty, editorState, editorStatus, title, recoveredDraft, handleRestoreDraft, handleDiscardDraft, conflictDraft, showRemoteNotice, remoteNotice, showConflictDraftNotice, dismissNotice, refreshRemote, downloadConflictDraft, handleExplicitSave, commitNote, restoreNote, pullLatest, close };
+  return { ready: readyKey === sessionKey, content, setContent, metadata, setMetadata, copyState, copyNote, isSaving, saveError, saveErrorParams, hasUnsavedChanges, baseNote, blocked, blockReason, openMoved, locked, isDirty, editorState, editorStatus, title, recoveredDraft, handleRestoreDraft, handleDiscardDraft, conflictDraft, showRemoteNotice, remoteNotice, showConflictDraftNotice, dismissNotice, refreshRemote, downloadConflictDraft, handleExplicitSave, commitNote, restoreNote, pullLatest, close };
 }
 
 /** Everything a note editing session exposes to the editor parts that render it. */

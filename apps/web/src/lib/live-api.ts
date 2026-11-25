@@ -76,6 +76,23 @@ export interface LiveNoteEditing {
   onMergeConflict?: (mine: string) => boolean;
   /** The note's conflict draft, kept until the person compares, copies or discards it. */
   mergeConflict?: LiveMergeConflict;
+  /**
+   * A draft this browser kept of the note from before the live editor held it (staged before the note went live, or kept
+   * when a read of it failed): offered beside the live note to download or discard, never shown as its text.
+   */
+  staleDraft?: LiveStaleDraft;
+}
+
+/** A browser draft older than the live note. */
+export interface LiveStaleDraft {
+  /** The draft as a Markdown file, which 下載 saves. */
+  text: string;
+  /** When the browser kept it, where it knows: the time its conflict draft was preserved. */
+  savedAt?: number;
+  /** Whether it holds anything of the person's own; one that equals the note it was made from is dropped without asking. */
+  differs: boolean;
+  /** Drops the draft and the conflict draft kept beside it. */
+  discard: () => void;
 }
 
 /** A conflict draft of a live note: the person's version, and how to drop it. */

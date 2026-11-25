@@ -3,11 +3,13 @@ import { parseNoteFile } from '@mygitnotes/core/note-file';
 import type { useNavigate } from 'react-router-dom';
 import type { NoteEditorSharedProps } from '../components/note-editor/types.js';
 import { fetchFileDiff, readNote } from '../lib/api.js';
-import { liveEditableKind, type LiveNoteEditing } from '../lib/live-api.js';
+import { liveEditableKind, type LiveNoteEditing, type LiveStaleDraft } from '../lib/live-api.js';
+import { sameValue } from '../lib/merge-note.js';
+import { clearLocalDraft, getLocalDraft } from '../lib/storage.js';
 import { LIVE_MERGE_CONFLICT, noteFileText } from '../lib/live-handover.js';
 import { noteRoute } from '../lib/routes.js';
 import type { NoteItem } from '../lib/types.js';
-import { workingDiff } from '../lib/working-notes.js';
+import { workingDiff, type WorkingNote } from '../lib/working-notes.js';
 import { draftScope, editable } from '../lib/workspace-repositories.js';
 import type { useAssetOperations } from './useAssetOperations.js';
 import type { useBrowseFacets } from './useBrowseFacets.js';
@@ -66,6 +68,25 @@ export interface NoteEditorPropsContext {
   routedPath: string | null | undefined;
 }
 
+/**
+ * A live note's working-note draft as the live editor offers it: its file text, when its conflict draft was kept (the
+ * browser keeps no time for the working note itself), and whether it holds anything its base does not.
+ */
+function staleDraftOf(draft: WorkingNote, conflictScope: string, drop: () => void): LiveStaleDraft {
+  const path = draft.note.path;
+  const savedAt = getLocalDraft(conflictScope, path)?.savedAt;
+  const differs = !draft.base || !sameValue(draft.note.content, draft.base.content) || !sameValue(draft.note.metadata, draft.base.metadata);
+  return {
+    text: noteFileText(draft.note),
+    ...(savedAt === undefined ? {} : { savedAt }),
+    differs,
+    discard: () => {
+      drop();
+      clearLocalDraft(conflictScope, path);
+    },
+  };
+}
+
 /** Every editor of a note, in zoom or in a Focus pane, is wired to the same handlers and per-path state. */
 export function noteEditorProps(context: NoteEditorPropsContext) {
   const { config, remote, sourceId, gitStatus, assets, activeWorkingNotes, repositoryFor, refreshWorkspace, stageWorkingNote, updateDraft, setActionError, navigate, search, facets, availableTags, invalidateNotes, isTemplate, handleOpenNote, closeZoom, handleSaveNote, handleRestoreNoteFile, handleDeleteNote, commitNoteFile, handleUploadAsset, handleDeleteAsset, handleMoveAsset, beforeFileChange, onFilesChanged, returnToFocus, frameSelection, liveHandover, noteMove, templateActions, followMoved, routedPath } = context;
@@ -116,6 +137,7 @@ export function noteEditorProps(context: NoteEditorPropsContext) {
           }
         },
         ...(liveConflict ? { mergeConflict: { mine: noteFileText(liveConflict.note), discard: () => updateDraft(note.notebookId, note.path, null) } } : {}),
+        ...(draft && !draft.deleted ? { staleDraft: staleDraftOf(draft, `${draftScope(repository) || repository.branch}:conflict`, () => updateDraft(note.notebookId, note.path, null)) } : {}),
         fileActions: { move: () => noteMove.moveNote({ ...note, live: undefined, editing: true })?.(), rename: (_revision, title) => noteMove.renameNote({ ...note, live: undefined, editing: true }, undefined, title || undefined)?.(), remove: revision => handleDeleteNote({ ...(note as NoteListItem), live: undefined, ...(revision ? { revision } : {}) }) },
       }
       : undefined;

@@ -1,4 +1,4 @@
-import { readWorkingNotes, type WorkingNote, type WorkingNotes } from '../lib/working-notes.js';
+import { COMMIT_CONFLICT, COMMIT_MOVED_OR_DELETED, readWorkingNotes, type WorkingNote, type WorkingNotes } from '../lib/working-notes.js';
 import { handOverDraft, LIVE_MERGE_CONFLICT } from '../lib/live-handover.js';
 import { liveEditableKind } from '../lib/live-api.js';
 import { serializeNoteFile } from '@mygitnotes/core/note-file';
@@ -149,8 +149,7 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
           if (!latest) throw new ApiError('Note moved or deleted remotely.', 404);
         } catch (error) {
           if (error instanceof ApiError && error.status === 404) {
-            const blocked = 'Moved or deleted remotely. Open the note and refresh after it is restored.';
-            stageWorkingNote(entry.note, entry.base, blocked);
+            stageWorkingNote(entry.note, entry.base, COMMIT_MOVED_OR_DELETED);
           }
           throw error;
         }
@@ -169,9 +168,8 @@ export function useWorkingNoteCommit({ documents, sourceId, t, stageWorkingNote,
         // A compilation merges by entry, so moves of cards on neighbouring lines do not conflict.
         const merged = isCompilationPath(entry.note.path) ? mergeCompilation(entry.note.path, entry.base, entry.note, latest) : mergeNote(entry.base, entry.note, latest);
         if (merged.conflict) {
-          const blocked = 'Remote changes conflict with this draft. Open the note and Refresh remote version.';
-          stageWorkingNote(entry.note, entry.base, blocked);
-          throw new Error(`${entry.note.path}: ${blocked}`);
+          stageWorkingNote(entry.note, entry.base, COMMIT_CONFLICT);
+          throw new Error(`${entry.note.path}: ${COMMIT_CONFLICT}`);
         }
         if (!sameValue(merged.draft, { content: entry.note.content, metadata: entry.note.metadata })) reviewRequired = true;
         prepared = { base: latest, note: { ...entry.note, ...merged.draft, revision: latest.revision } };

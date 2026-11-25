@@ -13,7 +13,8 @@ import type { WorkingNotes } from './working-notes.js';
  * Remote drafts live only in this browser, so server pages never contain them. Every server
  * answer is re-judged here against the same core filter the server used, which keeps a staged
  * edit visible in the view it now belongs to without refetching or losing the scroll position.
- * Drafts are keyed by `noteRefKey`.
+ * Drafts are keyed by `noteRefKey`. A row the server lists as live is the live note's, which the live editor holds: a
+ * draft this browser kept of it from before is offered beside the live note, never shown as its row.
  */
 
 export interface DraftRows {
@@ -35,7 +36,7 @@ export function overlayDraftRows(rows: NoteListItem[], query: NoteQuery, drafts:
   for (const row of rows) {
     if (row.path === options.hide) continue;
     const draft = drafts[noteRefKey(row)];
-    if (!draft) {
+    if (!draft || row.live) {
       notes.push(row);
       continue;
     }

@@ -20,6 +20,9 @@ export type WorkingNotes = Record<string, WorkingNote>;
  * picks what to keep, and nothing is staged over it meanwhile (cf16-F002).
  */
 export const LIVE_MERGE_CONFLICT = 'live-merge-conflict';
+/** The `blocked` reasons a commit from Changes stages, in its own words: the note is gone from where it was, or the remote conflicts. */
+export const COMMIT_MOVED_OR_DELETED = 'Moved or deleted remotely. Open the note and refresh after it is restored.';
+export const COMMIT_CONFLICT = 'Remote changes conflict with this draft. Open the note and Refresh remote version.';
 const prefix = 'gh_notes_working:';
 export const workingNotesKey = (scope: string) => prefix + scope;
 
@@ -64,9 +67,12 @@ export function readWorkingNotes(store: DraftStore): WorkingNotes {
   return keyedEntries(readStoredWorkingNotes(store.scope), store.alias);
 }
 
-/** Persist before announcing success; quota errors leave the in-memory draft visible. */
+/**
+ * Persist before announcing success; quota errors leave the in-memory draft visible. A draft that holds nothing but its
+ * base is dropped, a blocked one too: a conflict or a note gone remotely leaves nothing of the person's to keep then.
+ */
 export function updateWorkingNote(store: DraftStore, path: string, entry: WorkingNote | null): WorkingNotes {
-  if (entry?.base && !entry.blocked && !entry.deleted && sameValue(entry.note.content, entry.base.content) && sameValue(entry.note.metadata, entry.base.metadata)) entry = null;
+  if (entry?.base && !entry.deleted && sameValue(entry.note.content, entry.base.content) && sameValue(entry.note.metadata, entry.base.metadata)) entry = null;
   // A demo scope past its 24 hours is cleared and nothing is written over it, or its changes would come back without a clock.
   if (entry ? !noteDemoWrite(store.scope) : demoExpired(store.scope)) return keyedEntries(readStoredWorkingNotes(store.scope), store.alias);
   const entries = readStoredWorkingNotes(store.scope);
