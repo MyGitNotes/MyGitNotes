@@ -2,7 +2,7 @@ import { Tooltip } from './Tooltip.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Folder, FolderInput, Maximize2, Trash2 } from 'lucide-react';
+import { Calendar, FileText, Folder, FolderInput, Maximize2, Trash2 } from 'lucide-react';
 import { noteDirectory, type NoteListItem } from '@mygitnotes/core/note-query';
 import { useTranslation } from '../lib/i18n/index.js';
 import { noteCreatedTime, noteUpdatedTime } from '../lib/note-sort.js';
@@ -75,7 +75,7 @@ const Field = ({ icon, label, children }: { icon: ReactNode; label: string; chil
   </div>
 );
 
-/** A note's full information beside the narrow list: status, every tag, dates, folder, an excerpt, and its actions. */
+/** A note's full information beside the narrow list: status, every tag, dates, file name, folder, an excerpt, and its actions. */
 export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, readNote, onUpdateStatus, onZoom, onMove, onDelete, deleteArmed, onMenuOpenChange, onDone }: NoteHoverCardProps) {
   const { t, language } = useTranslation();
   const { note } = target;
@@ -106,6 +106,7 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
   const created = noteCreatedTime(note);
   const updated = noteUpdatedTime(note);
   const folder = noteDirectory(note.path);
+  const fileName = note.path.slice(note.path.lastIndexOf('/') + 1);
   // A pending note may still be discarded (delete) and moved where its live editor can.
   const liveLock = useLiveLock();
   const moveLocked = liveLock(note, 'move'), deleteLocked = liveLock(note, 'delete');
@@ -121,6 +122,9 @@ export function NoteHoverCard({ target, cardRef, cardProps, statuses, readOnly, 
       <dl className='note-hover-fields'>
         <Field icon={<Calendar aria-hidden='true' />} label={t('focusList.created')}>{created ? <time dateTime={new Date(created).toISOString()}>{date.format(created)}</time> : '—'}</Field>
         <Field icon={<Calendar aria-hidden='true' />} label={t('focusList.updated')}>{updated ? <time dateTime={new Date(updated).toISOString()}>{date.format(updated)}</time> : '—'}</Field>
+        <Field icon={<FileText aria-hidden='true' />} label={t('focusList.fileName')}>
+          <span className='note-hover-path'>{fileName}</span>
+        </Field>
         <Field icon={<Folder aria-hidden='true' />} label={t('focusList.folder')}>
           <span className='note-hover-path'>{folder || '/'}</span>
         </Field>

@@ -2161,6 +2161,7 @@ export const zhTW: Record<TranslationKey, string> = {
   'focusList.cardLabel': '{title} 的詳細資訊',
   'focusList.created': '建立',
   'focusList.updated': '更新',
+  'focusList.fileName': '檔名',
   'focusList.folder': '資料夾',
   'focusList.excerptLoading': '正在載入預覽…',
   'focusList.chips': '目前的篩選',

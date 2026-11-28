@@ -2160,6 +2160,7 @@ export const en = {
   'focusList.cardLabel': 'Details for {title}',
   'focusList.created': 'Created',
   'focusList.updated': 'Updated',
+  'focusList.fileName': 'File name',
   'focusList.folder': 'Folder',
   'focusList.excerptLoading': 'Loading a preview…',
   'focusList.chips': 'Active filters',
