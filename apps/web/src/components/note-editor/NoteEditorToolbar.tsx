@@ -64,6 +64,8 @@ interface NoteEditorToolbarProps {
   availableTags: string[];
   /** Pane frame: the Focus pane's tab bar, which holds the actions. Without it (a phone, where the bar has no room) the actions sit in a row of their own above the note row. */
   actionsSlot?: HTMLElement | null;
+  /** A lone Focus pane's menu and close button: the pane has no tab bar, so they end the editor's actions. */
+  paneControls?: ReactNode;
   /** On a phone, where a note opens for reading: whether it is being edited, and the buttons that switch. */
   phoneEditing?: { editing: boolean; onEdit: () => void; onDone: () => void; };
   /** On a phone the toolbar is the note screen's title bar and its "⋯" sheet instead of the rows below. */
@@ -91,7 +93,7 @@ function togglePanel(docPanel: NoteDocumentPanelState, isMarkdown: boolean) {
 }
 
 /** The editor's actions: refresh and save, the view (mode, line numbers, formatting toolbar), the "⋯" menu, and in zoom the panels. */
-function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing, onClose, toggleZoom, hasZoomNavigation, liveToolbar, checkInButton }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onRename' | 'actionsSlot' | 'template'>) {
+function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, readOnly, editorMode, setEditorMode, editorModes = ['live', 'raw'], showLineNumbers, toggleLineNumbers, showFormatToolbar, toggleFormatToolbar, onRefresh, onAddToOutline, onPlaySlides, onMove, onSaveAsTemplate, liveDraft, phoneEditing, onClose, toggleZoom, hasZoomNavigation, liveToolbar, checkInButton, paneControls }: Omit<NoteEditorToolbarProps, 'statuses' | 'availableTags' | 'onRename' | 'actionsSlot' | 'template'>) {
   const { t } = useTranslation();
   const zoom = frame === 'zoom';
   const zoomLabel = t(zoom ? 'editor.returnToFocus' : 'editor.zoomNote');
@@ -166,6 +168,7 @@ function NoteActions({ frame, note, session, docPanel, isMarkdown, autoSave, rea
           </button>
         </Tooltip>
       )}
+      {paneControls}
     </div>
   );
 }

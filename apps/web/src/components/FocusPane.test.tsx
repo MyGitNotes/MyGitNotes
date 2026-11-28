@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { createElement } from 'react';
-import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
+import { createElement, Fragment, type ReactNode } from 'react';
+import { act, cleanup, createEvent, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { type FocusLayout, splitPane } from '@mygitnotes/core/focus-page';
@@ -13,9 +13,10 @@ import { PhoneNotesProvider } from '../lib/phone-notes.js';
 // `editors`: the host stands for the editor with a text field of its own, which keeps its focus only while it stays mounted.
 const hosted = vi.hoisted(() => ({ slots: [] as unknown[], editors: false }));
 vi.mock('./NoteEditorHost.js', () => ({
-  HostedNoteEditor: ({ actionsSlot, path }: { actionsSlot?: unknown; path: string; }) => {
+  HostedNoteEditor: ({ actionsSlot, paneControls, path }: { actionsSlot?: unknown; paneControls?: ReactNode; path: string; }) => {
     hosted.slots.push(actionsSlot);
-    return hosted.editors ? createElement('textarea', { 'aria-label': 'Note editor', 'data-path': path }) : null;
+    // The pane's controls sit in the editor's note row; the stand-in shows them where the row would.
+    return createElement(Fragment, null, hosted.editors ? createElement('textarea', { 'aria-label': 'Note editor', 'data-path': path }) : null, paneControls ? createElement('div', { 'data-testid': 'note-row' }, paneControls) : null);
   },
 }));
 
@@ -266,6 +267,24 @@ describe('pane buttons', () => {
     cleanup();
     mount({ focus: editable({ layout: { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }, { kind: 'note', path: 'notes/c.md' }] } } }) });
     expect(screen.getAllByRole('tab')).toHaveLength(2);
+  });
+
+  it('puts the pane menu and a close button in the note row of a lone note or compilation, and nowhere else', async () => {
+    const close = vi.fn(async () => true);
+    const only: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] } };
+    mount({ focus: editable({ layout: only, close }) });
+    const row = screen.getByTestId('note-row');
+    expect(within(row).getByRole('button', { name: 'Pane actions' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Pane actions' })).toHaveLength(1);
+    fireEvent.click(within(row).getByRole('button', { name: /^Close / }));
+    expect(close).toHaveBeenCalledWith('note:notes/a.md', 'p1');
+    cleanup();
+    const board: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/b.compilation.yml' }] } };
+    render(createElement(I18nProvider, null, createElement(FocusPane, { focus: editable({ layout: board, close }), notebookRoot: 'notes', folders: [], renderCompilation: (_path: string, _pane: string, controls?: ReactNode) => createElement('div', { 'data-testid': 'compilation-header' }, controls), onZoomNote: () => {}, searchMatches: null, displayed: { panes: ['p1'], pane: 'p1', key: 'note:notes/b.compilation.yml' } })));
+    expect(within(screen.getByTestId('compilation-header')).getByRole('button', { name: 'Pane actions' })).toBeInTheDocument();
+    cleanup();
+    mount({ focus: editable({ layout: { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }, { kind: 'note', path: 'notes/c.md' }] } } }) });
+    expect(screen.queryByTestId('note-row')).not.toBeInTheDocument();
   });
 
   it('offers Split right and Split down in the pane menu on desktop, and splits the shown note', async () => {

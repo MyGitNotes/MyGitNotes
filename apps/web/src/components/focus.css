@@ -161,3 +161,5 @@
 .focus-pane[data-dimmed] .focus-pane-body { opacity: 0.55; }
 /* Toolbar toggle: the pane keeps its tab bar, with the editor's actions in it, and hides the note row under it. */
 .focus-pane[data-hide-toolbar] .note-toolbar, .focus-pane[data-hide-toolbar] .screen-lane-header { display: none; }
+/* A lone note's pane menu and close button, at the end of its note row or its compilation's header. */
+.focus-pane-lone-controls { display: flex; flex: none; align-items: center; gap: 2px; }
