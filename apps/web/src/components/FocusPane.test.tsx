@@ -172,6 +172,18 @@ describe('drop zones', () => {
     expect(split).not.toHaveBeenCalled();
   });
 
+  it('moves a duplicate across panes unless Shift requests a copy', () => {
+    const tab = { kind: 'note', path: 'notes/c.md' } as const;
+    const duplicate = splitPane({ root: { kind: 'pane', id: 'p1', tabs: [tab] } }, 'p1', 'right', tab);
+    const { body } = mount(1, { focus: editable({ layout: duplicate.layout }) });
+    const data = transfer({ 'application/x-mygitnotes-focus-tab': JSON.stringify({ tab, pane: 'p1' }) });
+    dragAt('drop', body, data, 200, 100, true);
+    expect(moveTab).not.toHaveBeenCalled();
+    expect(place).toHaveBeenCalledWith('current', tab, 'p2', undefined, true);
+    dragAt('drop', body, data, 200, 100);
+    expect(moveTab).toHaveBeenCalledWith('current', 'note:notes/c.md', 'p1', 'p2', undefined);
+  });
+
   it('moves a dragged tab to the edge, and copies with Shift', () => {
     const { body, view } = mount(1);
     const data = transfer({});
@@ -241,6 +253,20 @@ describe('pane buttons', () => {
     return render(createElement(I18nProvider, null, createElement(FocusPane, { focus: options.focus ?? editable(), notebookRoot: 'notes', folders: [], renderCompilation: () => null, onZoomNote: () => {}, searchMatches: null, displayed, edgeDrops: options.edgeDrops ?? true })));
   }
   beforeEach(() => vi.clearAllMocks());
+
+  it('hides the tab row only for one unsplit note, keeping its editor actions with the note', () => {
+    const only: FocusLayout = { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }] } };
+    mount({ focus: editable({ layout: only, entry: { ...focus.entry, hideToolbar: { p1: true } } }) });
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+    expect(document.querySelector('.focus-pane')).not.toHaveAttribute('data-hide-toolbar');
+    expect(hosted.slots.at(-1)).toBeUndefined();
+    cleanup();
+    mount({ focus: editable({ layout: withEmptyPane }) });
+    expect(screen.getByRole('tab', { name: 'Alpha' })).toBeVisible();
+    cleanup();
+    mount({ focus: editable({ layout: { root: { kind: 'pane', id: 'p1', tabs: [{ kind: 'note', path: 'notes/a.md' }, { kind: 'note', path: 'notes/c.md' }] } } }) });
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+  });
 
   it('offers Split right and Split down in the pane menu on desktop, and splits the shown note', async () => {
     mount({});

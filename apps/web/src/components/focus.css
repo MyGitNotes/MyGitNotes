@@ -47,6 +47,7 @@
 /* Drawn above the tab bar and the displayed tab, so every edge of the drop target shows. */
 .focus-pane[data-dropping]::after { content: ''; position: absolute; inset: 0; z-index: 2; border: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent); pointer-events: none; }
 .focus-pane-bar { display: flex; flex: none; align-items: stretch; min-width: 0; height: 38px; border-bottom: 1px solid var(--color-line); background: color-mix(in srgb, var(--color-sidebar) 55%, var(--color-surface)); }
+.focus-pane-bar[hidden] { display: none; }
 .focus-pane[data-active] .focus-pane-bar { background: var(--color-sidebar); }
 .focus-tabs { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .focus-tabs::-webkit-scrollbar { display: none; }

@@ -275,6 +275,22 @@ describe('useNoteFocus split and collapse', () => {
     expect(result.current.entry?.activePane).toBe('p1');
   });
 
+  it.each([false, true])('activates a duplicate in place and removes only its source copy (empties source: %s)', async empties => {
+    const flush = vi.fn(async (_paths?: readonly string[]) => true);
+    const { result } = render(flush, { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a'), tab('b'), tab('c')] }, { kind: 'pane', id: 'p2', tabs: empties ? [tab('b')] : [tab('b'), tab('d')] }] } });
+    await waitFor(() => expect(result.current.layout).not.toBeNull());
+    act(() => result.current.activate('p2'));
+    const before = result.current.layout;
+    flush.mockResolvedValueOnce(false);
+    await act(async () => expect(await result.current.moveTab(CURRENT_FOCUS, keyOf('b'), 'p2', 'p1', 0)).toBe(false));
+    expect(result.current.layout).toEqual(before);
+    expect(flush.mock.lastCall?.[0]?.some(key => key.endsWith('notes/a.compilation.yml'))).toBe(true);
+    await act(() => result.current.moveTab(CURRENT_FOCUS, keyOf('b'), 'p2', 'p1', 0));
+    expect(focusPanes(result.current.layout!).map(pane => pane.tabs)).toEqual(empties ? [[tab('a'), tab('b'), tab('c')]] : [[tab('a'), tab('b'), tab('c')], [tab('d')]]);
+    expect(result.current.entry?.shown.p1).toBe(keyOf('b'));
+    expect(result.current.entry?.activePane).toBe('p1');
+  });
+
   it('moves a tab between panes without switching either pane or the active pane, the source showing its previous tab', async () => {
     const { result } = render(undefined, { root: { kind: 'split', id: 'columns-2', orientation: 'horizontal', children: [{ kind: 'pane', id: 'p1', tabs: [tab('a'), tab('b')] }, { kind: 'pane', id: 'p2', tabs: [tab('c'), tab('d')] }] } });
     await waitFor(() => expect(result.current.layout).not.toBeNull());

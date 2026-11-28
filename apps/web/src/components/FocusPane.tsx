@@ -80,7 +80,9 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
   const shown = tabs.find(tab => tab.pane === displayed.pane && tab.key === displayed.key);
   const editorKey = useShownEditorKey(tabsOf(displayed.pane).map(tab => tab.path), shown?.tab.path);
   const panelId = `focus-pane-${displayed.pane}`;
-  const hideToolbar = entry.hideToolbar[displayed.pane];
+  const singleNote = layout.root.kind === 'pane' && layout.root.tabs.length === 1;
+  // Without the tab bar there is nowhere to move the editor actions. Leave the saved preference alone.
+  const hideToolbar = !singleNote && entry.hideToolbar[displayed.pane];
   // The tab bar holds the tabs; the shown note's editor keeps its actions in its own note row, and puts them in this slot of the bar only while that row is hidden. A phone's bar has no room, so there they stay with the note.
   const phone = usePhone();
   const barActions = !phone && hideToolbar;
@@ -201,7 +203,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     const count = tabsOf(tab.pane).length;
     return tab.index === count - 1 && (slot.index === undefined || slot.index >= count) ? 'after' : undefined;
   };
-  /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies and shows the note. Same-pane drops always reorder. A tab-bar drag leaves every pane showing what it showed. */
+  /** A tab-bar drag moves by default; Shift copies instead. A browse-row drag (no source pane) always copies and shows the note. Same-pane drops always reorder. A move onto an existing copy shows that copy. */
   const drop = (event: React.DragEvent, target: DropSlot) => {
     forgetDraggedTab();
     setSlot(undefined);
@@ -215,8 +217,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     const key = focusTabKey(tab);
     const existingIndex = findFocusTabInPane(layout, target.pane, key);
     const index = target.index !== undefined && existingIndex !== -1 && existingIndex < target.index ? target.index - 1 : target.index;
-    // The target pane already holding this tab has nothing to move or copy; the modifier key is irrelevant.
-    if (sourcePane !== undefined && sourcePane !== target.pane && existingIndex === -1 && !event.shiftKey) {
+    if (sourcePane !== undefined && sourcePane !== target.pane && !event.shiftKey) {
       void focus.moveTab(focus.shown, key, sourcePane, target.pane, index).catch(() => {});
       return;
     }
@@ -257,7 +258,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
       }}
       onDrop={event => drop(event, { pane: displayed.pane })}
     >
-      <div className='focus-pane-bar'>
+      <div className='focus-pane-bar' hidden={singleNote}>
         <div
           ref={list}
           className='focus-tabs'
@@ -347,7 +348,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
         </div>
       </div>
       {phone && (!shown || isCompilationPath(shown.tab.path)) && <PhoneBackBar title={shown?.label ?? ''} />}
-      <div id={panelId} className='focus-pane-body' role='tabpanel' aria-label={shown?.label} onDragOver={bodyOver} onDrop={bodyDrop}>
+      <div id={panelId} className='focus-pane-body' role={singleNote ? 'region' : 'tabpanel'} aria-label={shown?.label} onDragOver={bodyOver} onDrop={bodyDrop}>
         {shown
           ? isCompilationPath(shown.tab.path)
             ? (

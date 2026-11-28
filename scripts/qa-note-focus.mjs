@@ -185,9 +185,10 @@ try {
   await clickRow(page, 'Alpha');
   await page.waitForSelector('.focus-area .note-editor[data-frame="pane"]');
   assert(!await page.$('.note-editor[data-frame="zoom"]'), 'A note opens in a Focus pane, not in zoom');
-  await page.waitForFunction(() => document.querySelector('.focus-area [role="tab"][aria-selected="true"]')?.textContent.trim() === 'Alpha');
-  await page.click('.focus-area [aria-label="Close Alpha"]');
-  await page.waitForFunction(() => !document.querySelector('.note-editor') && !document.querySelector('.focus-area'));
+  await page.waitForSelector('.focus-pane-body[aria-label="Alpha"]');
+  await page.waitForSelector('.focus-pane-bar', { hidden: true });
+  await palette(page, 'Close current tab');
+  await page.waitForFunction(() => !document.querySelector('.note-editor, .focus-tab'));
   assert.equal(new URL(page.url()).pathname, `/notebooks/${work}`);
   console.log('PASS 1 normal browsing opens a note as a Focus tab and closing it returns to the list');
 
@@ -221,13 +222,17 @@ try {
   await clickTab(page, 1, 'Beta');
   assert.equal(await activePane(page), 1);
 
-  // Tab-bar drag: a note the target pane already holds is a no-op regardless of the modifier key.
+  // Moving a duplicate closes the source copy and shows the existing target tab.
   await dragTo(page, await browseRow(page, 'Alpha'), '[data-focus-pane="p2"] .focus-pane-body');
   await waitTabs(page, 1, ['Beta', 'Alpha']);
   await dragTo(page, await tabHandle(page, 0, 'Alpha'), '[data-focus-pane="p2"] .focus-pane-body');
-  await waitTabs(page, 0, ['Alpha', 'Gamma']);
+  await waitTabs(page, 0, ['Gamma']);
   await waitTabs(page, 1, ['Beta', 'Alpha']);
-  console.log('PASS 2b a tab-bar drag onto a pane that already holds the tab is a no-op, in both panes');
+  assert.equal(await shownTab(page, 1), 'Alpha');
+  console.log('PASS 2b moving a duplicate leaves only its target copy');
+  // Restore the starting tabs for the distinct-tab move below.
+  await dragTo(page, await tabHandle(page, 1, 'Alpha'), await tabHandle(page, 0, 'Gamma'), { shift: true, at: 'left' });
+  await waitTabs(page, 0, ['Alpha', 'Gamma']);
   await page.click('[data-focus-pane="p2"] [aria-label="Close Alpha"]');
   await waitTabs(page, 1, ['Beta']);
 
@@ -409,7 +414,7 @@ try {
   // A note edited in zoom reopens in a pane with the saved text, not an earlier cached copy.
   await clickRow(page, 'Alpha');
   await page.waitForSelector('[data-focus-pane="p1"] .note-editor[data-frame="pane"] .cm-content');
-  await page.click('[data-focus-pane="p1"] [aria-label="Close Alpha"]');
+  await palette(page, 'Close current tab');
   await page.waitForFunction(() => !document.querySelector('[data-focus-pane="p1"] .focus-tab'));
   await (await (await browseRow(page, 'Alpha')).asElement().$('[aria-label="Open in zoom"]')).click();
   await page.waitForSelector('.note-editor[data-frame="zoom"] .cm-content');
@@ -422,7 +427,8 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-focus-pane="p1"] .note-editor[data-frame="pane"] .cm-content')?.textContent.includes('saved in zoom'), { timeout: 5000 });
   console.log('PASS 8 a pane reopens a note with the text saved in zoom');
 
-  // Batch add fills a pane from a folder or a tag filter, deduplicated against what it already holds.
+  // The pane menu returns with a second note. Batch add fills it from a folder or tag filter.
+  await clickRow(page, 'Beta');
   await page.click('[data-focus-pane="p1"] [aria-label="Pane actions"]');
   await menuItem(page, 'Add matching');
   await page.waitForSelector('.focus-batch-dialog');
@@ -433,6 +439,8 @@ try {
   await page.waitForFunction(() => document.querySelector('.focus-batch-dialog [role="status"]')?.textContent.includes('1 added, 0 already present'));
   await page.click('.focus-batch-dialog button[type="button"]');
   await page.waitForFunction(() => !document.querySelector('.focus-batch-dialog'));
+  await waitTabs(page, 0, ['Alpha', 'Beta', 'Omega']);
+  await page.click('[data-focus-pane="p1"] [aria-label="Close Beta"]');
   await waitTabs(page, 0, ['Alpha', 'Omega']);
   console.log('PASS 8i batch add by folder with subfolders excluded adds only its direct notes');
 

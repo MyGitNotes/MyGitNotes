@@ -379,7 +379,7 @@
 /* The Notes page folds the header away with the browse region: the row's height eases to 0 (the header keeps its own height inside) and, once it has, the row is dropped so the header's 1px border does not stay behind. Clipped only while it moves, so an open header keeps its menus. */
 .workspace-header { flex: none; z-index: 22; border-bottom: 1px solid var(--workspace-divider); background: var(--surface-glass); backdrop-filter: var(--surface-blur); }
 /* One row: the brand over the sidebar's width (capped, so a wide sidebar does not crowd the row), the sections at their natural width, then the Notes page's Focus controls, the notebook switcher, New and the utilities in the rest of the row. */
-.workspace-header .header-layout { display: grid; grid-template-columns: min(var(--workspace-sidebar-width), 22vw) auto minmax(0, 1fr); gap: 0; height: 48px; padding: 0 24px 0 0; }
+.workspace-header .header-layout { display: grid; grid-template-columns: min(var(--workspace-sidebar-width), 22vw) auto minmax(0, 1fr); gap: 0; min-height: 48px; padding: 0 24px 0 0; }
 .workspace-header .header-brand { display: flex; gap: 8px; align-items: center; min-width: 0; padding: 0 20px; }
 .workspace-header .header-brand .min-w-0 { min-width: 0; flex: 0 1 auto; }
 .workspace-header .header-brand #workspace-sidebar-toggle-slot { align-items: center; }
@@ -433,9 +433,12 @@
 .workspace-header .header-notebook { display: flex; flex: none; flex-wrap: nowrap; align-items: center; gap: 7px; width: 210px; min-width: 0; }
 .header-notebook > svg { width: 16px; height: 16px; flex: none; color: var(--color-muted); }
 .header-notebook .select-trigger { flex: 1; min-width: 0; width: auto; }
-/* The Notes page's Focus controls and New in the header row: the Focus group ends in the divider before the notebook switcher. */
+/* Notes switches notebooks in the sidebar. Its otherwise empty switcher column must not reserve 210px between Focus and New. The phone slot is a portal host. */
+@media (min-width: 768px) { .header-focus-controls + .header-notebook { display: none; } }
+/* Right-aligned controls can take another line rather than overflowing backwards onto Settings. */
+.workspace-header .header-account { flex-wrap: wrap; }
 .workspace-header .header-account > .note-focus-controls, .workspace-header .header-account > .select-button { flex: none; flex-wrap: nowrap; }
-.workspace-header .header-focus-controls { padding-right: 12px; }
+.workspace-header .header-account > .header-focus-controls { flex: 0 1 auto; min-width: 0; max-width: 100%; padding-right: 12px; }
 .workspace-header .header-new-note { box-shadow: none; padding: 0 12px; }
 /*
  * Where the row holding them narrows, by the room left of the sections, these give way in turn: New shows its icon (its name stays its label and
