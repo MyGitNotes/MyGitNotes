@@ -130,7 +130,7 @@ it('leaves the status dot inert in a read-only notebook', () => {
   for (const dot of screen.getAllByRole('combobox')) expect(dot).toBeDisabled();
 });
 
-it('shows the hover card after the pointer rests on a row: status, every tag, both dates, folder, excerpt and actions', async () => {
+it('shows the hover card after the pointer rests on a row: status, every tag, both dates, file name, folder, excerpt and actions', async () => {
   const props = setup();
   fireEvent.pointerEnter(rowOf('a'), { pointerType: 'mouse' });
   act(() => vi.advanceTimersByTime(HOVER_CARD_OPEN_MS - 1));
@@ -143,6 +143,8 @@ it('shows the hover card after the pointer rests on a row: status, every tag, bo
   expect(within(card).getByRole('combobox', { name: 'Status for Title of a' })).toHaveTextContent('todo');
   expect([...card.querySelectorAll('.note-tag-chip')].map(chip => chip.textContent)).toEqual(['alpha', 'beta', 'gamma', 'delta']);
   expect(card.querySelectorAll('time')).toHaveLength(2);
+  expect(within(card).getByText('File name')).toBeInTheDocument();
+  expect(within(card).getByText('a.md')).toBeInTheDocument();
   expect(within(card).getByText('notes/life/projects')).toBeInTheDocument();
   // The excerpt drops the repeated heading, the Markdown marks, the link target and the code fence.
   expect(within(card).getByText('The opening line says what the note is about, with a link.')).toBeInTheDocument();
