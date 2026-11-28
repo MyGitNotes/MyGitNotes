@@ -187,7 +187,10 @@ try {
   assert(!await page.$('.note-editor[data-frame="zoom"]'), 'A note opens in a Focus pane, not in zoom');
   await page.waitForSelector('.focus-pane-body[aria-label="Alpha"]');
   await page.waitForSelector('.focus-pane-bar', { hidden: true });
-  await palette(page, 'Close current tab');
+  // Without the tab bar, the note row ends with the pane menu and the close button.
+  await page.waitForSelector('.note-toolbar .focus-pane-lone-controls [aria-label="Pane actions"]');
+  await shot(page, 'lone-note');
+  await page.click('.note-toolbar .focus-pane-lone-controls [aria-label="Close Alpha"]');
   await page.waitForFunction(() => !document.querySelector('.note-editor, .focus-tab'));
   assert.equal(new URL(page.url()).pathname, `/notebooks/${work}`);
   console.log('PASS 1 normal browsing opens a note as a Focus tab and closing it returns to the list');

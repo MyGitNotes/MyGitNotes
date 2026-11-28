@@ -1,5 +1,5 @@
 import { noteRefKey, sameNote } from '@mygitnotes/core/note-query';
-import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Pencil } from 'lucide-react';
 import type { NoteItem } from '../lib/types.js';
@@ -30,6 +30,8 @@ export interface HostedNoteEditorProps {
   documentPanel?: NoteEditorProps['documentPanel'];
   /** Where a pane's tab bar takes the editor's actions. */
   actionsSlot?: HTMLElement | null;
+  /** A lone Focus pane's menu and close button, for the end of the editor's actions. */
+  paneControls?: ReactNode;
   editorRef?: React.Ref<NoteEditorHandle>;
   onSession?: NoteEditorProps['onSession'];
   onCaret?: NoteEditorProps['onCaret'];
@@ -44,7 +46,7 @@ export interface HostedNoteEditorProps {
  * control that moves editing there. A host whose note the page followed to where it moved (another person moved or
  * renamed it, §20.4) keeps its editor and its place among the note's hosts; another note shown in its place is another editor.
  */
-export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, path, frame, active, documentPanel, actionsSlot, editorRef, onSession, onCaret, claim = false }) => {
+export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, path, frame, active, documentPanel, actionsSlot, paneControls, editorRef, onSession, onCaret, claim = false }) => {
   const { t } = useTranslation();
   const editing = useNoteEditing();
   const { hosts } = editing;
@@ -144,6 +146,7 @@ export const HostedNoteEditor: React.FC<HostedNoteEditorProps> = ({ notebookId, 
           onMove={editing.moveNote?.(note)}
           onRename={editing.renameNoteTo && (title => editing.renameNoteTo!(note, title))}
           actionsSlot={lending ? undefined : actionsSlot}
+          paneControls={lending ? undefined : paneControls}
           onSession={session => {
             setTyping(Boolean(session?.dirty));
             onSession?.(session);

@@ -1,4 +1,5 @@
 import type { CompilationRow } from '@mygitnotes/core/compilation';
+import type { ReactNode } from 'react';
 import type { BoardPanelActions } from '../components/board/useBoardPanel.js';
 import { CompilationView } from '../components/CompilationView.js';
 import { planNewCompilation } from '../lib/compilation-create.js';
@@ -81,7 +82,7 @@ export function useCompilations({ config, remote, folders, canWriteNotebook, rep
     return true;
   };
   /** The compilation at `path` of the selected notebook, in a Focus pane (`pane`) or in zoom. */
-  const renderCompilation = (path: string, pane?: string) => (
+  const renderCompilation = (path: string, pane?: string, trailing?: ReactNode) => (
     <CompilationView
       key={`${selectedNotebookId}:${path}`}
       notebookId={selectedNotebookId}
@@ -98,6 +99,7 @@ export function useCompilations({ config, remote, folders, canWriteNotebook, rep
       onClose={pane === undefined ? closeCompilationZoom : undefined}
       // In zoom a note card opens in the side panel inside the zoom; in a Focus pane it opens in another pane (above).
       sidePanel={pane === undefined ? boardPanel : undefined}
+      trailing={trailing}
     />
   );
 

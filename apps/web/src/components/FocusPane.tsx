@@ -41,8 +41,8 @@ export interface FocusPaneContext {
   notebookRoot: string;
   /** The notebook's configured folders, for the batch-add picker. */
   folders: readonly FolderItem[];
-  /** The view of the compilation at `path`, shown in place of a note editor. */
-  renderCompilation: (path: string, pane: string) => ReactNode;
+  /** The view of the compilation at `path`, shown in place of a note editor; `controls`: the pane menu and close button of a lone compilation, for the end of its header. */
+  renderCompilation: (path: string, pane: string, controls?: ReactNode) => ReactNode;
   onZoomNote: (path: string) => void;
   /** The rail container and section the active pane's editor renders its document panel into. */
   documentPanel?: NoteEditorProps['documentPanel'];
@@ -223,6 +223,28 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
     }
     void focus.place(focus.shown, tab, target.pane, index, sourcePane !== undefined).catch(() => {});
   };
+  // A lone note keeps its note row, which now holds this menu, so it cannot hide that row.
+  const paneMenu = <PaneMenu label={t('focus.paneActions')} items={[...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })), ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []), ...(shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []), ...(singleNote ? [] : [{ key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) }])]} />;
+  // A lone note has no tab bar: its note row (or a compilation's header) carries the pane menu and the way to close it. A phone closes through its back button.
+  const loneControls = singleNote && !phone && shown
+    ? (
+      <div className='focus-pane-lone-controls'>
+        {paneMenu}
+        {editable && (
+          <Tooltip label={t('focus.closeTab', { name: shown.label })}>
+            <button
+              type='button'
+              className='ui-icon-button toolbar-icon-button'
+              aria-label={t('focus.closeTab', { name: shown.label })}
+              onClick={() => void focus.close(shown.key, displayed.pane).catch(() => {})}
+            >
+              <X aria-hidden='true' />
+            </button>
+          </Tooltip>
+        )}
+      </div>
+    )
+    : undefined;
   // Pressing a tab does not make its pane active: the press may start a drag, which moves the tab without switching notes; a click shows the tab, which activates the pane.
   const tabPress = useRef(false);
 
@@ -344,7 +366,7 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
               onDrop={(event, tab) => drop(event, slotAt(event, tab, 'y'))}
             />
           )}
-          <PaneMenu label={t('focus.paneActions')} items={[...splits.map(split => ({ key: split.side, label: split.label, icon: split.side === 'right' ? <Columns2 aria-hidden='true' /> : <Rows2 aria-hidden='true' />, disabled: Boolean(split.refusal), hint: split.reason, onSelect: split.run })), ...(editable ? [{ key: 'batch-add', label: t('focus.batchAdd'), icon: <ListPlus aria-hidden='true' />, onSelect: () => setBatchAddOpen(true) }] : []), ...(shown ? [{ key: 'zoom', label: t('focus.zoomNote'), icon: <Maximize2 aria-hidden='true' />, onSelect: () => onZoomNote(shown.tab.path) }] : []), { key: 'hide-toolbar', label: t('focus.hideToolbar'), icon: <PanelTopClose aria-hidden='true' />, checked: hideToolbar, onSelect: () => focus.setHideToolbar(displayed.pane, !hideToolbar) }]} />
+          {!singleNote && paneMenu}
         </div>
       </div>
       {phone && (!shown || isCompilationPath(shown.tab.path)) && <PhoneBackBar title={shown?.label ?? ''} />}
@@ -354,10 +376,10 @@ export const FocusPane: React.FC<FocusPaneContext & { displayed: DisplayedPane; 
             ? (
               <React.Fragment key={shown.tab.path}>
                 <CompilationAgentTarget notebookId={focus.notebookId} path={shown.tab.path} active={active} />
-                {renderCompilation(shown.tab.path, displayed.pane)}
+                {renderCompilation(shown.tab.path, displayed.pane, loneControls)}
               </React.Fragment>
             )
-            : <PaneNoteEditor key={editorKey} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={barActions ? actionsSlot : undefined} />
+            : <PaneNoteEditor key={editorKey} notebookId={focus.notebookId} path={shown.tab.path} active={active} documentPanel={active ? documentPanel : undefined} actionsSlot={barActions ? actionsSlot : undefined} paneControls={loneControls} />
           : (
             <div className='focus-pane-empty'>
               <p>{editable ? t('focus.emptyPane') : t('focus.emptyPaneReadonly')}</p>
@@ -554,4 +576,4 @@ function CompilationAgentTarget({ notebookId, path, active }: { notebookId: stri
   return null;
 }
 
-const PaneNoteEditor: React.FC<{ notebookId: string; path: string; active: boolean; documentPanel?: NoteEditorProps['documentPanel']; actionsSlot?: HTMLElement | null; }> = ({ notebookId, path, active, documentPanel, actionsSlot }) => <HostedNoteEditor notebookId={notebookId} path={path} frame='pane' active={active} documentPanel={documentPanel} actionsSlot={actionsSlot} />;
+const PaneNoteEditor: React.FC<{ notebookId: string; path: string; active: boolean; documentPanel?: NoteEditorProps['documentPanel']; actionsSlot?: HTMLElement | null; paneControls?: ReactNode; }> = ({ notebookId, path, active, documentPanel, actionsSlot, paneControls }) => <HostedNoteEditor notebookId={notebookId} path={path} frame='pane' active={active} documentPanel={documentPanel} actionsSlot={actionsSlot} paneControls={paneControls} />;

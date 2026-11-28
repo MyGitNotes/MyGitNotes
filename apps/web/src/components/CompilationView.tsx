@@ -60,10 +60,12 @@ export interface CompilationViewProps {
   sidePanel?: BoardPanelActions;
   /** What the header shows before the title: the 白板 page's breadcrumb. */
   lead?: ReactNode;
+  /** What ends the header's actions: a lone Focus pane's menu and close button. */
+  trailing?: ReactNode;
 }
 
 /** One open compilation: its header, then the lane, book or whiteboard arrangement. Edits write the file through the note actions. */
-export function CompilationView({ notebookId, path, notebooks, folders, frame, onOpenNote, onOpenFolder, onClose, sidePanel, lead }: CompilationViewProps) {
+export function CompilationView({ notebookId, path, notebooks, folders, frame, onOpenNote, onOpenFolder, onClose, sidePanel, lead, trailing }: CompilationViewProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const editing = useNoteEditing();
@@ -293,6 +295,7 @@ export function CompilationView({ notebookId, path, notebooks, folders, frame, o
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
           )}
+          {trailing}
         </>
       ),
       onSort: (sort: NonNullable<Extract<CompilationRow, { kind: 'dynamic'; }>['sort']>) => current.kind === 'dynamic' && change({ ...current, sort }),
