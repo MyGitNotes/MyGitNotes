@@ -198,22 +198,23 @@ export function useNoteFocus({ page, notebookId, notebookRoot, repository, scope
   };
   /**
    * Moves the tab `key` from `fromPane` to `toPane` (or reorders it within the same pane), for a tab-bar drag without the copy modifier. Each pane goes on showing
-   * what it showed and the active pane stays: the source shows its previous tab when the moved one was on screen there, and `toPane` shows the tab only if it showed nothing. Throws FocusError.
+   * what it showed unless the shown tab left, or the target already holds a copy: moving back to that copy activates it in place. Throws FocusError.
    */
   const moveTab = async (target: string, key: string, fromPane: string, toPane: string, index?: number): Promise<boolean> => {
     const current = layoutOf(target), before = entryOf(target, current);
     if (!current || !before || !editable(target)) return false;
+    const existing = fromPane === toPane ? -1 : findFocusTabInPane(current, toPane, key);
     const leavesSource = fromPane !== toPane && before.shown[fromPane] === key;
     // An emptied source pane is removed, which re-lays out the Focus, so every displayed editor is saved first.
     const emptiesSource = fromPane !== toPane && findFocusPane(current, fromPane)?.tabs.length === 1;
-    const toFlush = emptiesSource ? Object.values(before.shown) : leavesSource ? [before.shown[fromPane]] : [];
+    const toFlush = emptiesSource ? Object.values(before.shown) : [leavesSource ? key : null, existing !== -1 && before.shown[toPane] !== key ? before.shown[toPane] : null];
     if (target === shown && !await flushEditors(noteKeys(notebookId, toFlush))) return false;
     const sourceNext = leavesSource ? shownAfterClose(current, fromPane, key, before.history[fromPane]) : null;
     let after = current;
-    if (!mutate(target, layout => after = moveFocusTab(layout, fromPane, toPane, key, index))) return false;
+    if (!mutate(target, layout => after = moveFocusTab(layout, fromPane, toPane, key, existing === -1 ? index : existing))) return false;
     setEntry(target, entry => {
       const withSource = leavesSource ? { ...entry, shown: { ...entry.shown, [fromPane]: sourceNext } } : entry;
-      const moved = fillPane(withSource, toPane, key);
+      const moved = existing === -1 ? fillPane(withSource, toPane, key) : showTab(withSource, toPane, key);
       return emptiesSource ? retainPanes({ ...moved, ratios: collapseRatios(moved.ratios, current, fromPane) }, after) : moved;
     }, current);
     return true;
